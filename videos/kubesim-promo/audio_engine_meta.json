@@ -1,0 +1,257 @@
+{
+  "tts_provider": null,
+  "voice_id": null,
+  "bgm": {
+    "path": "assets/bgm/track.mp3",
+    "volume": 0.9,
+    "query": "upbeat minimal electronic, playful and driving, clean percussive hits, tech-explainer energy",
+    "mode": "retrieve",
+    "duration_s": 42
+  },
+  "bgm_pending": false,
+  "bgm_provider": "heygen",
+  "bgm_pid": null,
+  "bgm_log": null,
+  "bgm_mode": "retrieve",
+  "bgm_target_duration_s": null,
+  "bgm_seed_duration_s": null,
+  "bgm_loop_count": null,
+  "voices": [],
+  "sfx": [
+    {
+      "id": "01",
+      "name": "glitch-tick",
+      "file": "assets/sfx/glitch-tick.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 1.176,
+      "volume": 0.35
+    },
+    {
+      "id": "01",
+      "name": "impact-hit",
+      "file": "assets/sfx/impact-hit.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 3.454,
+      "volume": 0.35
+    },
+    {
+      "id": "01",
+      "name": "whoosh",
+      "file": "assets/sfx/whoosh.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 1.58,
+      "volume": 0.35
+    },
+    {
+      "id": "02",
+      "name": "whoosh-rise",
+      "file": "assets/sfx/whoosh-rise.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 4.364,
+      "volume": 0.35
+    },
+    {
+      "id": "02",
+      "name": "click",
+      "file": "assets/sfx/click.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.24,
+      "volume": 0.35
+    },
+    {
+      "id": "02",
+      "name": "pop",
+      "file": "assets/sfx/pop.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.312,
+      "volume": 0.35
+    },
+    {
+      "id": "02",
+      "name": "chime",
+      "file": "assets/sfx/chime.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.72,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "pop",
+      "file": "assets/sfx/pop.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.312,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "alarm-blip",
+      "file": "assets/sfx/alarm-blip.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.768,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "glass-shatter",
+      "file": "assets/sfx/glass-shatter.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 1.616,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "laser-zap",
+      "file": "assets/sfx/laser-zap.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 2.361,
+      "volume": 0.35
+    },
+    {
+      "id": "03",
+      "name": "success-chime",
+      "file": "assets/sfx/success-chime.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 4.755,
+      "volume": 0.35
+    },
+    {
+      "id": "04",
+      "name": "keyboard-typing",
+      "file": "assets/sfx/keyboard-typing.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 44.382,
+      "volume": 0.35
+    },
+    {
+      "id": "04",
+      "name": "key-press",
+      "file": "assets/sfx/key-press.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 2.521,
+      "volume": 0.35
+    },
+    {
+      "id": "04",
+      "name": "whoosh-drop",
+      "file": "assets/sfx/whoosh-drop.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 2.512,
+      "volume": 0.35
+    },
+    {
+      "id": "04",
+      "name": "pop",
+      "file": "assets/sfx/pop.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.312,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "digital-glitch",
+      "file": "assets/sfx/digital-glitch.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 1.032,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "power-down",
+      "file": "assets/sfx/power-down.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 2.524,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "rumble",
+      "file": "assets/sfx/rumble.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 8.729,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "whoosh",
+      "file": "assets/sfx/whoosh.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 1.58,
+      "volume": 0.35
+    },
+    {
+      "id": "05",
+      "name": "pop",
+      "file": "assets/sfx/pop.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.312,
+      "volume": 0.35
+    },
+    {
+      "id": "06",
+      "name": "whoosh-soft",
+      "file": "assets/sfx/whoosh-soft.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 1.58,
+      "volume": 0.35
+    },
+    {
+      "id": "06",
+      "name": "pop",
+      "file": "assets/sfx/pop.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.312,
+      "volume": 0.35
+    },
+    {
+      "id": "07",
+      "name": "pop",
+      "file": "assets/sfx/pop.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 0.312,
+      "volume": 0.35
+    },
+    {
+      "id": "07",
+      "name": "typing",
+      "file": "assets/sfx/typing.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 44.382,
+      "volume": 0.35
+    },
+    {
+      "id": "07",
+      "name": "success-chime",
+      "file": "assets/sfx/success-chime.mp3",
+      "source": "heygen",
+      "offset_s": 0,
+      "duration_s": 4.755,
+      "volume": 0.35
+    }
+  ],
+  "total_duration_s": 0
+}

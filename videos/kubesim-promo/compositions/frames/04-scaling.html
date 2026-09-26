@@ -1,0 +1,289 @@
+<template id="04-scaling-template">
+  <div data-hf-id="hf-7wpn" id="root" data-composition-id="04-scaling" data-start="0" data-duration="6.5" data-width="1080" data-height="1080">
+    <style>
+      @font-face {
+        font-family: "Geist";
+        src: url("assets/fonts/geist-latin.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+      }
+      @font-face {
+        font-family: "Geist Mono";
+        src: url("assets/fonts/geist-mono-latin.woff2") format("woff2");
+        font-weight: 100 900;
+        font-style: normal;
+      }
+      #root {
+        position: absolute;
+        inset: 0;
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+        font-family: "Geist", sans-serif;
+      }
+      [id="04-scaling-bg"] {
+        position: absolute;
+        inset: 0;
+        background-color: #F7F8FA;
+        background-image: radial-gradient(#DCE2EA 1.6px, transparent 1.8px);
+        background-size: 36px 36px;
+        background-position: 16px 16px;
+      }
+      [id="04-scaling-stage"] {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1080px;
+        height: 1080px;
+        overflow: hidden;
+      }
+      [id="04-scaling-term"] {
+        position: absolute;
+        left: 110px;
+        top: 56px;
+        width: 860px;
+        height: 78px;
+        border-radius: 18px;
+        background: #0F172A;
+        display: flex;
+        align-items: center;
+        padding: 0 32px;
+        font-family: "Geist Mono", monospace;
+        font-size: 28px;
+        font-weight: 400;
+        color: #E2E8F0;
+        white-space: nowrap;
+      }
+      [id="04-scaling-term"] [class~="04-scaling-prompt"] {
+        color: #90A1B9;
+      }
+      [id="04-scaling-term"] [class~="04-scaling-wrap"] {
+        display: inline-flex;
+        align-items: center;
+        min-width: 650px;
+        white-space: pre;
+      }
+      [id="04-scaling-term"] [class~="04-scaling-caret"] {
+        display: inline-block;
+        width: 0.6em;
+        height: 1.1em;
+        margin-left: 2px;
+        background: #E2E8F0;
+        border-radius: 2px;
+      }
+      [id="04-scaling-term"] [class~="04-scaling-status"] {
+        margin-left: auto;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 22px;
+        font-weight: 500;
+        color: #90A1B9;
+      }
+      [id="04-scaling-term"] [class~="04-scaling-dot"] {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #16A34A;
+      }
+      [id="04-scaling-caps"] {
+        position: absolute;
+        left: 40px;
+        right: 40px;
+        bottom: 50px;
+        height: 72px;
+      }
+      [id="04-scaling-caps"] [class~="04-scaling-cap"] {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 72px;
+        line-height: 72px;
+        text-align: center;
+        font-family: "Geist", sans-serif;
+        font-weight: 600;
+        font-size: 58px;
+        letter-spacing: -0.03em;
+        color: #0F172A;
+        white-space: nowrap;
+      }
+      [id="04-scaling-caps"] [class~="04-scaling-blue"] {
+        color: #3B82F6;
+      }
+    </style>
+
+    <div data-hf-id="hf-bdcb" id="04-scaling-bg" class="clip" data-start="0" data-duration="6.5" data-track-index="0"></div>
+
+    <svg data-hf-id="hf-zf7h" id="04-scaling-stage" class="clip" data-start="0" data-duration="6.5" data-track-index="1" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" />
+
+    <div data-hf-id="hf-ma02" id="04-scaling-term" class="clip" data-start="0" data-duration="6.5" data-track-index="2">
+      <span data-hf-id="hf-edlu" class="04-scaling-wrap"><span data-hf-id="hf-2c38" class="04-scaling-prompt">$ </span><span data-hf-id="hf-qm92" class="04-scaling-text" id="04-scaling-cmd"></span><span data-hf-id="hf-caur" class="04-scaling-caret" id="04-scaling-caret"></span></span>
+      <span data-hf-id="hf-t9o7" class="04-scaling-status" id="04-scaling-status"><span data-hf-id="hf-6edn" class="04-scaling-dot"></span>scaled</span>
+    </div>
+
+    <div data-hf-id="hf-2rqo" id="04-scaling-caps" class="clip" data-start="0" data-duration="6.5" data-track-index="3">
+      <div data-hf-id="hf-h165" class="04-scaling-cap" id="04-scaling-cap1">Need more?</div>
+      <div data-hf-id="hf-bylx" class="04-scaling-cap" id="04-scaling-cap2">Scale to <span data-hf-id="hf-9xp4" class="04-scaling-blue">6</span>.</div>
+      <div data-hf-id="hf-0vs1" class="04-scaling-cap" id="04-scaling-cap3">The scheduler spreads them out.</div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <script src="assets/iso-kit.js"></script>
+    <script>
+      (function () {
+        const ID = "04-scaling";
+        const DUR = 6.5;
+        const root = document.querySelector('[data-composition-id="04-scaling"]');
+        const byId = (s) => root.querySelector('[id="' + ID + "-" + s + '"]');
+        const K = window.IsoKit;
+        const C = K.COLORS;
+
+        // ---- cluster (shared geometry; start state w1:[1], w2:[1], w3:[2]) ----
+        const svg = byId("stage");
+        const H = K.buildCluster(svg, { prefix: ID, pods: { w1: [1], w2: [1], w3: [2] } });
+
+        const tl = gsap.timeline({ paused: true });
+        window.__timelines = window.__timelines || {};
+        window.__timelines[ID] = tl;
+
+        // ---- terminal typing (discrete-text-sequence) + caret driven off timeline time ----
+        const CMD = "kubectl scale deploy web --replicas=6";
+        const T_TYPE0 = 0.5, T_TYPE1 = 2.05, T_ENTER = 2.2;
+        const weights = [];
+        let total = 0;
+        for (let i = 0; i < CMD.length; i++) {
+          const w = 0.03 + K.hash(i + 11) * 0.022 + (i > 0 && CMD[i - 1] === " " ? 0.075 : 0);
+          weights.push(w);
+          total += w;
+        }
+        const scale = (T_TYPE1 - T_TYPE0) / (total - weights[weights.length - 1]);
+        const SEQ = [{ t: 0, text: "" }];
+        let acc = 0;
+        for (let i = 0; i < CMD.length; i++) {
+          SEQ.push({ t: T_TYPE0 + acc * scale, text: CMD.slice(0, i + 1) });
+          acc += weights[i];
+        }
+        const textAt = (t) => {
+          for (let i = SEQ.length - 1; i >= 0; i--) if (t >= SEQ[i].t) return SEQ[i].text;
+          return "";
+        };
+
+        const cmdEl = byId("cmd");
+        const caretEl = byId("caret");
+        const cap1 = byId("cap1"), cap2 = byId("cap2"), cap3 = byId("cap3");
+        const T_CAP2 = 1.3, T_CAP3 = 4.3;
+
+        const drv = { t: 0 };
+        const render = () => {
+          const t = drv.t;
+          cmdEl.textContent = textAt(t);
+          // caret: solid while typing, blinks while idle, gone after Enter (static hand-off)
+          let on;
+          if (t >= T_ENTER) on = false;
+          else if (t >= T_TYPE0 - 0.05 && t < T_TYPE1 + 0.08) on = true;
+          else on = Math.floor(t / 0.5) % 2 === 0;
+          caretEl.style.opacity = on ? "1" : "0";
+          // captions: hard cuts
+          cap1.style.visibility = t < T_CAP2 ? "inherit" : "hidden";
+          cap2.style.visibility = t >= T_CAP2 && t < T_CAP3 ? "inherit" : "hidden";
+          cap3.style.visibility = t >= T_CAP3 ? "inherit" : "hidden";
+        };
+        render();
+        tl.to(drv, { t: DUR, duration: DUR, ease: "none", onUpdate: render }, 0);
+
+        // ---- Scene 1: caption, pill slides into the top band, Enter press ----
+        tl.fromTo(cap1, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.5, ease: "power3.out" }, 0.1);
+        tl.fromTo(cap2, { y: 12 }, { y: 0, duration: 0.35, ease: "expo.out", immediateRender: false }, T_CAP2);
+
+        const term = byId("term");
+        tl.fromTo(term, { y: -150, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "expo.out" }, 0.2);
+        tl.fromTo(term, { scale: 1 }, { scale: 0.97, duration: 0.07, ease: "power2.out", immediateRender: false }, T_ENTER);
+        tl.to(term, { scale: 1, duration: 0.35, ease: "power3.out" }, T_ENTER + 0.07);
+
+        const status = byId("status");
+        tl.fromTo(status, { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.35, ease: "power3.out" }, T_ENTER + 0.12);
+
+        // ---- Scene 2: three Pods rain in (echo trail, squash landing, ripple, LED flip) ----
+        const DROPS = [
+          { n: "w1", k: 2 },
+          { n: "w3", k: 1 },
+          { n: "w2", k: 3 },
+        ];
+        const T_RAIN = 2.3, STAGGER = 0.2, FALL = 0.44, DROP = -1150, LAG = 0.028;
+        const GHOST_OP = [0.42, 0.24, 0.13];
+
+        // Scheduler (a control-plane system component) pulses once per placement decision.
+        const schedTop = H.sys[3].children[2];
+        const SYS_BASE = C.sys[0], SYS_HOT = C.sys[2];
+
+        DROPS.forEach((d, i) => {
+          const s = T_RAIN + i * STAGGER;
+          const land = s + FALL;
+          const layer = H.pods[d.n];
+          const [wx, wy] = K.slot(d.n, d.k);
+          const cx = wx + K.POD / 2, cy = wy + K.POD / 2;
+
+          // scheduler pulse just before the drop
+          const sp = { p: 0 };
+          tl.fromTo(sp, { p: 0 }, {
+            p: 1, duration: 0.18, ease: "none", immediateRender: false,
+            onUpdate: () => {
+              const tri = sp.p <= 0 || sp.p >= 1 ? 0 : sp.p < 0.3 ? sp.p / 0.3 : 1 - (sp.p - 0.3) / 0.7;
+              schedTop.setAttribute("fill", gsap.utils.interpolate(SYS_BASE, SYS_HOT, tri));
+            },
+          }, s - 0.08);
+
+          // ground ripple ring (bottom of the Node's pod layer, under every Pod)
+          const ring = K.isoRing(layer, cx, cy, K.NODE_H, 30, { stroke: C.blue[1], "stroke-width": 3, opacity: 0 });
+          layer.insertBefore(ring, layer.firstChild);
+          const r0x = +ring.getAttribute("rx"), r0y = +ring.getAttribute("ry");
+          const rp = { p: 0 };
+          tl.fromTo(rp, { p: 0 }, {
+            p: 1, duration: 0.65, ease: "none", immediateRender: false,
+            onUpdate: () => {
+              const p = rp.p;
+              const e = 1 - Math.pow(1 - p, 3);
+              const k = 1 + 1.7 * e;
+              ring.setAttribute("rx", (r0x * k).toFixed(2));
+              ring.setAttribute("ry", (r0y * k).toFixed(2));
+              ring.setAttribute("stroke-width", (3 - 2 * e).toFixed(2));
+              ring.setAttribute("opacity", p <= 0 || p >= 1 ? 0 : (0.85 * Math.pow(1 - p, 1.4)).toFixed(3));
+            },
+          }, land);
+
+          // echo-trail ghosts: time-lagged copies behind the lead, collapsing into it on landing
+          for (let g = 3; g >= 1; g--) {
+            const ghost = K.addPod(layer, d.n, d.k, { id: `${ID}-ghost-${d.n}-${d.k}-${g}`, cls: `${ID}-ghost`, noLed: true });
+            gsap.set(ghost, { svgOrigin: `${ghost.dataset.bx} ${ghost.dataset.by}` });
+            tl.fromTo(ghost,
+              { y: DROP, scaleX: 0.92, scaleY: 1.12, opacity: GHOST_OP[g - 1] },
+              { y: 0, duration: FALL, ease: "power2.in" }, s + g * LAG);
+            tl.to(ghost, { opacity: 0, duration: 0.09 + g * 0.02, ease: "power1.out" }, land);
+          }
+
+          // the lead Pod: stretched while falling, squash on impact, one smooth recover
+          const lead = K.addPod(layer, d.n, d.k, { id: `${ID}-pod-${d.n}-${d.k}`, led: C.amber });
+          gsap.set(lead, { svgOrigin: `${lead.dataset.bx} ${lead.dataset.by}` });
+          tl.fromTo(lead, { y: DROP, scaleX: 0.92, scaleY: 1.12 }, { y: 0, duration: FALL, ease: "power2.in" }, s);
+          tl.to(lead, { scaleX: 1.2, scaleY: 0.72, duration: 0.07, ease: "power2.out" }, land);
+          tl.to(lead, { scaleX: 1, scaleY: 1, duration: 0.42, ease: "power3.out" }, land + 0.07);
+
+          // Pending (amber) -> Running (green) ~0.3s after landing
+          const led = lead.querySelector(".led");
+          tl.fromTo(led, { attr: { fill: C.amber } }, { attr: { fill: C.green }, duration: 0.15, ease: "power1.out", immediateRender: false }, land + 0.3);
+
+          // tiny impact thud on the whole cluster, fully returned before the next landing
+          tl.fromTo(H.root, { y: 0 }, { y: 3, duration: 0.05, ease: "power2.out", immediateRender: false }, land);
+          tl.to(H.root, { y: 0, duration: 0.14, ease: "power3.out" }, land + 0.05);
+        });
+
+        // ---- Scene 3: caption hard-cuts; held read ----
+        tl.fromTo(cap3, { y: 12 }, { y: 0, duration: 0.4, ease: "expo.out", immediateRender: false }, T_CAP3);
+
+        tl.set({}, {}, DUR);
+      })();
+    </script>
+  </div>
+</template>

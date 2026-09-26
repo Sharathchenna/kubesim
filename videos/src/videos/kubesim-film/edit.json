@@ -1,0 +1,13 @@
+{
+  "source": "public/audio/kubesim-film/music/song.mp3",
+  "out": "public/audio/kubesim-film/music/kubesim-film-edit.wav",
+  "bpm": 119.995,
+  "firstDownbeat": 1.9875,
+  "segments": [
+    { "fromBar": 0, "toBar": 16, "why": "film bars 1-16: groove A (song 0-5), lift (6-7) into the drop at song bar 8, groove B, lift (14-15). Skips the 2 s pickup so something hits on frame 0." },
+    { "fromBar": 16, "toBar": 20, "why": "film bars 17-20: groove C, first 4 bars (the Node-failure payoff and the proof)." },
+    { "fromBar": 22, "toBar": 25, "why": "film bars 21-23: the last lift (song 22-23) for the final punchline and lockup, then the song's own ring-out bar." }
+  ],
+  "duration": 46.0,
+  "fadeOutSeconds": 1.6
+}

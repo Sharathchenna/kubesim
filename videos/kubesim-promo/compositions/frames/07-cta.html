@@ -1,0 +1,258 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Geist";
+      src: url("assets/fonts/geist-latin.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    @font-face {
+      font-family: "Geist Mono";
+      src: url("assets/fonts/geist-mono-latin.woff2") format("woff2");
+      font-weight: 100 900;
+    }
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "Geist";
+      color: #0F172A;
+    }
+    [id="07-cta-bg"] {
+      position: absolute;
+      inset: 0;
+      background-color: #F7F8FA;
+      background-image: radial-gradient(#DCE2EA 1.6px, transparent 1.8px);
+      background-size: 36px 36px;
+      background-position: 16px 16px;
+    }
+    [id="07-cta-stage"] {
+      position: absolute;
+      inset: 0;
+    }
+    [id="07-cta-svg"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      overflow: visible;
+    }
+    [id="07-cta-ripple-g"] {
+      visibility: hidden;
+    }
+    [id="07-cta-word"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 420px;
+      text-align: center;
+      font-size: 120px;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      color: #0F172A;
+      white-space: nowrap;
+    }
+    [class~="07-cta-letter"] {
+      display: inline-block;
+      opacity: 0;
+    }
+    [id="07-cta-tag"] {
+      position: absolute;
+      left: 40px;
+      right: 40px;
+      top: 573px;
+      text-align: center;
+      font-size: 32px;
+      font-weight: 500;
+      line-height: 1;
+      color: #62748E;
+      white-space: nowrap;
+    }
+    [class~="07-cta-phrase"] {
+      display: inline-block;
+      white-space: pre;
+    }
+    [class~="07-cta-sep"] {
+      color: #7a8aa0;
+    }
+    [id="07-cta-term"] {
+      position: absolute;
+      left: 190px;
+      top: 720px;
+      width: 700px;
+      height: 130px;
+      border-radius: 18px;
+      background: #0F172A;
+      font-family: "Geist Mono";
+      font-size: 28px;
+      line-height: 44px;
+      white-space: pre;
+      color: #E2E8F0;
+    }
+    [class~="07-cta-line"] {
+      position: absolute;
+      left: 32px;
+      height: 44px;
+    }
+    [id="07-cta-line1"] {
+      top: 21px;
+    }
+    [id="07-cta-line2"] {
+      top: 65px;
+      color: #4ADE80;
+      opacity: 0;
+    }
+    [id="07-cta-prompt"] {
+      color: #90A1B9;
+      opacity: 0;
+    }
+    [class~="07-cta-caret"] {
+      display: inline-block;
+      width: 15px;
+      height: 30px;
+      margin-left: 2px;
+      vertical-align: -6px;
+      background: #CBD5E1;
+      border-radius: 2px;
+    }
+    [id="07-cta-caret1"] {
+      opacity: 0;
+    }
+  </style>
+
+  <div data-hf-id="hf-o0by" id="root" data-composition-id="07-cta" data-width="1080" data-height="1080">
+    <div data-hf-id="hf-rrry" id="07-cta-bg" class="clip" data-start="0" data-duration="4" data-track-index="0"></div>
+
+    <div data-hf-id="hf-rhpi" id="07-cta-stage" class="clip" data-start="0" data-duration="4" data-track-index="1">
+      <svg data-hf-id="hf-luav" id="07-cta-svg" width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+        <!-- ground ripple ring (iso circle on the landing plane), behind the cube -->
+        <g data-hf-id="hf-rlhc" id="07-cta-ripple-g">
+          <ellipse data-hf-id="hf-hp5k" id="07-cta-ripple" cx="540" cy="346.3" rx="80" ry="46" fill="none" stroke="#3B82F6" stroke-width="3" />
+        </g>
+        <!-- drop + squash wrapper (canvas px) -->
+        <g data-hf-id="hf-87qt" id="07-cta-drop">
+          <!-- morph wrapper: uniform scale 1.15 -> 1 about the mark centre -->
+          <g data-hf-id="hf-2w6s" id="07-cta-morph">
+            <!-- kubesim mark space: 28-unit logo at scale 7, centred on (540, 300) -->
+            <g data-hf-id="hf-iv3v" transform="translate(442 202) scale(7)">
+              <!-- Pod cube: its silhouette is the mark's outer hexagon -->
+              <polygon data-hf-id="hf-4wwf" points="14,2.5 24,8.25 14,14 4,8.25" fill="#93C5FD" stroke="#93C5FD" stroke-width="0.08" stroke-linejoin="round" />
+              <polygon data-hf-id="hf-eox1" points="4,8.25 14,14 14,25.5 4,19.75" fill="#3B82F6" stroke="#3B82F6" stroke-width="0.08" stroke-linejoin="round" />
+              <polygon data-hf-id="hf-70b3" points="14,14 24,8.25 24,19.75 14,25.5" fill="#2563EB" stroke="#2563EB" stroke-width="0.08" stroke-linejoin="round" />
+              <ellipse data-hf-id="hf-nt0d" id="07-cta-led" cx="14" cy="8.25" rx="1.3" ry="0.75" fill="#16A34A" />
+              <!-- the real mark: ink hexagon + white inner outline -->
+              <path data-hf-id="hf-u3x3" id="07-cta-ink" d="M14 2.5l10 5.75v11.5L14 25.5 4 19.75V8.25L14 2.5z" fill="#0F172A" opacity="0" />
+              <path data-hf-id="hf-qt1u" id="07-cta-outline" d="M14 8l5.2 3v6L14 20l-5.2-3v-6L14 8z" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linejoin="round" pathLength="1" stroke-dasharray="1 1" stroke-dashoffset="1" />
+            </g>
+          </g>
+        </g>
+      </svg>
+
+      <div data-hf-id="hf-g9ug" id="07-cta-word"><span data-hf-id="hf-0vb5" class="07-cta-letter">k</span><span data-hf-id="hf-9m1r" class="07-cta-letter">u</span><span data-hf-id="hf-4g2e" class="07-cta-letter">b</span><span data-hf-id="hf-395b" class="07-cta-letter">e</span><span data-hf-id="hf-aent" class="07-cta-letter">s</span><span data-hf-id="hf-1nx7" class="07-cta-letter">i</span><span data-hf-id="hf-02p3" class="07-cta-letter">m</span></div>
+
+      <div data-hf-id="hf-spi0" id="07-cta-tag"><span data-hf-id="hf-d159" class="07-cta-phrase">Free</span><span data-hf-id="hf-ci5w" class="07-cta-phrase"><span data-hf-id="hf-54ll" class="07-cta-sep"> · </span>open source</span><span data-hf-id="hf-zbjv" class="07-cta-phrase"><span data-hf-id="hf-2zy5" class="07-cta-sep"> · </span>runs in your browser</span><span data-hf-id="hf-56cd" class="07-cta-phrase"><span data-hf-id="hf-46v8" class="07-cta-sep"> · </span>no sign-up</span></div>
+
+      <div data-hf-id="hf-io7i" id="07-cta-term">
+        <div data-hf-id="hf-po9l" id="07-cta-line1" class="07-cta-line"><span data-hf-id="hf-3mzx" id="07-cta-prompt">$ </span><span data-hf-id="hf-bbpv" id="07-cta-cmd"></span><span data-hf-id="hf-5h30" id="07-cta-caret1" class="07-cta-caret"></span></div>
+        <div data-hf-id="hf-ewpf" id="07-cta-line2" class="07-cta-line">learner/you created<span data-hf-id="hf-e4yv" id="07-cta-caret2" class="07-cta-caret"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (function () {
+      var $ = function (id) { return document.getElementById("07-cta-" + id); };
+      var tl = gsap.timeline({ paused: true });
+
+      // ---- Scene 1 (0.0–1.0s): Pod cube drops, lands, morphs into the kubesim mark ----
+      var drop = $("drop"), morph = $("morph");
+      var BASE = "540 392.6"; // cube's bottom vertex at scale 1.15 (squash origin)
+      var LAND = 0.38;
+
+      // fall: gravity ease, slight stretch while airborne
+      tl.fromTo(drop,
+        { y: -560, scaleX: 0.92, scaleY: 1.1, svgOrigin: BASE },
+        { y: 0, scaleX: 0.92, scaleY: 1.1, svgOrigin: BASE, duration: LAND, ease: "power2.in" }, 0);
+      // impact squash, then one smooth recover (no repeated bounce)
+      tl.fromTo(drop,
+        { scaleX: 0.92, scaleY: 1.1, svgOrigin: BASE },
+        { scaleX: 1.14, scaleY: 0.84, svgOrigin: BASE, duration: 0.07, ease: "power2.out", immediateRender: false }, LAND);
+      tl.fromTo(drop,
+        { scaleX: 1.14, scaleY: 0.84, svgOrigin: BASE },
+        { scaleX: 1, scaleY: 1, svgOrigin: BASE, duration: 0.32, ease: "power3.out", immediateRender: false }, LAND + 0.07);
+
+      // thin ground ripple ring on impact
+      tl.set($("ripple-g"), { visibility: "inherit" }, LAND);
+      tl.fromTo($("ripple"),
+        { attr: { rx: 80, ry: 46 }, strokeWidth: 3, opacity: 0.7 },
+        { attr: { rx: 240, ry: 139 }, strokeWidth: 1, opacity: 0, duration: 0.62, ease: "power2.out" }, LAND);
+
+      // card-morph-anchor: uniform scale + paint crossfade in lockstep, one ease
+      var M0 = 0.58, MD = 0.42;
+      tl.fromTo(morph, { scale: 1.15, svgOrigin: "540 300" },
+        { scale: 1, svgOrigin: "540 300", duration: MD, ease: "power2.inOut" }, M0);
+      tl.fromTo($("ink"), { opacity: 0 }, { opacity: 1, duration: MD, ease: "power2.inOut" }, M0);
+      // old content (status LED) out in the first ~40%
+      tl.fromTo($("led"), { opacity: 1 }, { opacity: 0, duration: MD * 0.4, ease: "power1.in" }, M0);
+      // new content: the white inner hexagon self-draws in the back of the morph
+      var outline = $("outline");
+      tl.fromTo(outline, { attr: { "stroke-dashoffset": 1 } },
+        { attr: { "stroke-dashoffset": 0 }, duration: 0.45, ease: "power2.inOut" }, M0 + MD * 0.6);
+      tl.set(outline, { attr: { "stroke-dasharray": "none" } }, M0 + MD * 0.6 + 0.46);
+
+      // ---- Scene 2 (1.0–1.9s): wordmark waterfall, tagline rises per phrase ----
+      var letters = document.querySelectorAll('[id="07-cta-word"] [class~="07-cta-letter"]');
+      var travel = [72, 50, 50, 46, 46, 40, 56];
+      var dur = [0.18, 0.16, 0.16, 0.15, 0.15, 0.13, 0.16];
+      var gaps = [0.07, 0.06, 0.055, 0.05, 0.045, 0.04];
+      var t = 1.05;
+      for (var i = 0; i < letters.length; i++) {
+        tl.set(letters[i], { opacity: 1, y: travel[i] }, t);
+        tl.to(letters[i], { y: 0, duration: dur[i], ease: "power4.out" }, t);
+        t += gaps[i] || 0;
+      }
+
+      var phrases = document.querySelectorAll('[id="07-cta-tag"] [class~="07-cta-phrase"]');
+      for (var p = 0; p < phrases.length; p++) {
+        tl.fromTo(phrases[p], { opacity: 0, y: 22 },
+          { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" }, 1.4 + p * 0.07);
+      }
+
+      // ---- Scene 3 (1.9–3.2s): terminal pill pops in, stretches, types, prints ----
+      var term = $("term");
+      tl.fromTo(term,
+        { opacity: 0, scale: 0.6, transformOrigin: "50% 50%", clipPath: "inset(0px 285px 0px 285px round 18px)" },
+        { opacity: 1, scale: 1, transformOrigin: "50% 50%", clipPath: "inset(0px 285px 0px 285px round 18px)", duration: 0.2, ease: "power3.out" }, 1.9);
+      tl.fromTo(term,
+        { clipPath: "inset(0px 285px 0px 285px round 18px)" },
+        { clipPath: "inset(0px 0px 0px 0px round 18px)", duration: 0.4, ease: "expo.out", immediateRender: false }, 2.0);
+
+      tl.set($("prompt"), { opacity: 1 }, 2.12);
+      tl.set($("caret1"), { opacity: 1 }, 2.12);
+
+      var cmd = "kubectl apply -f you.yaml";
+      var cmdEl = $("cmd");
+      for (var c = 0; c < cmd.length; c++) {
+        var ch = document.createElement("span");
+        ch.textContent = cmd[c];
+        ch.style.display = "none";
+        cmdEl.appendChild(ch);
+        tl.set(ch, { display: "inline" }, 2.22 + c * 0.022);
+      }
+
+      // enter: caret leaves line 1, output prints green at 2.9s
+      tl.set($("caret1"), { opacity: 0 }, 2.85);
+      tl.set($("line2"), { opacity: 1 }, 2.9);
+
+      // ---- Scene 4 (3.2–4.0s): still end card, caret blinks once ----
+      tl.set($("caret2"), { opacity: 0 }, 3.35);
+      tl.set($("caret2"), { opacity: 1 }, 3.6);
+      tl.set({}, {}, 4);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["07-cta"] = tl;
+    })();
+  </script>
+</template>

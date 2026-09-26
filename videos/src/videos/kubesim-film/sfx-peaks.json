@@ -1,0 +1,78 @@
+{
+ "alarm-blip": {
+  "peak": 0.037,
+  "duration": 0.768
+ },
+ "chime": {
+  "peak": 0.038,
+  "duration": 0.72
+ },
+ "click": {
+  "peak": 0.071,
+  "duration": 0.24
+ },
+ "digital-glitch": {
+  "peak": 0.309,
+  "duration": 1.032
+ },
+ "glass-shatter": {
+  "peak": 0.111,
+  "duration": 1.656
+ },
+ "glitch-tick": {
+  "peak": 0.08,
+  "duration": 1.176
+ },
+ "impact-hit": {
+  "peak": 0.342,
+  "duration": 3.72
+ },
+ "key-press": {
+  "peak": 2.332,
+  "duration": 2.592
+ },
+ "keyboard-typing": {
+  "peak": 20.38,
+  "duration": 44.64
+ },
+ "laser-zap": {
+  "peak": 0.745,
+  "duration": 2.28
+ },
+ "pop": {
+  "peak": 0.127,
+  "duration": 0.312
+ },
+ "power-down": {
+  "peak": 1.41,
+  "duration": 3.264
+ },
+ "rumble": {
+  "peak": 6.213,
+  "duration": 7.992
+ },
+ "success-chime": {
+  "peak": 1.43,
+  "duration": 5.064
+ },
+ "typing": {
+  "peak": 20.38,
+  "duration": 44.64
+ },
+ "whoosh-drop": {
+  "peak": 0.424,
+  "duration": 2.808
+ },
+ "whoosh-rise": {
+  "peak": 2.539,
+  "duration": 4.08
+ },
+ "whoosh-soft": {
+  "peak": 0.508,
+  "duration": 1.584
+ },
+ "whoosh": {
+  "peak": 0.508,
+  "duration": 1.584
+ }
+}

@@ -1,0 +1,601 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Geist";
+      src: url("assets/fonts/geist-latin.woff2") format("woff2");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: block;
+    }
+    @font-face {
+      font-family: "Geist Mono";
+      src: url("assets/fonts/geist-mono-latin.woff2") format("woff2");
+      font-weight: 100 900;
+      font-style: normal;
+      font-display: block;
+    }
+    #root {
+      position: absolute;
+      inset: 0;
+      width: 1080px;
+      height: 1080px;
+      overflow: hidden;
+      font-family: "Geist", sans-serif;
+      color: #0f172a;
+    }
+    [class~="03-self-healing-bg"] {
+      position: absolute;
+      inset: 0;
+      background-color: #f7f8fa;
+      background-image: radial-gradient(#dce2ea 1.6px, transparent 1.8px);
+      background-size: 36px 36px;
+      background-position: 16px 16px;
+    }
+    [class~="03-self-healing-stage"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 1080px;
+      height: 1080px;
+      overflow: visible;
+    }
+    [class~="03-self-healing-caps"] {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    [class~="03-self-healing-cap"] {
+      position: absolute;
+      left: 72px;
+      margin: 0;
+      font-weight: 600;
+      line-height: 1;
+      letter-spacing: -0.03em;
+      white-space: nowrap;
+      color: #0f172a;
+    }
+    [class~="03-self-healing-cap-lg"] {
+      top: 70px;
+      font-size: 92px;
+    }
+    [class~="03-self-healing-cap-md"] {
+      top: 89px;
+      font-size: 72px;
+    }
+    [class~="03-self-healing-hidden"] {
+      opacity: 0;
+    }
+    [class~="03-self-healing-w"] {
+      display: inline-block;
+    }
+    [class~="03-self-healing-sub"] {
+      position: absolute;
+      left: 72px;
+      top: 180px;
+      margin: 0;
+      font-size: 32px;
+      font-weight: 500;
+      line-height: 1;
+      white-space: nowrap;
+      color: #7a8aa0;
+    }
+    [class~="03-self-healing-readout"] {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 958px;
+      margin: 0 auto;
+      width: max-content;
+      height: 68px;
+      padding: 0 34px 0 30px;
+      box-sizing: border-box;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: #ffffff;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 100px;
+      font-family: "Geist Mono", monospace;
+      font-size: 28px;
+      font-weight: 500;
+      color: #0f172a;
+      white-space: nowrap;
+    }
+    [class~="03-self-healing-dot"] {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #16a34a;
+      flex: none;
+    }
+    [class~="03-self-healing-numwrap"] {
+      position: relative;
+      display: inline-block;
+      min-width: 0.62em;
+    }
+    [class~="03-self-healing-num"] {
+      display: inline-block;
+    }
+    [class~="03-self-healing-ghostnum"] {
+      position: absolute;
+      left: 0;
+      top: 0;
+      opacity: 0;
+    }
+  </style>
+
+  <div data-hf-id="hf-tyb1" id="root" data-composition-id="03-self-healing" data-start="0" data-duration="9.5" data-width="1080" data-height="1080">
+    <div data-hf-id="hf-6gbe" id="03-self-healing-bg" class="clip 03-self-healing-bg" data-start="0" data-duration="9.5" data-track-index="0"></div>
+
+    <svg data-hf-id="hf-iq01" id="03-self-healing-stage" class="clip 03-self-healing-stage" data-start="0" data-duration="9.5" data-track-index="1" data-layout-allow-overflow="" viewBox="0 0 1080 1080" width="1080" height="1080" xmlns="http://www.w3.org/2000/svg" />
+
+    <div data-hf-id="hf-yuoo" id="03-self-healing-caps" class="clip 03-self-healing-caps" data-start="0" data-duration="9.5" data-track-index="2">
+      <h1 data-hf-id="hf-d8u3" id="03-self-healing-cap1" class="03-self-healing-cap 03-self-healing-cap-lg">
+        <span data-hf-id="hf-jmi4" id="03-self-healing-w1" class="03-self-healing-w">Want</span>
+        <span data-hf-id="hf-dn16" id="03-self-healing-w2" class="03-self-healing-w">3</span>
+        <span data-hf-id="hf-l9ho" id="03-self-healing-w3" class="03-self-healing-w">Pods</span><span data-hf-id="hf-x1dr" id="03-self-healing-w4" class="03-self-healing-w">.</span>
+      </h1>
+      <h1 data-hf-id="hf-esqu" id="03-self-healing-cap2" class="03-self-healing-cap 03-self-healing-cap-lg 03-self-healing-hidden">
+        Kill one.
+      </h1>
+      <h1 data-hf-id="hf-t8jc" id="03-self-healing-cap3" class="03-self-healing-cap 03-self-healing-cap-md 03-self-healing-hidden">
+        Kubernetes brings it back.
+      </h1>
+      <p data-hf-id="hf-irwx" id="03-self-healing-sub" class="03-self-healing-sub">
+        Want 3 Pods → kill one → it comes back
+      </p>
+    </div>
+
+    <div data-hf-id="hf-jwr7" id="03-self-healing-readout" class="clip 03-self-healing-readout" data-start="0" data-duration="9.5" data-track-index="3">
+      <span data-hf-id="hf-g3ot" id="03-self-healing-dot" class="03-self-healing-dot"></span>
+      <span data-hf-id="hf-q7sd">desired 3 · actual</span>
+      <span data-hf-id="hf-jy4n" class="03-self-healing-numwrap">
+        <span data-hf-id="hf-jtds" id="03-self-healing-num" class="03-self-healing-num">3</span><span data-hf-id="hf-0nub" id="03-self-healing-num2" class="03-self-healing-ghostnum" style="color: #dc2626">2</span><span data-hf-id="hf-3c10" id="03-self-healing-num-r" class="03-self-healing-ghostnum" style="color: #dc2626">2</span><span data-hf-id="hf-mtse" id="03-self-healing-num-c" class="03-self-healing-ghostnum" style="color: #06b6d4">2</span>
+      </span>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script src="assets/iso-kit.js"></script>
+  <script>
+    (function () {
+      var ID = "03-self-healing";
+      var K = window.IsoKit;
+      var C = K.COLORS;
+      var $ = function (k) {
+        return document.getElementById(ID + "-" + k);
+      };
+      var BLUE = { top: C.blue[0], left: C.blue[1], right: C.blue[2] };
+      var RED = { top: "#FECACA", left: "#F87171", right: C.red };
+
+      // ---------------------------------------------------------------
+      // Build the cluster (shared IsoKit geometry — never re-derived).
+      // stage > cam (punch-in wrapper) > shake (two-frame jolt) > cluster
+      // ---------------------------------------------------------------
+      var svg = $("stage");
+      var defs = K.el("defs", {}, svg);
+      var cam = K.el("g", { id: ID + "-cam" }, svg);
+      var shake = K.el("g", { id: ID + "-shake" }, cam);
+      var H = K.buildCluster(shake, { prefix: ID, pods: { w2: [1] } });
+
+      // Pods that drop in Scene 1.
+      var podA = K.addPod(H.pods.w1, "w1", 1, { id: ID + "-pod-w1-1" });
+      var podB = K.addPod(H.pods.w3, "w3", 0, { id: ID + "-pod-w3-0" });
+
+      function originOf(g) {
+        return g.dataset.bx + " " + g.dataset.by;
+      }
+
+      // Thin ground ripple ring under a slot (inserted behind the Pod).
+      function ripple(layer, n, k, before) {
+        var s = K.slot(n, k);
+        var r = K.isoRing(layer, s[0] + K.POD / 2, s[1] + K.POD / 2, K.NODE_H, 34, {
+          stroke: C.blue[1],
+          "stroke-width": 2.5,
+          "vector-effect": "non-scaling-stroke",
+          class: ID + "-ripple",
+        });
+        if (before) layer.insertBefore(r, before);
+        var b = K.podBase(n, k);
+        gsap.set(r, { opacity: 0, svgOrigin: b[0] + " " + b[1] });
+        return r;
+      }
+      var ripA = ripple(H.pods.w1, "w1", 1, podA);
+      var ripB = ripple(H.pods.w3, "w3", 0, podB);
+
+      // ReplicaSet ring floating upper-right (ground-plane ellipse, lifted in z).
+      var RS = { x: 89.5, y: -189.5, z: 233, r: 72 };
+      var rsC = K.P(RS.x, RS.y, RS.z);
+      var rsRy = RS.r * 0.7071 * K.S;
+      var rsEcho = K.isoRing(H.air, RS.x, RS.y, RS.z, RS.r, {
+        stroke: C.blue[1],
+        "stroke-width": 3,
+        "vector-effect": "non-scaling-stroke",
+      });
+      var rsRing = K.isoRing(H.air, RS.x, RS.y, RS.z, RS.r, {
+        stroke: C.blue[1],
+        "stroke-width": 6,
+      });
+
+      // Dashed ghost outline at worker-3 slot 2 (the replacement's target).
+      var ghost = K.ghostPod(H.air, "w3", 2, { id: ID + "-ghost" });
+
+      // Beam: dashed stroke revealed by a self-drawing mask stroke.
+      var gTop = K.podTop("w3", 2);
+      var beamStart = [rsC[0], rsC[1] + rsRy + 4];
+      var beamEnd = [gTop[0], gTop[1] - 10];
+      var beamD =
+        "M" + beamStart[0].toFixed(2) + "," + beamStart[1].toFixed(2) +
+        " L" + beamEnd[0].toFixed(2) + "," + beamEnd[1].toFixed(2);
+      var mask = K.el(
+        "mask",
+        { id: ID + "-beam-mask", maskUnits: "userSpaceOnUse", x: 0, y: 0, width: 1080, height: 1080 },
+        defs
+      );
+      var beamDraw = K.el(
+        "path",
+        { d: beamD, fill: "none", stroke: "#ffffff", "stroke-width": 16, "stroke-linecap": "round" },
+        mask
+      );
+      var beamG = K.el("g", { id: ID + "-beam" }, H.air);
+      var beam = K.el(
+        "path",
+        {
+          d: beamD,
+          fill: "none",
+          stroke: C.blue[1],
+          "stroke-width": 5,
+          "stroke-linecap": "round",
+          "stroke-dasharray": "10 8",
+          mask: "url(#" + ID + "-beam-mask)",
+        },
+        beamG
+      );
+      var beamLen = beamDraw.getTotalLength() * 1.05;
+      beamDraw.style.strokeDasharray = String(beamLen);
+      beamDraw.style.strokeDashoffset = String(beamLen);
+
+      // Replacement Pod (rides down the beam, lands amber, turns green).
+      var podN = K.addPod(H.air, "w3", 2, { id: ID + "-pod-w3-2", led: C.amber });
+      var ripN = ripple(H.air, "w3", 2, podN);
+      var podNLed = podN.querySelector(".led");
+      var SLIDE_SCALE = 0.45;
+      var slideDX = beamStart[0] - Number(podN.dataset.bx);
+      var slideDY = beamStart[1] + 6 + SLIDE_SCALE * K.POD * K.S - Number(podN.dataset.by);
+
+      // Mono label above the ring.
+      var rsLabel = K.el(
+        "text",
+        {
+          x: rsC[0].toFixed(2),
+          y: (rsC[1] - rsRy - 22).toFixed(2),
+          "text-anchor": "middle",
+          "font-family": "Geist Mono",
+          "font-size": 21,
+          "font-weight": 500,
+          fill: C.blue[2],
+        },
+        H.air
+      );
+      rsLabel.textContent = "ReplicaSet web · wants 3";
+
+      // Voxel fragments for the shatter (deterministic via IsoKit.hash).
+      var ex = [0.866 * K.S, 0.5 * K.S],
+        ey = [-0.866 * K.S, 0.5 * K.S],
+        ez = [0, -K.S];
+      function sp(x, y, z) {
+        return [x * ex[0] + y * ey[0] + z * ez[0], x * ex[1] + y * ey[1] + z * ez[1]];
+      }
+      function poly(list) {
+        return list
+          .map(function (p) {
+            var s = sp(p[0], p[1], p[2]);
+            return s[0].toFixed(2) + "," + s[1].toFixed(2);
+          })
+          .join(" ");
+      }
+      function miniCube(parent, a, pal) {
+        var h = a / 2;
+        var g = K.el("g", {}, parent);
+        K.el("polygon", { points: poly([[-h, h, -h], [h, h, -h], [h, h, h], [-h, h, h]]), fill: pal.left }, g);
+        K.el("polygon", { points: poly([[h, -h, -h], [h, h, -h], [h, h, h], [h, -h, h]]), fill: pal.right }, g);
+        K.el("polygon", { points: poly([[-h, -h, h], [h, -h, h], [h, h, h], [-h, h, h]]), fill: pal.top }, g);
+        return g;
+      }
+      var sB = K.slot("w3", 0);
+      var shatterC = K.P(sB[0] + K.POD / 2, sB[1] + K.POD / 2, K.NODE_H + K.POD / 2);
+      var FRAG_N = 14,
+        G = 1500,
+        FLIGHT = 1.1,
+        FADE_FRAC = 0.35;
+      var fragLayer = K.el("g", { id: ID + "-frags" }, H.air);
+      var frags = [];
+      for (var i = 0; i < FRAG_N; i++) {
+        var a = 10 + K.hash(i * 3 + 1) * 12;
+        var fg = miniCube(fragLayer, a, i % 3 === 0 ? RED : BLUE);
+        var ang = -Math.PI / 2 + (K.hash(i * 5 + 2) * 2 - 1) * 0.95;
+        var spd = 380 + K.hash(i * 7 + 3) * 340;
+        frags.push({
+          el: fg,
+          ox: shatterC[0] + (K.hash(i * 13 + 5) - 0.5) * 80,
+          oy: shatterC[1] + (K.hash(i * 17 + 6) - 0.5) * 90,
+          vx: Math.cos(ang) * spd * 0.6,
+          vy: Math.sin(ang) * spd,
+          spin: (K.hash(i * 11 + 4) * 2 - 1) * 540,
+        });
+        gsap.set(fg, { opacity: 0, x: 0, y: 0, transformOrigin: "50% 50%" });
+      }
+
+      // Red target bracket around the worker-3 Pod.
+      var bTop = K.P(sB[0], sB[1], K.NODE_H + K.POD)[1];
+      var bBot = K.P(sB[0] + K.POD, sB[1] + K.POD, K.NODE_H)[1];
+      var bHalfW = K.POD * 0.866 * K.S;
+      var PAD = 14,
+        L = 22;
+      var bx0 = shatterC[0] - bHalfW - PAD,
+        bx1 = shatterC[0] + bHalfW + PAD,
+        by0 = bTop - PAD,
+        by1 = bBot + PAD;
+      var bracket = K.el("g", { id: ID + "-bracket" }, H.air);
+      [
+        [bx0, by0 + L, bx0, by0, bx0 + L, by0],
+        [bx1 - L, by0, bx1, by0, bx1, by0 + L],
+        [bx1, by1 - L, bx1, by1, bx1 - L, by1],
+        [bx0 + L, by1, bx0, by1, bx0, by1 - L],
+      ].forEach(function (c) {
+        K.el(
+          "path",
+          {
+            d: "M" + c[0] + "," + c[1] + " L" + c[2] + "," + c[3] + " L" + c[4] + "," + c[5],
+            fill: "none",
+            stroke: C.red,
+            "stroke-width": 4,
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+          },
+          bracket
+        );
+      });
+
+      // ---------------------------------------------------------------
+      // Initial states (setup-time, deterministic)
+      // ---------------------------------------------------------------
+      gsap.set(cam, { svgOrigin: "0 0", x: 0, y: 0, scale: 1 });
+      gsap.set(shake, { x: 0, y: 0 });
+      gsap.set([podA, podB], { opacity: 0 });
+      gsap.set(podA, { svgOrigin: originOf(podA) });
+      gsap.set(podB, { svgOrigin: originOf(podB) });
+      gsap.set(podN, { svgOrigin: originOf(podN), opacity: 0 });
+      gsap.set([rsRing, rsEcho, rsLabel, ghost, beamG], { opacity: 0 });
+      gsap.set([rsRing, rsEcho], { svgOrigin: rsC[0] + " " + rsC[1] });
+      gsap.set(bracket, { opacity: 0, svgOrigin: shatterC[0] + " " + shatterC[1] });
+      ["w1", "w2", "w3", "w4"].forEach(function (k) {
+        gsap.set($(k), { opacity: 0 });
+      });
+      gsap.set($("sub"), { opacity: 0 });
+      gsap.set($("readout"), { opacity: 0 });
+
+      var tl = gsap.timeline({ paused: true });
+      // fromTo without immediateRender: before its start every element keeps its setup state.
+      function ft(target, from, to, pos) {
+        to.immediateRender = false;
+        return tl.fromTo(target, from, to, pos);
+      }
+
+      // Discrete text states (discrete-text-sequence): whole-state swaps at thresholds,
+      // authored as instant sets so any seek (events suppressed or not) lands exact.
+      var cap1 = $("cap1"),
+        cap2 = $("cap2"),
+        cap3 = $("cap3");
+      var num = $("num"),
+        num2 = $("num2"),
+        numR = $("num-r"),
+        numC = $("num-c"),
+        dot = $("dot");
+      var CAPS = [
+        { t: 2.0, show: cap2, hide: cap1 },
+        { t: 6.4, show: cap3, hide: cap2 },
+      ];
+      tl.set(cap1, { opacity: 1 }, 0);
+      tl.set([cap2, cap3], { opacity: 0 }, 0);
+      CAPS.forEach(function (c) {
+        tl.set(c.hide, { opacity: 0 }, c.t);
+        tl.set(c.show, { opacity: 1 }, c.t);
+      });
+      var READ = [
+        { t: 2.95, n3: 0, n2: 1, d: C.red },
+        { t: 5.55, n3: 0, n2: 1, d: C.amber },
+        { t: 5.95, n3: 1, n2: 0, d: C.green },
+      ];
+      READ.forEach(function (r) {
+        tl.set(num, { opacity: r.n3 }, r.t);
+        tl.set(num2, { opacity: r.n2 }, r.t);
+        tl.set(dot, { backgroundColor: r.d }, r.t);
+      });
+
+      // ---------------- Scene 1 (0.0–2.0): Want 3 Pods ----------------
+      // Caption waterfall-entry (binary opacity, whip from below).
+      var F = 1 / 60;
+      var t0 = 0.15;
+      tl.set($("w1"), { opacity: 1, y: 80 }, t0);
+      tl.to($("w1"), { y: 0, duration: 0.18, ease: "power4.out" }, t0);
+      var t1 = t0 + 0.18 + 2 * F;
+      tl.set($("w2"), { opacity: 1, y: 50 }, t1);
+      tl.to($("w2"), { y: 0, duration: 0.14, ease: "power4.out" }, t1);
+      var t2 = t1 + 0.14 - F;
+      tl.set($("w3"), { opacity: 1, y: 70 }, t2);
+      tl.to($("w3"), { y: 0, duration: 0.16, ease: "power4.out" }, t2);
+      var t3 = t2 + 0.14 - 2 * F;
+      tl.set($("w4"), { opacity: 1, y: 44 }, t3);
+      tl.to($("w4"), { y: 0, duration: 0.12, ease: "power4.out" }, t3);
+      var t4 = t3 + 0.12 + 2 * F;
+      tl.set($("sub"), { opacity: 1, y: 40 }, t4);
+      tl.to($("sub"), { y: 0, duration: 0.2, ease: "power4.out" }, t4);
+
+      // Pod drop: stretch while falling, squash on impact, one smooth recover, ripple.
+      function drop(pod, rip, t, fromY) {
+        tl.set(pod, { opacity: 1 }, t);
+        ft(
+          pod,
+          { y: fromY, scaleX: 0.9, scaleY: 1.16 },
+          { y: 0, scaleX: 0.9, scaleY: 1.16, duration: 0.4, ease: "power2.in" },
+          t
+        );
+        ft(
+          pod,
+          { scaleX: 0.9, scaleY: 1.16 },
+          { scaleX: 1.16, scaleY: 0.78, duration: 0.07, ease: "power2.out" },
+          t + 0.4
+        );
+        ft(
+          pod,
+          { scaleX: 1.16, scaleY: 0.78 },
+          { scaleX: 1, scaleY: 1, duration: 0.42, ease: "power3.out" },
+          t + 0.47
+        );
+        ft(
+          rip,
+          { opacity: 0.9, scale: 0.5 },
+          { opacity: 0, scale: 1.7, duration: 0.6, ease: "power2.out" },
+          t + 0.4
+        );
+      }
+      drop(podA, ripA, 0.5, -300);
+      drop(podB, ripB, 0.8, -320);
+
+      // Readout pill arrives once all three Pods are down.
+      ft(
+        $("readout"),
+        { opacity: 0, y: 28 },
+        { opacity: 1, y: 0, duration: 0.4, ease: "power3.out" },
+        1.3
+      );
+
+      // ---------------- Scene 2 (2.0–3.9): Kill one ----------------
+      // Camera punch-in toward worker-3 (scale + counter-translate).
+      ft(
+        cam,
+        { x: 0, y: 0, scale: 1 },
+        { x: -176, y: -116, scale: 1.15, duration: 0.6, ease: "power4.out" },
+        2.0
+      );
+      // Target bracket snaps on.
+      tl.set(bracket, { opacity: 1 }, 2.35);
+      ft(bracket, { scale: 1.4 }, { scale: 1, duration: 0.18, ease: "expo.out" }, 2.35);
+
+      // Pod flashes status-error (on / off / on), LED red.
+      var pB = podB.querySelectorAll("polygon"); // left, right, top
+      var ledB = podB.querySelector(".led");
+      function faces(pal, t, d) {
+        tl.to(pB[0], { attr: { fill: pal.left }, duration: d, ease: "none" }, t);
+        tl.to(pB[1], { attr: { fill: pal.right }, duration: d, ease: "none" }, t);
+        tl.to(pB[2], { attr: { fill: pal.top }, duration: d, ease: "none" }, t);
+      }
+      faces(RED, 2.6, 0.05);
+      tl.to(ledB, { attr: { fill: C.red }, duration: 0.05, ease: "none" }, 2.6);
+      faces(BLUE, 2.7, 0.05);
+      faces(RED, 2.8, 0.05);
+
+      // Shatter: Pod gone, 14 voxel fragments on ballistic arcs, two-frame shake.
+      var SH = 2.95;
+      tl.set(podB, { opacity: 0 }, SH);
+      // particle-burst: each fragment's position is a pure ballistic function of time.
+      // x is linear (vx·t); y = vy·t + ½·G·t² is expressed as a custom ease over the
+      // total displacement, so GSAP tweens reproduce the exact arc on any seek.
+      frags.forEach(function (p) {
+        var D = p.vy * FLIGHT + 0.5 * G * FLIGHT * FLIGHT;
+        var arc = function (u) {
+          var t = u * FLIGHT;
+          return (p.vy * t + 0.5 * G * t * t) / D;
+        };
+        tl.set(p.el, { opacity: 1 }, SH);
+        ft(
+          p.el,
+          { x: p.ox, rotation: 0 },
+          { x: p.ox + p.vx * FLIGHT, rotation: p.spin * FLIGHT, duration: FLIGHT, ease: "none" },
+          SH
+        );
+        ft(p.el, { y: p.oy }, { y: p.oy + D, duration: FLIGHT, ease: arc }, SH);
+        ft(
+          p.el,
+          { opacity: 1 },
+          { opacity: 0, duration: FLIGHT * FADE_FRAC, ease: "none" },
+          SH + FLIGHT * (1 - FADE_FRAC)
+        );
+      });
+      tl.set(shake, { x: 7, y: -5 }, SH);
+      tl.set(shake, { x: -6, y: 4 }, SH + 2 * F);
+      tl.set(shake, { x: 0, y: 0 }, SH + 4 * F);
+      tl.to(bracket, { opacity: 0, duration: 0.25, ease: "power1.out" }, 3.25);
+
+      // Readout "actual" 3 → 2: red/cyan two-copy offset flicker, then snaps sharp.
+      var gl = [
+        [SH, 1, -5, 5, 2],
+        [SH + 0.05, 1, 4, -4, -1],
+        [SH + 0.1, 1, -3, 3, 1],
+        [SH + 0.15, 1, 2, -2, 0],
+        [SH + 0.2, 0, 0, 0, 0],
+      ];
+      gl.forEach(function (g) {
+        tl.set(numR, { opacity: g[1] * 0.8, x: g[2] }, g[0]);
+        tl.set(numC, { opacity: g[1] * 0.7, x: g[3] }, g[0]);
+        tl.set(num2, { x: g[4] }, g[0]);
+      });
+
+      // ---------------- Scene 3 (3.9–6.4): the heal ----------------
+      // Camera eases back to exactly identity by 4.5.
+      tl.to(cam, { x: 0, y: 0, scale: 1, duration: 0.6, ease: "power2.inOut" }, 3.9);
+
+      // ReplicaSet ring appears, label whips in, ring pulses once.
+      ft(rsRing, { opacity: 0, scale: 0.6 }, { opacity: 1, scale: 1, duration: 0.4, ease: "expo.out" }, 4.3);
+      tl.set(rsLabel, { opacity: 1, y: 18 }, 4.42);
+      tl.to(rsLabel, { y: 0, duration: 0.2, ease: "power4.out" }, 4.42);
+      ft(rsEcho, { opacity: 0.8, scale: 1 }, { opacity: 0, scale: 1.4, duration: 0.6, ease: "power2.out" }, 4.6);
+
+      // Dashed ghost outline at worker-3 slot 2.
+      ft(ghost, { opacity: 0 }, { opacity: 1, duration: 0.25, ease: "power1.out" }, 4.5);
+
+      // Beam self-draws from the ring down to the ghost.
+      tl.set(beamG, { opacity: 1 }, 4.68);
+      ft(
+        beamDraw,
+        { strokeDashoffset: beamLen },
+        { strokeDashoffset: 0, duration: 0.45, ease: "power2.out" },
+        4.68
+      );
+
+      // New Pod slides down the beam and lands: squash + ripple, LED amber → green.
+      var LAND = 5.55;
+      tl.set(podN, { opacity: 1 }, 5.15);
+      ft(
+        podN,
+        { x: slideDX, y: slideDY, scaleX: SLIDE_SCALE, scaleY: SLIDE_SCALE },
+        { x: 0, y: 0, scaleX: 1, scaleY: 1, duration: LAND - 5.15, ease: "power2.in" },
+        5.15
+      );
+      ft(
+        podN,
+        { scaleX: 1, scaleY: 1 },
+        { scaleX: 1.16, scaleY: 0.78, duration: 0.07, ease: "power2.out" },
+        LAND
+      );
+      ft(
+        podN,
+        { scaleX: 1.16, scaleY: 0.78 },
+        { scaleX: 1, scaleY: 1, duration: 0.42, ease: "power3.out" },
+        LAND + 0.07
+      );
+      ft(ripN, { opacity: 0.9, scale: 0.5 }, { opacity: 0, scale: 1.7, duration: 0.6, ease: "power2.out" }, LAND);
+      tl.to(ghost, { opacity: 0, duration: 0.12, ease: "power1.out" }, LAND);
+      ft(podNLed, { attr: { fill: C.amber } }, { attr: { fill: C.green }, duration: 0.15, ease: "none" }, 5.95);
+      ft(num, { y: 10 }, { y: 0, duration: 0.2, ease: "power4.out" }, 5.95);
+      ft(dot, { scale: 1.6 }, { scale: 1, duration: 0.3, ease: "power3.out" }, 5.95);
+
+      // ---------------- Scene 4 (6.4–9.0): held read ----------------
+      tl.to([rsRing, rsLabel, beamG], { opacity: 0, duration: 0.4, ease: "power1.out" }, 6.5);
+
+      window.__timelines = window.__timelines || {};
+      window.__timelines["03-self-healing"] = tl;
+    })();
+  </script>
+</template>

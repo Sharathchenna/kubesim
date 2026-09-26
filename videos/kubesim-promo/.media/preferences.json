@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "preferences": {
+    "aspect": {
+      "value": "1080x1080",
+      "confirmed_in": [
+        "kubesim-promo"
+      ],
+      "updated_at": "2026-09-26T13:55:37.268Z"
+    },
+    "style_preset.product-launch-video": {
+      "value": "blue-professional",
+      "confirmed_in": [
+        "kubesim-promo"
+      ],
+      "updated_at": "2026-09-26T13:56:34.824Z"
+    }
+  },
+  "sightings": {}
+}

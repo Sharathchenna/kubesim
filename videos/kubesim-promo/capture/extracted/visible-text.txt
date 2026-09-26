@@ -1,0 +1,66 @@
+[a] Skip to terminal
+[span] kubesim
+[a] Explainers
+[a] Concepts
+[button] 30×
+[button] 60×
+[div] 00:38
+[span] System pods
+[button] Reset
+[text] NODES
+[text] Scheduler
+[text] nothing pending
+[text] control-plane
+[text] control plane · 172.18.0.…
+[text] Ready
+[text] kube-apiserver
+[text] system component
+[text] etcd
+[text] system component
+[text] scheduler
+[text] system component
+[text] controller-mgr
+[text] system component
+[text] worker-1
+[text] worker · 172.18.0.3 · 0 p…
+[text] Ready
+[text] worker-2
+[text] worker · 172.18.0.4 · 0 p…
+[text] Ready
+[button] 111
+[div] Drag to pan · scroll to zoom · double-click to zoom in
+[div] Nodes
+[div] 3/3
+[div] Pods ready
+[div] 0/0
+[div] Services
+[button] Terminal
+[button] YAML editor
+[button] Resources
+[button] Events
+[button] History
+[div] Type a command and press Enter. Try
+[span] kubectl get pods
+[span] help
+[div] . Tab completes, ↑ recalls history.
+[button] Scenarios
+[button] Build
+[button] Inspect
+[h3] Guided scenarios
+[p] Each scenario runs real Kubernetes behaviour on the simulated cluster. Watch the canvas and the command log.
+[span] Deploy & load-balance
+[span] Create a 3-replica Deployment, expose it, and send traffic through the Service.
+[span] Self-healing
+[span] Delete a Pod and watch the ReplicaSet replace it within a second.
+[span] Rolling update
+[span] Change the image. New Pods (new colour) come up one at a time before old ones leave.
+[span] Broken rollout → undo
+[span] Roll out a typo'd image. It stalls in ImagePullBackOff while old Pods keep serving. Then undo.
+[span] CrashLoopBackOff
+[span] A Pod whose process exits with code 1. Watch restarts back off: 10s, 20s, 40s…
+[span] Node failure
+[span] Power off a worker. NotReady after ~50s, eviction after 5 more minutes. Runs at 30×.
+[span] Drain for maintenance
+[span] Cordon and drain a worker: its Pods move elsewhere, gracefully, with no downtime.
+[button] Scenarios
+[button] Terminal
