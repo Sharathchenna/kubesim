@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Video workspaces (Remotion, HyperFrames) have their own toolchains.
+    "videos/**",
   ]),
 ]);
 

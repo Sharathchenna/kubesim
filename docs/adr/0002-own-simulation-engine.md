@@ -1,0 +1,3 @@
+# Write our own simulation engine rather than adopting Webernetes
+
+Webernetes (`@ngrok/webernetes`, Apache-2.0) already simulates much of our v1 scope in the browser, and we considered depending on it or forking it. We are writing our own small, deterministic engine instead. The features that matter most for teaching are the ones Webernetes lacks: Node failure and eviction, adding and removing Nodes while running, a scheduler that makes visible decisions, a seeded clock we can step, and teaching hooks for the Cluster View. It is also pre-1.0, has essentially one maintainer, and has an open memory leak that would hurt long Sandbox sessions. Our v1 object set is small enough to own. Webernetes stays a behaviour reference.

@@ -1,0 +1,7 @@
+.claude
+.scratch
+.next
+out
+node_modules
+scripts
+*.tsbuildinfo

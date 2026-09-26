@@ -1,0 +1,3 @@
+# Simulate the cluster in the browser, with no backend
+
+The site models Kubernetes in browser-side code rather than provisioning real clusters (k3s/kind in sandboxed containers, as Killercoda does). It is a free, open-source public product with no paid tier, so per-Learner servers, abuse handling and cold starts are unaffordable; a static site costs nothing to host and is instant and safe. We accept that fidelity is only as good as what we model, and gain the ability to *show* internals (scheduling, reconciliation) that a real cluster hides. Learner progress lives in the browser; there are no accounts.
