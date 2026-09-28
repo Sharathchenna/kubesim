@@ -3,6 +3,76 @@
 @theme inline {
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+}
+
+/* ---------- marketing surfaces (home and index pages) ---------- */
+
+/* The Cluster View's dot grid, fading out at the edges, over soft light. */
+.bg-field {
+  position: relative;
+  isolation: isolate;
+  background:
+    radial-gradient(60rem 36rem at 78% -6%, rgb(59 130 246 / 0.10), transparent 70%),
+    radial-gradient(44rem 30rem at 6% 18%, rgb(139 92 246 / 0.07), transparent 70%),
+    radial-gradient(50rem 30rem at 50% 108%, rgb(20 184 166 / 0.06), transparent 70%),
+    #f7f8fa;
+}
+.bg-field::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: radial-gradient(#d3dae4 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, #000 30%, transparent 85%);
+}
+/* Fine grain so large flat areas don't look like a template. */
+.bg-field::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.06  0 0 0 0 0.09  0 0 0 0 0.16  0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+.font-display {
+  font-family: var(--font-display), ui-serif, Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.005em;
+}
+.text-balance { text-wrap: balance; }
+.text-pretty { text-wrap: pretty; }
+
+/* Hero cluster: a 12s self-healing loop. */
+@keyframes hc-pop { 0% { opacity: 0; transform: translateY(-18px) scale(.6); } 60% { opacity: 1; transform: translateY(1px) scale(1.03); } 100% { opacity: 1; transform: none; } }
+@keyframes hc-crash { 0%, 30% { opacity: 1; } 34% { opacity: 1; filter: saturate(1.4); } 40%, 46% { opacity: 1; } 52%, 100% { opacity: 0; } }
+@keyframes hc-red { 0%, 30% { opacity: 0; } 33%, 50% { opacity: 1; } 56%, 100% { opacity: 0; } }
+@keyframes hc-ghost { 0%, 50% { opacity: 0; } 54%, 60% { opacity: 1; } 66%, 100% { opacity: 0; } }
+@keyframes hc-reborn { 0%, 60% { opacity: 0; transform: translateY(-22px) scale(.6); } 66% { opacity: 1; transform: translateY(1px) scale(1.03); } 70%, 94% { opacity: 1; transform: none; } 100% { opacity: 1; } }
+@keyframes hc-chip { 0%, 32% { opacity: 0; transform: translateY(6px); } 36%, 54% { opacity: 1; transform: none; } 58%, 100% { opacity: 0; transform: translateY(-4px); } }
+@keyframes hc-chip2 { 0%, 58% { opacity: 0; transform: translateY(6px); } 63%, 88% { opacity: 1; transform: none; } 94%, 100% { opacity: 0; transform: translateY(-4px); } }
+@keyframes hc-packet { 0% { offset-distance: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
+@keyframes hc-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+@keyframes hc-blink { 50% { opacity: .2; } }
+.hc-pop { transform-box: fill-box; transform-origin: 50% 100%; animation: hc-pop .8s cubic-bezier(0.22, 1, 0.36, 1) both; }
+.hc-crash { animation: hc-crash 12s linear infinite; }
+.hc-red { animation: hc-red 12s linear infinite; }
+.hc-ghost { animation: hc-ghost 12s linear infinite; }
+.hc-reborn { transform-box: fill-box; transform-origin: 50% 100%; animation: hc-reborn 12s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.hc-chip { animation: hc-chip 12s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.hc-chip2 { animation: hc-chip2 12s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
+.hc-packet { animation: hc-packet 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
+.hc-float { animation: hc-float 7s ease-in-out infinite; }
+.hc-blink { animation: hc-blink 1.2s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .hc-pop, .hc-reborn, .hc-float, .hc-packet, .hc-blink { animation: none; }
+  .hc-crash, .hc-red, .hc-ghost, .hc-chip, .hc-chip2 { animation: none; }
+  .hc-red, .hc-ghost, .hc-chip, .hc-chip2 { opacity: 0; }
+  .hc-packet { display: none; }
 }
 
 html,
@@ -88,6 +158,7 @@ body {
 .cv-blink { animation: cv-pulse 0.8s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .cv-fade, .cv-edge, .cv-pod, .cv-pulse, .cv-blink { animation: none; transition: none; }
+  .cv-packet { display: none; }
 }
 
 /* Concept Illustrations */

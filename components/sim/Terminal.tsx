@@ -74,7 +74,7 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
 
   return (
     <div className="flex h-full flex-col font-mono text-[12px] leading-relaxed" onClick={() => window.getSelection()?.isCollapsed && input.current?.focus()}>
-      <div ref={scroll} className="min-h-0 flex-1 overflow-auto px-4 py-2">
+      <div ref={scroll} className="min-h-0 flex-1 overflow-auto px-4 py-2" role="log" aria-label="Terminal output" aria-live="polite" aria-relevant="additions">
         {sim.term.length === 0 && (
           <div className="text-slate-400">
             Type a command and press Enter. Try <span className="text-slate-700">kubectl get pods</span> or <span className="text-slate-700">help</span>. Tab completes, ↑ recalls history.

@@ -29,7 +29,7 @@ describe("bootstrap", () => {
       expect(n.spec?.taints?.some((t) => t.key === "node.kubernetes.io/not-ready")).toBe(false);
     }
     const sys = c.list<Pod>("Pod", "kube-system");
-    expect(sys.length).toBe(4 + 3 + 2);
+    expect(sys.length).toBe(4 + 3 + 2 + 1);
     for (const p of sys) expect(p.status?.phase).toBe("Running");
   });
 

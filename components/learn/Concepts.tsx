@@ -14,12 +14,16 @@ const WHERE: Record<string, { href: string; label: string }> = {
 export function ConceptIndex() {
   return (
     <div className="min-h-screen bg-[#f7f8fa]">
-      <AppHeader />
-      <main className="mx-auto max-w-4xl px-6 pb-24 pt-14">
-        <div className="text-[12px] font-semibold uppercase tracking-[0.1em] text-slate-400">Concepts</div>
-        <h1 className="mt-2 text-[34px] font-semibold tracking-tight text-slate-900">The ideas behind the cluster</h1>
-        <p className="mt-3 max-w-2xl text-[15.5px] leading-relaxed text-slate-500">Illustrated walk-throughs of how Kubernetes is put together. Step through each one, then try it for real in the lesson it belongs to.</p>
-        <div className="mt-10 flex flex-col gap-10">
+      <div className="bg-field">
+        <AppHeader glass />
+        <header className="mx-auto max-w-4xl px-6 pb-12 pt-16">
+          <div className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-slate-500">Concepts</div>
+          <h1 className="font-display text-balance mt-3 text-[46px] leading-[1.02] text-slate-900 sm:text-[56px]">The ideas behind the cluster</h1>
+          <p className="text-pretty mt-4 max-w-2xl text-[16px] leading-relaxed text-slate-600">Illustrated walk-throughs of how Kubernetes is put together. Step through each one, then try it for real in the lesson it belongs to.</p>
+        </header>
+      </div>
+      <main className="mx-auto max-w-4xl px-6 pb-24 pt-4">
+        <div className="flex flex-col gap-10">
           {Object.values(SCENES).map((s) => (
             <section key={s.id}>
               <Illustration scene={s} />

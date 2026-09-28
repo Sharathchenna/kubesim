@@ -30,7 +30,7 @@ export interface Inset {
 }
 
 /** Fitting never zooms out past this, so text stays readable; the Learner pans instead. */
-const MIN_FIT = 0.65;
+const MIN_FIT = 0.55;
 
 export function PanZoom({ bounds, fitKey, children, onBackgroundClick, inset, onZoom }: { bounds: Bounds; fitKey: string; children: React.ReactNode; onBackgroundClick?: () => void; inset?: Inset; onZoom?: (k: number) => void }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -125,7 +125,22 @@ export function PanZoom({ bounds, fitKey, children, onBackgroundClick, inset, on
     <div
       ref={wrap}
       data-drop="canvas"
-      className={`canvas-dots relative h-full w-full touch-none overflow-hidden ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
+      className={`canvas-dots relative h-full w-full touch-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
+      tabIndex={0}
+      role="region"
+      aria-label="Cluster View. Arrow keys pan, plus and minus zoom, 0 fits everything; Tab moves between objects."
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget) return;
+        const step = 60;
+        const pan = { ArrowLeft: [step, 0], ArrowRight: [-step, 0], ArrowUp: [0, step], ArrowDown: [0, -step] }[e.key];
+        if (pan) {
+          e.preventDefault();
+          setAnimating(true);
+          setView((cur) => (cur ? { ...cur, x: cur.x + pan[0], y: cur.y + pan[1] } : cur));
+        } else if (e.key === "+" || e.key === "=") zoomCenter(1.25);
+        else if (e.key === "-") zoomCenter(1 / 1.25);
+        else if (e.key === "0") fit();
+      }}
       style={{ backgroundPosition: `${v.x}px ${v.y}px`, backgroundSize: `${22 * v.k}px ${22 * v.k}px` }}
       onPointerDown={(e) => {
         if (e.button !== 0) return;
@@ -164,7 +179,7 @@ export function PanZoom({ bounds, fitKey, children, onBackgroundClick, inset, on
         zoomAt(e.clientX - r.left, e.clientY - r.top, 1.6);
       }}
     >
-      <svg className="absolute inset-0 h-full w-full select-none" style={{ opacity: view ? 1 : 0 }}>
+      <svg className="absolute inset-0 h-full w-full select-none" style={{ opacity: view ? 1 : 0 }} role="group" aria-label="Cluster diagram">
         <g transform={`translate(${v.x} ${v.y}) scale(${v.k})`} style={{ transition: animating ? "transform 0.5s cubic-bezier(0.22,1,0.36,1)" : undefined }}>
           {children}
         </g>

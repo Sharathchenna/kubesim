@@ -49,8 +49,14 @@ export function runGarbageCollector(cluster: Cluster): void {
     if (left === 0) cluster.remove(ns);
   }
 
-  // Event TTL.
+  // Event TTL, and controller timers for objects that are gone.
   if (cluster.now % 10_000 === 0) {
     for (const e of cluster.list<KubeEvent>("Event")) if (cluster.now - e.lastTimestamp > EVENT_TTL_MS) cluster.remove(e);
+    const live = new Set(Object.values(cluster.state.objects).map((o) => o.metadata.uid));
+    for (const k of Object.keys(cluster.state.timers)) {
+      const uid = k.slice(k.indexOf("/") + 1);
+      if (!live.has(uid)) delete cluster.state.timers[k];
+    }
+    for (const uid of Object.keys(cluster.state.hpa)) if (!live.has(uid)) delete cluster.state.hpa[uid];
   }
 }

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { LESSONS, lessonBySlug, solutionCommands } from "@/lib/lessons/lessons";
+import { lessonBySlug, solutionCommands } from "@/lib/lessons/lessons";
+import { CURRICULUM, curriculumIndex } from "@/lib/lessons/curriculum";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { AppHeader } from "../AppHeader";
 import { Btn } from "../ui";
@@ -48,8 +49,8 @@ export function LessonPlayer({ slug }: { slug: string }) {
   const c = sim.cluster;
   const current = lesson.steps.findIndex((_, i) => !passed.includes(i));
   const done = current === -1;
-  const idx = LESSONS.findIndex((l) => l.slug === slug);
-  const next = LESSONS[idx + 1];
+  const idx = curriculumIndex(slug);
+  const next = CURRICULUM[idx + 1];
   const stepRef = useRef<HTMLLIElement>(null);
 
   // Re-evaluate the current step's Check every frame.
@@ -117,7 +118,7 @@ export function LessonPlayer({ slug }: { slug: string }) {
             <Link href="/learn" className="text-[12px] font-medium text-slate-400 hover:text-slate-700">
               ← All lessons
             </Link>
-            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Lesson {idx + 1} of {LESSONS.length}</div>
+            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Lesson {idx + 1} of {CURRICULUM.length}</div>
             {restoring && passed.length > 0 && (
               <p className="mt-2 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[12px] text-blue-800">
                 Welcome back. We rebuilt your cluster from the {passed.length} step{passed.length > 1 ? "s" : ""} you finished.

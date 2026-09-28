@@ -3,3 +3,13 @@ out/
 # Licensed / downloaded audio stays out of git (see public/audio/*/music/README.md)
 public/audio/**/*.mp3
 public/audio/**/*.wav
+
+# Tool caches and render outputs: regenerate them, don't commit them
+kubesim-promo/.thumbnails/
+kubesim-promo/.waveform-cache/
+kubesim-promo/.hyperframes/preview/
+kubesim-promo/renders/
+kubesim-promo/snapshots/
+# Uncut source / alternate music: only the edited track.mp3 is used
+kubesim-promo/assets/bgm/source-*.mp3
+kubesim-promo/assets/bgm/track-*.mp3

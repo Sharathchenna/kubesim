@@ -1,4 +1,4 @@
-// The v1 Concept Illustrations. To add one: write a Scene here, add it to
+// The Concept Illustrations. To add one: write a Scene here, add it to
 // SCENES, and embed it in a Lesson with a fenced block: ```illustration <id>```.
 
 import type { Scene } from "./Illustration";
@@ -119,4 +119,196 @@ const service: Scene = {
   ],
 };
 
-export const SCENES: Record<string, Scene> = { architecture, apply, service };
+const probes: Scene = {
+  id: "probes",
+  title: "How the kubelet checks a container",
+  width: 720,
+  height: 360,
+  boxes: [
+    { id: "kubelet", x: 16, y: 150, w: 130, h: 56, label: "kubelet", sub: "on the Pod's Node", tone: "blue" },
+    { id: "pod", x: 196, y: 16, w: 260, h: 328, label: "Pod web-1", group: true },
+    { id: "startup", x: 220, y: 56, w: 212, h: 56, label: "startupProbe", sub: "has it finished starting?", tone: "slate" },
+    { id: "live", x: 220, y: 150, w: 212, h: 56, label: "livenessProbe", sub: "is it stuck?", tone: "slate" },
+    { id: "ready", x: 220, y: 244, w: 212, h: 56, label: "readinessProbe", sub: "can it take traffic?", tone: "slate" },
+    { id: "restart", x: 520, y: 150, w: 184, h: 56, label: "Restart container", sub: "RESTARTS + 1", tone: "red" },
+    { id: "ep", x: 520, y: 244, w: 184, h: 56, label: "Service endpoints", sub: "Ready Pods only", tone: "blue" },
+  ],
+  edges: [
+    { id: "k-start", from: "kubelet", to: "startup", label: "every period" },
+    { id: "k-live", from: "kubelet", to: "live" },
+    { id: "k-ready", from: "kubelet", to: "ready" },
+    { id: "live-restart", from: "live", to: "restart", label: "3 failures" },
+    { id: "ready-ep", from: "ready", to: "ep", label: "in or out" },
+  ],
+  steps: [
+    { title: "The kubelet asks", text: "The kubelet on the Pod's Node runs each probe on a timer (periodSeconds). A probe is an HTTP GET (2xx or 3xx passes), a TCP connection, or a command run inside the container (exit code 0 passes).", on: ["kubelet", "pod", "startup", "live", "ready", "k-start", "k-live", "k-ready"], flow: ["k-start", "k-live", "k-ready"] },
+    { title: "Startup comes first", text: "If there is a startup probe, the other two wait until it has passed once. Give a slow app a generous startup probe instead of a long liveness delay.", on: ["kubelet", "startup", "k-start"], flow: ["k-start"] },
+    { title: "Readiness: in or out of the Service", text: "When readiness fails failureThreshold times in a row (3 by default), the Pod is marked not Ready and removed from Service endpoints. Nothing restarts. When it passes again, the Pod is added back.", on: ["kubelet", "ready", "ep", "k-ready", "ready-ep"], flow: ["k-ready", "ready-ep"] },
+    { title: "Liveness: restart when stuck", text: "When liveness fails 3 times in a row, the kubelet kills the container and starts a new one from the image. The RESTARTS counter goes up; a container that keeps failing ends up in CrashLoopBackOff.", on: ["kubelet", "live", "restart", "k-live", "live-restart"], flow: ["k-live", "live-restart"] },
+    { title: "Use them together", text: "Readiness can check that the app can serve right now. Liveness should only check the process itself: if it tested the database too, a database outage would restart every Pod for nothing.", on: ["startup", "live", "ready", "restart", "ep", "live-restart", "ready-ep"] },
+  ],
+};
+
+const ingress: Scene = {
+  id: "ingress",
+  title: "How an Ingress routes requests",
+  width: 720,
+  height: 360,
+  boxes: [
+    { id: "client", x: 16, y: 150, w: 140, h: 56, label: "Browser", sub: "shop.example.com/api" },
+    { id: "rules", x: 196, y: 20, w: 160, h: 56, label: "Ingress shop", sub: "host + path rules", tone: "violet" },
+    { id: "ctrl", x: 196, y: 150, w: 160, h: 56, label: "ingress-nginx", sub: "controller Pod", tone: "blue" },
+    { id: "api", x: 416, y: 86, w: 126, h: 54, label: "Service api", sub: "path /api", tone: "blue" },
+    { id: "web", x: 416, y: 226, w: 126, h: 54, label: "Service web", sub: "path /", tone: "blue" },
+    { id: "pa", x: 592, y: 86, w: 112, h: 54, label: "api-7d9f", sub: "Ready", tone: "green" },
+    { id: "pw1", x: 592, y: 196, w: 112, h: 50, label: "web-5c2a", sub: "Ready", tone: "green" },
+    { id: "pw2", x: 592, y: 266, w: 112, h: 50, label: "web-5c8k", sub: "Ready", tone: "green" },
+  ],
+  edges: [
+    { id: "req", from: "client", to: "ctrl", label: "HTTP" },
+    { id: "watch", from: "rules", to: "ctrl", label: "watch" },
+    { id: "to-api", from: "ctrl", to: "api", label: "/api" },
+    { id: "to-web", from: "ctrl", to: "web", label: "/" },
+    { id: "api-a", from: "api", to: "pa" },
+    { id: "web-1", from: "web", to: "pw1" },
+    { id: "web-2", from: "web", to: "pw2" },
+  ],
+  steps: [
+    { title: "One entrance for many apps", text: "A LoadBalancer Service per app means one public IP each. An Ingress puts a single HTTP entrance in front of many Services, and picks one by the request's hostname and path.", on: ["client", "ctrl", "api", "web", "req"], flow: ["req"] },
+    { title: "Rules are only data", text: "The Ingress object holds the rules and does nothing by itself. An Ingress controller, here ingress-nginx, watches every Ingress and turns the rules into its proxy configuration.", on: ["rules", "ctrl", "watch"], flow: ["watch"] },
+    { title: "Match the host, then the path", text: "A request for shop.example.com/api matches the host, then the longest matching path: /api beats /. ingress-nginx reads that Service's endpoints and proxies straight to one of its ready Pods.", on: ["client", "ctrl", "api", "pa", "req", "to-api", "api-a"], flow: ["req", "to-api", "api-a"] },
+    { title: "Everything else", text: "Any other path on that host falls through to the / rule and the web Service, spread across its Pods.", on: ["client", "ctrl", "web", "pw1", "pw2", "req", "to-web", "web-1", "web-2"], flow: ["req", "to-web", "web-1", "web-2"] },
+    { title: "404 and 503", text: "If no rule matches, ingress-nginx answers 404 itself. If a rule matches but its Service has no ready Pods, it answers 503. Either way the error comes from the proxy, not from your app.", on: ["ctrl", "api", "to-api", "pa"], off: ["pa"] },
+  ],
+};
+
+const networkPolicy: Scene = {
+  id: "network-policy",
+  title: "How a NetworkPolicy filters traffic",
+  width: 720,
+  height: 360,
+  boxes: [
+    { id: "ns", x: 16, y: 16, w: 560, h: 328, label: "Namespace shop", group: true },
+    { id: "fe", x: 36, y: 150, w: 130, h: 56, label: "frontend", sub: "app=frontend", tone: "green" },
+    { id: "be", x: 226, y: 150, w: 130, h: 56, label: "backend", sub: "app=backend", tone: "green" },
+    { id: "db", x: 420, y: 150, w: 130, h: 56, label: "db", sub: "app=db", tone: "green" },
+    { id: "dbg", x: 226, y: 272, w: 130, h: 52, label: "debug Pod", sub: "app=debug", tone: "amber" },
+    { id: "pol", x: 400, y: 44, w: 170, h: 56, label: "NetworkPolicy", sub: "db: allow backend", tone: "blue" },
+    { id: "dns", x: 600, y: 150, w: 104, h: 56, label: "CoreDNS", sub: "kube-system", tone: "violet" },
+  ],
+  edges: [
+    { id: "fe-be", from: "fe", to: "be", label: "80" },
+    { id: "be-db", from: "be", to: "db", label: "5432" },
+    { id: "dbg-db", from: "dbg", to: "db" },
+    { id: "fe-db", from: "fe", to: "db", bend: -120 },
+    { id: "sel", from: "pol", to: "db", label: "selects" },
+    { id: "be-dns", from: "be", to: "dns", bend: 130, label: "53/UDP" },
+  ],
+  steps: [
+    { title: "Open by default", text: "Without policies, every Pod can reach every other Pod, in any namespace. A compromised debug Pod could talk straight to the database.", on: ["ns", "fe", "be", "db", "dbg", "fe-be", "be-db", "dbg-db", "fe-db"], flow: ["fe-be", "be-db", "dbg-db", "fe-db"] },
+    { title: "A policy selects Pods", text: "A NetworkPolicy's podSelector (here app=db) picks the Pods it protects. Once any Ingress policy selects a Pod, that Pod is isolated: only traffic some policy allows gets in.", on: ["pol", "db", "sel"], flow: ["sel"] },
+    { title: "Allow only what's listed", text: "The rule allows Pods labelled app=backend on port 5432. Traffic from frontend and debug is dropped silently: their connections time out rather than being refused.", on: ["be", "db", "be-db", "pol", "sel"], off: ["dbg", "fe"], flow: ["be-db"] },
+    { title: "Egress works the same way", text: "An Egress policy limits what the selected Pods may send. Looking up a name is traffic too: forget to allow port 53 to CoreDNS and every lookup by name fails.", on: ["be", "dns", "be-dns"], flow: ["be-dns"] },
+    { title: "Policies add up", text: "There are no deny rules. Every policy that selects a Pod adds to what's allowed. The network plugin enforces them; with a plugin that doesn't support NetworkPolicy they are silently ignored.", on: ["pol", "db", "be", "be-db", "sel"] },
+  ],
+};
+
+const pvPvc: Scene = {
+  id: "pv-pvc",
+  title: "How a claim gets its volume",
+  width: 720,
+  height: 360,
+  boxes: [
+    { id: "sched", x: 16, y: 20, w: 140, h: 56, label: "scheduler", sub: "picks a Node", tone: "violet" },
+    { id: "pod", x: 16, y: 150, w: 140, h: 56, label: "Pod writer", sub: "mounts /data", tone: "green" },
+    { id: "pvc", x: 226, y: 150, w: 150, h: 56, label: "PVC data", sub: "1Gi · ReadWriteOnce", tone: "blue" },
+    { id: "sc", x: 226, y: 20, w: 150, h: 56, label: "StorageClass", sub: "standard (default)", tone: "violet" },
+    { id: "prov", x: 450, y: 20, w: 170, h: 56, label: "local-path", sub: "provisioner", tone: "violet" },
+    { id: "pv", x: 450, y: 150, w: 170, h: 56, label: "PV pvc-3f2c…", sub: "1Gi on worker-1", tone: "blue" },
+    { id: "node", x: 430, y: 250, w: 274, h: 94, label: "Node worker-1", group: true },
+    { id: "disk", x: 450, y: 278, w: 234, h: 50, label: "Directory on disk", sub: "/var/local-path-provisioner/…", tone: "slate" },
+  ],
+  edges: [
+    { id: "claim", from: "pod", to: "pvc", label: "claimName" },
+    { id: "class", from: "pvc", to: "sc", label: "storageClassName" },
+    { id: "place", from: "sched", to: "pod", label: "worker-1" },
+    { id: "ask", from: "sc", to: "prov" },
+    { id: "make", from: "prov", to: "pv", label: "create" },
+    { id: "bind", from: "pvc", to: "pv", label: "Bound" },
+    { id: "store", from: "pv", to: "disk" },
+  ],
+  steps: [
+    { title: "Ask, don't build", text: "A Pod doesn't name a disk. It names a PersistentVolumeClaim, a request for storage: how much, and how it will be mounted.", on: ["pod", "pvc", "claim"], flow: ["claim"] },
+    { title: "The StorageClass says how", text: "The claim names a StorageClass, or gets the default one. kind's standard class uses the local-path provisioner with WaitForFirstConsumer: nothing is created yet, and the claim stays Pending.", on: ["pvc", "sc", "class"], flow: ["class"] },
+    { title: "Wait for the first Pod", text: "When a Pod using the claim is scheduled, the scheduler records its Node on the claim, so the volume can be made where the Pod will run.", on: ["sched", "pod", "place", "pvc"], flow: ["place"] },
+    { title: "Provisioned and bound", text: "The provisioner creates a PersistentVolume on that Node and the claim is bound to it, one to one. Both show Bound, and the kubelet mounts the directory into the container.", on: ["sc", "prov", "pv", "pvc", "ask", "make", "bind", "node", "disk", "store"], flow: ["ask", "make", "bind"] },
+    { title: "Data outlives the Pod", text: "Delete the Pod and the claim, the PV and the files all stay. A new Pod using the claim sees the same data. Deleting the claim deletes the PV too when the reclaim policy is Delete.", on: ["pvc", "pv", "disk", "bind", "store", "node"], off: ["pod"] },
+  ],
+};
+
+const hpa: Scene = {
+  id: "hpa",
+  title: "The autoscaling loop",
+  width: 720,
+  height: 360,
+  boxes: [
+    { id: "kubelet", x: 16, y: 262, w: 150, h: 56, label: "kubelets", sub: "CPU of each container", tone: "blue" },
+    { id: "ms", x: 16, y: 150, w: 150, h: 56, label: "metrics-server", sub: "scrapes every 15s", tone: "violet" },
+    { id: "hpa", x: 226, y: 150, w: 170, h: 56, label: "HPA php-apache", sub: "target: 50% of request", tone: "violet" },
+    { id: "dep", x: 450, y: 150, w: 130, h: 56, label: "Deployment", sub: "replicas: 2 → 4", tone: "slate" },
+    { id: "p1", x: 612, y: 30, w: 92, h: 48, label: "Pod 1", sub: "90%", tone: "green" },
+    { id: "p2", x: 612, y: 110, w: 92, h: 48, label: "Pod 2", sub: "90%", tone: "green" },
+    { id: "p3", x: 612, y: 190, w: 92, h: 48, label: "Pod 3", sub: "starting", tone: "amber" },
+    { id: "p4", x: 612, y: 270, w: 92, h: 48, label: "Pod 4", sub: "starting", tone: "amber" },
+  ],
+  edges: [
+    { id: "scrape", from: "kubelet", to: "ms", label: "usage" },
+    { id: "read", from: "ms", to: "hpa", label: "avg CPU" },
+    { id: "scale", from: "hpa", to: "dep", label: "set replicas" },
+    { id: "d1", from: "dep", to: "p1" },
+    { id: "d2", from: "dep", to: "p2" },
+    { id: "d3", from: "dep", to: "p3" },
+    { id: "d4", from: "dep", to: "p4" },
+  ],
+  steps: [
+    { title: "Measure", text: "Each kubelet knows how much CPU and memory its containers use. metrics-server collects it every 15 seconds. kubectl top reads the same numbers.", on: ["kubelet", "ms", "scrape"], flow: ["scrape"] },
+    { title: "Compare with the target", text: "Every 15 seconds the HPA averages CPU across the Deployment's Pods, as a percentage of their CPU request. Two Pods at 90% of request, against a 50% target.", on: ["ms", "hpa", "read", "p1", "p2"], flow: ["read"] },
+    { title: "Work out the replicas", text: "desired = ceil(current × usage ÷ target) = ceil(2 × 90 ÷ 50) = 4. Within 10% of the target it does nothing, so it doesn't flap. Without a CPU request there is no percentage, and the HPA can't decide.", on: ["hpa"] },
+    { title: "Scale the Deployment", text: "The HPA only changes the Deployment's replicas field. The Deployment and its ReplicaSet create the Pods, the scheduler places them, and the load spreads out.", on: ["hpa", "dep", "scale", "d1", "d2", "d3", "d4", "p1", "p2", "p3", "p4"], flow: ["scale", "d3", "d4"] },
+    { title: "Scale down slowly", text: "Scaling up happens within a minute. Scaling down uses the highest recommendation of the last 5 minutes (the stabilization window), so a short lull doesn't remove Pods you'll need again soon.", on: ["hpa", "dep", "scale", "p1", "p2"], off: ["p3", "p4"] },
+  ],
+};
+
+const rbac: Scene = {
+  id: "rbac",
+  title: "Who may do what: RBAC",
+  width: 720,
+  height: 360,
+  boxes: [
+    { id: "req", x: 16, y: 20, w: 170, h: 56, label: "Request", sub: "patch deployments -n dev" },
+    { id: "api", x: 260, y: 20, w: 180, h: 56, label: "kube-apiserver", sub: "RBAC authorizer", tone: "violet" },
+    { id: "sa", x: 16, y: 150, w: 170, h: 56, label: "ServiceAccount ci", sub: "namespace dev" },
+    { id: "rb", x: 260, y: 150, w: 180, h: 56, label: "RoleBinding", sub: "ci-deployer · dev", tone: "blue" },
+    { id: "role", x: 504, y: 150, w: 200, h: 56, label: "Role deployer", sub: "deployments: get list patch", tone: "violet" },
+    { id: "user", x: 16, y: 280, w: 170, h: 56, label: "User jane", sub: "from a client certificate" },
+    { id: "crb", x: 260, y: 280, w: 180, h: 56, label: "ClusterRoleBinding", sub: "whole cluster", tone: "blue" },
+    { id: "cr", x: 504, y: 280, w: 200, h: 56, label: "ClusterRole view", sub: "read most things, anywhere", tone: "violet" },
+  ],
+  edges: [
+    { id: "send", from: "req", to: "api", label: "who? what? where?" },
+    { id: "subj", from: "rb", to: "sa", label: "subjects" },
+    { id: "ref", from: "rb", to: "role", label: "roleRef" },
+    { id: "look", from: "api", to: "rb", label: "find bindings" },
+    { id: "csubj", from: "crb", to: "user", label: "subjects" },
+    { id: "cref", from: "crb", to: "cr", label: "roleRef" },
+  ],
+  steps: [
+    { title: "Every request is checked", text: "The API server knows who is asking (a user, a group, or a ServiceAccount) and what they want: a verb, a resource, a namespace. RBAC answers allowed or Forbidden.", on: ["req", "api", "send"], flow: ["send"] },
+    { title: "A Role lists what's allowed", text: "A Role is a list of rules: these verbs on these resources, in one namespace. There are no deny rules; anything no rule allows is refused.", on: ["role"] },
+    { title: "A binding says who gets it", text: "A RoleBinding connects subjects to one Role, in the binding's namespace. Now ServiceAccount ci may get, list and patch Deployments in dev, and nothing else.", on: ["sa", "rb", "role", "subj", "ref"], flow: ["subj", "ref"] },
+    { title: "Checking the request", text: "For each request the authorizer looks for any binding that names the caller and whose role allows the verb and resource there. Found: allowed. None: 403 Forbidden. kubectl auth can-i runs the same check.", on: ["req", "api", "rb", "role", "sa", "send", "look", "ref"], flow: ["send", "look", "ref"] },
+    { title: "Cluster-wide", text: "ClusterRoles and ClusterRoleBindings work across the whole cluster, and cover cluster-scoped things like Nodes. A RoleBinding may also point at a ClusterRole to grant it in just one namespace.", on: ["user", "crb", "cr", "csubj", "cref"], flow: ["csubj", "cref"] },
+  ],
+};
+
+export const SCENES: Record<string, Scene> = { architecture, apply, service, probes, ingress, "network-policy": networkPolicy, "pv-pvc": pvPvc, hpa, rbac };

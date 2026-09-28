@@ -1,12 +1,20 @@
-// The kubelet: runs on every live Node. Sets up Pod sandboxes, pulls images,
-// runs container Programs, restarts with CrashLoopBackOff, terminates deleted
-// Pods, and writes Pod status. Timings follow the behaviour reference §2.
+// The kubelet: runs on every live Node. Mounts volumes, sets up Pod
+// sandboxes, pulls images, resolves env, runs container Programs, probes
+// containers (startup, liveness, readiness), restarts with CrashLoopBackOff,
+// enforces memory limits, terminates deleted Pods, and writes Pod status.
+// Timings follow the behaviour reference §2 and v2 §1.
 
-import { isPodTerminal, type Cluster, type ContainerRuntime, type PodRuntime } from "../cluster";
-import { containerProgram, imageDigest, lookupImage, pullError } from "../images";
-import type { Condition, Container, ContainerState, ContainerStatus, Node, Pod, PodPhase, PodStatus } from "../types";
-import { SIM_EPOCH, deepEqual } from "../util";
+import { isPodTerminal, type Cluster, type ContainerRuntime, type PodRuntime, type ProbeState } from "../cluster";
+import { containerProgram, imageDigest, listenPorts, lookupImage, pullError, type ImageInfo } from "../images";
+import { execEnv, runArgv, runRedirected } from "../exec";
+import { projectVolume } from "../fs";
+import { containerLimits, qosClass, milliCpu, bytes } from "../quantity";
+import type { Condition, ConfigMap, Container, ContainerState, ContainerStatus, Node, PersistentVolumeClaim, Pod, PodPhase, PodStatus, Probe, Secret, Service } from "../types";
+import { deepEqual, goDuration, unixDate } from "../util";
 import { kubeletConditions } from "../nodes";
+import { containerMemory } from "./metrics";
+
+export { goDuration, unixDate } from "../util";
 
 const SANDBOX_MS = 600;
 const CREATE_MS = 400;
@@ -14,22 +22,10 @@ const EXITED_VISIBLE_MS = 1000;
 const INITIAL_BACKOFF = 10_000;
 const MAX_BACKOFF = 300_000;
 const HEARTBEAT_MS = 10_000;
-
-export function goDuration(ms: number): string {
-  const s = Math.round(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m${s % 60}s`;
-  return `${Math.floor(m / 60)}h${m % 60}m${s % 60}s`;
-}
-
-export function unixDate(simMs: number): string {
-  const d = new Date(SIM_EPOCH + simMs);
-  const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()];
-  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
-  const t = d.toISOString().slice(11, 19);
-  return `${day} ${mon} ${String(d.getUTCDate()).padStart(2, " ")} ${t} UTC ${d.getUTCFullYear()}`;
-}
+const CONFIG_RETRY_MS = 10_000;
+const MOUNT_RETRY_MS = 8_000;
+/** kubelet sync period + ConfigMap cache TTL: projected volumes catch up within about a minute. */
+const VOLUME_RESYNC_MS = 60_000;
 
 function pullMs(sizeBytes: number): number {
   // ~40 MB/s plus registry round trips.
@@ -69,6 +65,16 @@ export function runKubelets(cluster: Cluster): void {
   }
 }
 
+/** Whether a container's main process exits promptly on SIGTERM (servers do; a shell as PID 1 doesn't). */
+function handlesSigterm(c: Container, info: ImageInfo | undefined, crt: ContainerRuntime): boolean {
+  if (!info) return true;
+  if (info.repo.startsWith("registry.k8s.io/") && !info.shell) return true;
+  if (c.command && c.command.some((w) => /(^|\/)(sh|bash|ash)$/.test(w))) return false;
+  return info.termExit !== undefined && crt.program?.some((o) => o.op === "serve") === true && !c.command;
+}
+
+const newContainer = (image: string): ContainerRuntime => ({ phase: "pulling", until: 0, image, backoffMs: 0, pc: 0, wakeAt: 0, restarts: 0 });
+
 function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
   const now = cluster.now;
   const uid = pod.metadata.uid;
@@ -85,12 +91,12 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
       let slow = false;
       for (const c of pod.spec!.containers) {
         const crt = prt.containers[c.name];
-        if (!crt || crt.phase !== "running") continue;
+        if (!crt || (crt.phase !== "running" && crt.phase !== "stopping")) continue;
         const { info } = lookupImage(c.image);
-        // Servers handle SIGTERM; a shell or `sleep` as PID 1 ignores it and waits out the grace period.
-        const handlesTerm = !!info?.http || info?.repo.startsWith("registry.k8s.io/") || (crt.program?.some((o) => o.op === "serve") && !c.command);
-        if (!handlesTerm) slow = true;
+        if (!handlesSigterm(c, info, crt)) slow = true;
         crt.phase = "stopping";
+        crt.killAt = undefined;
+        crt.ready = false;
         cluster.record(pod, "Normal", "Killing", `Stopping container ${c.name}`, "kubelet", nodeName, `spec.containers{${c.name}}`);
       }
       prt.stoppingUntil = slow ? pod.metadata.deletionTimestamp : Math.min(now + 1000, pod.metadata.deletionTimestamp);
@@ -106,12 +112,28 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
 
   if (isPodTerminal(pod) && prt && Object.values(prt.containers).every((c) => c.phase === "done")) return;
 
-  // --- sandbox ---
-  if (!prt) {
-    prt = cluster.state.pods[uid] = { containers: {}, sandboxAt: now + SANDBOX_MS };
-    for (const c of pod.spec!.containers) {
-      prt.containers[c.name] = { phase: "pulling", until: 0, image: c.image, backoffMs: 0, pc: 0, wakeAt: 0, restarts: 0 };
+  // --- volumes: ConfigMaps, Secrets and PVCs must exist (and PVCs be bound) before the sandbox starts ---
+  if (!prt || prt.mountedAt === undefined) {
+    const missing = unmountable(cluster, pod);
+    if (missing) {
+      if (!prt) {
+        prt = cluster.state.pods[uid] = { containers: {}, sandboxAt: Infinity };
+        for (const c of pod.spec!.containers) prt.containers[c.name] = newContainer(c.image);
+      }
+      if (missing.event && now >= (prt.mountRetryAt ?? 0)) {
+        cluster.record(pod, "Warning", "FailedMount", missing.event, "kubelet", nodeName);
+        prt.mountRetryAt = now + MOUNT_RETRY_MS;
+      }
+      writeStatus(cluster, pod, prt, nodeName);
+      return;
     }
+    if (!prt) {
+      prt = cluster.state.pods[uid] = { containers: {}, sandboxAt: now + SANDBOX_MS };
+      for (const c of pod.spec!.containers) prt.containers[c.name] = newContainer(c.image);
+    }
+    if (prt.sandboxAt === Infinity) prt.sandboxAt = now + SANDBOX_MS;
+    prt.mountedAt = now;
+    projectAll(cluster, pod, prt);
     cluster.markChanged();
   }
   if (now < prt.sandboxAt) {
@@ -119,20 +141,21 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
     return;
   }
   if (!pod.status?.podIP) {
-    const ip = pod.metadata.namespace === "kube-system" && pod.metadata.name.startsWith("kube-proxy") || pod.metadata.annotations?.["kubernetes.io/config.source"] === "file"
-      ? `172.18.0.${nrt.index + 2}` // host-network Pods use the Node's IP
-      : `10.244.${nrt.index}.${nrt.nextPodIp++}`;
+    const hostIp = `172.18.0.${nrt.index + 2}`;
+    const hostNet = pod.spec?.hostNetwork || pod.metadata.annotations?.["kubernetes.io/config.source"] === "file";
+    const ip = hostNet ? hostIp : `10.244.${nrt.index}.${nrt.nextPodIp++}`;
     cluster.update(pod, (p) => {
-      p.status = { ...(p.status as PodStatus), podIP: ip, hostIP: `172.18.0.${nrt.index + 2}`, startTime: now };
+      p.status = { ...(p.status as PodStatus), podIP: ip, podIPs: [{ ip }], hostIP: hostIp, startTime: now };
     });
     pod = cluster.get<Pod>("Pod", pod.metadata.namespace, pod.metadata.name);
   }
 
+  // ConfigMap/Secret volumes catch up with edits on the kubelet's periodic sync.
+  if (now - (prt.projectedAt ?? 0) >= VOLUME_RESYNC_MS) projectAll(cluster, pod, prt, true);
+
   for (const c of pod.spec!.containers) {
     let crt = prt.containers[c.name];
-    if (!crt) {
-      crt = prt.containers[c.name] = { phase: "pulling", until: 0, image: c.image, backoffMs: 0, pc: 0, wakeAt: 0, restarts: 0 };
-    }
+    if (!crt) crt = prt.containers[c.name] = newContainer(c.image);
     // Image changed (kubectl set image on a bare Pod): kill and restart with the new image.
     if (crt.image !== c.image && crt.phase !== "pulling") {
       if (crt.phase === "running") {
@@ -150,6 +173,182 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
   }
   writeStatus(cluster, pod, prt, nodeName);
 }
+
+/** Why a Pod's volumes can't be set up yet, or undefined if they can. */
+function unmountable(cluster: Cluster, pod: Pod): { event?: string } | undefined {
+  const ns = pod.metadata.namespace ?? "default";
+  for (const v of pod.spec?.volumes ?? []) {
+    if (v.configMap && !v.configMap.optional && !cluster.raw("ConfigMap", ns, v.configMap.name)) {
+      return { event: `MountVolume.SetUp failed for volume "${v.name}" : configmap "${v.configMap.name}" not found` };
+    }
+    if (v.secret && !v.secret.optional && !cluster.raw("Secret", ns, v.secret.secretName)) {
+      return { event: `MountVolume.SetUp failed for volume "${v.name}" : secret "${v.secret.secretName}" not found` };
+    }
+    if (v.persistentVolumeClaim) {
+      const pvc = cluster.raw("PersistentVolumeClaim", ns, v.persistentVolumeClaim.claimName) as unknown as PersistentVolumeClaim | undefined;
+      // The scheduler already refused Pods whose claims are missing; here we wait for binding.
+      if (!pvc || pvc.status?.phase !== "Bound" || !pvc.spec?.volumeName) return {};
+    }
+  }
+  return undefined;
+}
+
+function projectAll(cluster: Cluster, pod: Pod, prt: PodRuntime, refresh = false): void {
+  const ns = pod.metadata.namespace ?? "default";
+  prt.projected ??= {};
+  prt.projectedAt = cluster.now;
+  for (const v of pod.spec?.volumes ?? []) {
+    if (!v.configMap && !v.secret) continue;
+    const files = projectVolume(cluster, ns, v);
+    if (files && !deepEqual(files, prt.projected[v.name])) {
+      prt.projected[v.name] = files;
+      cluster.markChanged();
+    }
+  }
+  if (refresh) return;
+  // subPath mounts copy one file at start and never update.
+  prt.subPaths ??= {};
+  for (const c of pod.spec?.containers ?? []) {
+    for (const m of c.volumeMounts ?? []) {
+      if (!m.subPath) continue;
+      const files = prt.projected[m.name];
+      if (files) prt.subPaths[`${c.name}/${m.mountPath}`] = { "": files[m.subPath] ?? "" };
+    }
+  }
+}
+
+// ---------- environment ----------
+
+/** Any printable ASCII except '=' (RelaxedEnvironmentVariableValidation, GA). */
+const ENV_NAME = /^[!-<>-~]+$/;
+
+/** $(VAR) in command/args, expanded from env; $$ escapes; unknown references stay as written. */
+function expandCommand(c: Container, env: Record<string, string>): Container {
+  const x = (w: string) => w.replace(/\$\$|\$\(([A-Za-z_][A-Za-z0-9_]*)\)/g, (m, n) => (m === "$$" ? "$" : (env[n] ?? m)));
+  return { ...c, ...(c.command ? { command: c.command.map(x) } : {}), ...(c.args ? { args: c.args.map(x) } : {}) };
+}
+
+const b64 = (s: string) => {
+  try {
+    return typeof atob === "function" ? decodeURIComponent(escape(atob(s))) : Buffer.from(s, "base64").toString("utf8");
+  } catch {
+    return s;
+  }
+};
+
+/** Resolves a container's environment, as the kubelet does at container start. */
+export function resolveEnv(cluster: Cluster, pod: Pod, c: Container): { env: Record<string, string> } | { error: string } {
+  const ns = pod.metadata.namespace ?? "default";
+  const env: Record<string, string> = {};
+  // Service links: the Services that existed when the container started, plus `kubernetes`.
+  const kube = cluster.raw("Service", "default", "kubernetes") as unknown as Service | undefined;
+  const links = pod.spec?.enableServiceLinks === false ? [] : cluster.list<Service>("Service", ns).filter((s) => s.spec?.clusterIP && s.spec.clusterIP !== "None" && s !== (kube as unknown));
+  for (const s of [...(kube ? [kube] : []), ...links.filter((s) => s.metadata.uid !== kube?.metadata.uid)]) {
+    // Docker-links style variables (pkg/kubelet/envvars): one set per port, the first also as the default.
+    const name = s.metadata.name.toUpperCase().replace(/-/g, "_");
+    const ports = s.spec?.ports ?? [];
+    if (!ports.length) continue;
+    const ip = s.spec!.clusterIP!;
+    const first = ports[0];
+    env[`${name}_SERVICE_HOST`] = ip;
+    env[`${name}_SERVICE_PORT`] = String(first.port);
+    for (const p of ports) if (p.name) env[`${name}_SERVICE_PORT_${p.name.toUpperCase().replace(/-/g, "_")}`] = String(p.port);
+    env[`${name}_PORT`] = `${(first.protocol ?? "TCP").toLowerCase()}://${ip}:${first.port}`;
+    for (const p of ports) {
+      const proto = (p.protocol ?? "TCP").toUpperCase();
+      const pre = `${name}_PORT_${p.port}_${proto}`;
+      env[pre] = `${proto.toLowerCase()}://${ip}:${p.port}`;
+      env[`${pre}_PROTO`] = proto.toLowerCase();
+      env[`${pre}_PORT`] = String(p.port);
+      env[`${pre}_ADDR`] = ip;
+    }
+  }
+  for (const src of c.envFrom ?? []) {
+    const pre = src.prefix ?? "";
+    if (src.configMapRef) {
+      const cm = cluster.raw("ConfigMap", ns, src.configMapRef.name) as unknown as ConfigMap | undefined;
+      if (!cm) {
+        if (src.configMapRef.optional) continue;
+        return { error: `configmap "${src.configMapRef.name}" not found` };
+      }
+      for (const [k, v] of Object.entries(cm.data ?? {})) if (ENV_NAME.test(pre + k)) env[pre + k] = v;
+    }
+    if (src.secretRef) {
+      const s = cluster.raw("Secret", ns, src.secretRef.name) as unknown as Secret | undefined;
+      if (!s) {
+        if (src.secretRef.optional) continue;
+        return { error: `secret "${src.secretRef.name}" not found` };
+      }
+      for (const [k, v] of Object.entries(s.data ?? {})) if (ENV_NAME.test(pre + k)) env[pre + k] = b64(v);
+    }
+  }
+  for (const e of c.env ?? []) {
+    if (e.value !== undefined || !e.valueFrom) {
+      // $(VAR) refers to variables defined earlier in the list.
+      env[e.name] = (e.value ?? "").replace(/\$\$|\$\(([A-Za-z_][A-Za-z0-9_]*)\)/g, (m, n) => (m === "$$" ? "$" : (env[n] ?? m)));
+      continue;
+    }
+    const vf = e.valueFrom;
+    if (vf.configMapKeyRef) {
+      const r = vf.configMapKeyRef;
+      const cm = cluster.raw("ConfigMap", ns, r.name) as unknown as ConfigMap | undefined;
+      if (!cm) {
+        if (r.optional) continue;
+        return { error: `configmap "${r.name}" not found` };
+      }
+      if (cm.data?.[r.key] === undefined) {
+        if (r.optional) continue;
+        return { error: `couldn't find key ${r.key} in ConfigMap ${ns}/${r.name}` };
+      }
+      env[e.name] = cm.data[r.key];
+    } else if (vf.secretKeyRef) {
+      const r = vf.secretKeyRef;
+      const s = cluster.raw("Secret", ns, r.name) as unknown as Secret | undefined;
+      if (!s) {
+        if (r.optional) continue;
+        return { error: `secret "${r.name}" not found` };
+      }
+      if (s.data?.[r.key] === undefined) {
+        if (r.optional) continue;
+        return { error: `couldn't find key ${r.key} in Secret ${ns}/${r.name}` };
+      }
+      env[e.name] = b64(s.data[r.key]);
+    } else if (vf.fieldRef) {
+      env[e.name] = fieldValue(pod, vf.fieldRef.fieldPath);
+    } else if (vf.resourceFieldRef) {
+      const target = pod.spec!.containers.find((x) => x.name === (vf.resourceFieldRef!.containerName || c.name)) ?? c;
+      const [kind, res] = vf.resourceFieldRef.resource.split(".");
+      const q = target.resources?.[kind as "limits" | "requests"]?.[res];
+      if (res === "cpu") env[e.name] = String(Math.max(1, Math.ceil((q ? milliCpu(q) : 4000) / milliCpu(vf.resourceFieldRef.divisor ?? "1"))));
+      else env[e.name] = String(Math.ceil((q ? bytes(q) : 8336990208) / (bytes(vf.resourceFieldRef.divisor ?? "1") || 1)));
+    }
+  }
+  return { env };
+}
+
+function fieldValue(pod: Pod, path: string): string {
+  const lab = path.match(/^metadata\.(labels|annotations)\['(.+)'\]$/);
+  if (lab) return (lab[1] === "labels" ? pod.metadata.labels : pod.metadata.annotations)?.[lab[2]] ?? "";
+  switch (path) {
+    case "metadata.name":
+      return pod.metadata.name;
+    case "metadata.namespace":
+      return pod.metadata.namespace ?? "default";
+    case "metadata.uid":
+      return pod.metadata.uid;
+    case "spec.nodeName":
+      return pod.spec?.nodeName ?? "";
+    case "spec.serviceAccountName":
+      return pod.spec?.serviceAccountName ?? "default";
+    case "status.podIP":
+      return pod.status?.podIP ?? "";
+    case "status.hostIP":
+      return pod.status?.hostIP ?? "";
+  }
+  return "";
+}
+
+// ---------- containers ----------
 
 function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRuntime, nodeName: string): void {
   const now = cluster.now;
@@ -217,9 +416,22 @@ function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerR
     case "pullBackoff":
       if (now >= crt.until) set("pulling");
       return;
+    case "configError":
+      if (now >= crt.until) set("creating", now);
+      return;
     case "creating": {
       if (now < crt.until) return;
-      const res = containerProgram(c, info!, pod.metadata.name);
+      const envr = resolveEnv(cluster, pod, c);
+      if ("error" in envr) {
+        crt.exitMessage = envr.error;
+        ev("Warning", "Failed", `Error: ${envr.error}`);
+        set("configError", now + CONFIG_RETRY_MS);
+        return;
+      }
+      crt.env = envr.env;
+      const hostname = pod.spec?.hostname ?? pod.metadata.name;
+      // The kubelet expands $(VAR) in command and args from the container's env ($$ escapes).
+      const res = containerProgram(expandCommand(c, envr.env), info!, envr.env, hostname);
       if (!res.ok) {
         ev("Normal", "Created", "Container created");
         ev("Warning", "Failed", `Error: ${res.message}`);
@@ -241,13 +453,35 @@ function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerR
       crt.exitCode = undefined;
       crt.exitReason = undefined;
       crt.exitMessage = undefined;
+      crt.lastCode = 0;
+      crt.alloc = 0;
+      crt.burn = 0;
+      crt.reqs = [];
+      crt.killAt = undefined;
+      crt.ready = false;
+      crt.started = !c.startupProbe;
+      crt.probes = {};
+      // A fresh writable layer from the image.
+      crt.fs = { ...(info?.files ?? {}) };
       set("running");
       runProgram(cluster, pod, c, crt);
       return;
     }
     case "running":
       runProgram(cluster, pod, c, crt);
+      if (crt.phase === "running") probe(cluster, pod, c, crt, nodeName);
       return;
+    case "stopping": {
+      // Killed by a failed liveness or startup probe: exits after SIGTERM (or SIGKILL at the grace period).
+      if (crt.killAt === undefined || now < crt.killAt) return;
+      const handles = handlesSigterm(c, info, crt);
+      const code = handles ? (info?.termExit ?? 143) : 137;
+      crt.exitCode = code;
+      crt.exitReason = code === 0 ? "Completed" : "Error";
+      crt.killAt = undefined;
+      set("exited", now + EXITED_VISIBLE_MS);
+      return;
+    }
     case "exited": {
       if (now < crt.until) return;
       const policy = pod.spec?.restartPolicy ?? "Always";
@@ -287,25 +521,58 @@ function runProgram(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRunt
   const now = cluster.now;
   const prog = crt.program ?? [];
   if (crt.wakeAt > now) return;
+  const log = (text: string) => {
+    for (const line of text.split("\n")) cluster.log(pod.metadata.uid, c.name, crt.restarts, now, line);
+    cluster.markChanged();
+  };
   for (let guard = 0; guard < 200; guard++) {
     const op = prog[crt.pc];
     if (!op) {
-      exit(cluster, crt, 0);
+      exit(cluster, crt, crt.lastCode ?? 0);
       return;
     }
     switch (op.op) {
       case "log":
-        cluster.log(pod.metadata.uid, c.name, crt.restarts, now, op.text.replace(/\u0000DATE\u0000/g, unixDate(now)));
-        cluster.markChanged();
+        log(op.text.replace(/\u0000DATE\u0000/g, unixDate(now)));
         crt.pc++;
         break;
+      case "run": {
+        crt.pc++;
+        if (op.when === "ok" && (crt.lastCode ?? 0) !== 0) break;
+        if (op.when === "fail" && (crt.lastCode ?? 0) === 0) break;
+        const ee = execEnv(cluster, pod, c, crt.env ?? {});
+        const argv = op.argv.map((a) => a.replace(/\u0000DATE\u0000/g, unixDate(now)));
+        const r = op.redirect ? runRedirected(ee, argv, op.redirect) : runArgv(ee, argv);
+        if (r.out) log(r.out);
+        crt.lastCode = r.code;
+        if (crt.phase !== "running") return;
+        break;
+      }
       case "sleep":
         crt.wakeAt = now + op.ms;
         crt.pc++;
         return;
       case "exit":
-        exit(cluster, crt, op.code);
+        exit(cluster, crt, op.code < 0 ? (crt.lastCode ?? 0) : op.code);
         return;
+      case "alloc": {
+        crt.alloc = (crt.alloc ?? 0) + op.bytes;
+        crt.pc++;
+        const limit = containerLimits(c).memory;
+        if (limit && containerMemory(c, crt) > limit) {
+          crt.exitCode = 137;
+          crt.exitReason = "OOMKilled";
+          crt.phase = "exited";
+          crt.until = now + EXITED_VISIBLE_MS;
+          cluster.markChanged();
+          return;
+        }
+        break;
+      }
+      case "burn":
+        crt.burn = op.millicores;
+        crt.pc++;
+        break;
       case "serve":
         return;
       case "jump":
@@ -323,6 +590,155 @@ function exit(cluster: Cluster, crt: ContainerRuntime, code: number): void {
   cluster.markChanged();
 }
 
+// ---------- probes ----------
+
+const probeDefaults = (p: Probe) => ({
+  delay: (p.initialDelaySeconds ?? 0) * 1000,
+  period: (p.periodSeconds ?? 10) * 1000,
+  success: p.successThreshold ?? 1,
+  failure: p.failureThreshold ?? 3,
+});
+
+/** Runs one probe against a container, as the kubelet's prober does. */
+export function runProbe(cluster: Cluster, pod: Pod, c: Container, p: Probe): { ok: boolean; message: string } {
+  const ip = pod.status?.podIP ?? "";
+  const resolvePort = (port: number | string) =>
+    typeof port === "number" ? port : /^\d+$/.test(port) ? parseInt(port, 10) : ((c.ports ?? []).find((x) => x.name === port)?.containerPort ?? NaN);
+  if (p.exec) {
+    const crt = cluster.state.pods[pod.metadata.uid]?.containers[c.name];
+    const r = runArgv(execEnv(cluster, pod, c, crt?.env ?? {}, { quiet: true }), p.exec.command ?? []);
+    return { ok: r.code === 0, message: r.out };
+  }
+  const port = resolvePort((p.httpGet ?? p.tcpSocket ?? p.grpc)?.port ?? NaN);
+  const prt = cluster.state.pods[pod.metadata.uid];
+  // Any container in the Pod listening on the port answers (they share the network namespace).
+  const listener = (pod.spec?.containers ?? []).find((x) => {
+    const r = prt?.containers[x.name];
+    if (!r || (r.phase !== "running" && r.phase !== "stopping") || r.program?.[r.pc]?.op !== "serve" || r.wakeAt > cluster.now) return false;
+    return listenPorts(lookupImage(r.image).info, x).includes(port);
+  });
+  if (p.httpGet) {
+    const path = p.httpGet.path ?? "/";
+    const scheme = (p.httpGet.scheme ?? "HTTP").toLowerCase();
+    const url = `${scheme}://${ip}:${port}${path}`;
+    if (!listener) return { ok: false, message: `Get "${url}": dial tcp ${ip}:${port}: connect: connection refused` };
+    const lr = prt!.containers[listener.name];
+    const { info } = lookupImage(lr.image);
+    if (!info?.http) return { ok: false, message: `Get "${url}": EOF` };
+    const fs = execEnv(cluster, pod, listener, lr.env ?? {}).fs;
+    const ctx = {
+      podName: pod.spec?.hostname ?? pod.metadata.name,
+      podIP: ip,
+      port,
+      path,
+      query: {},
+      clientIP: `10.244.${cluster.state.nodes[pod.spec?.nodeName ?? ""]?.index ?? 0}.1`,
+      now: unixDate(cluster.now),
+      args: [...(listener.command ?? []), ...(listener.args ?? [])],
+      uptimeMs: cluster.now - (lr.startedAt ?? cluster.now),
+      read: (f: string) => fs.read(f),
+      isDir: (f: string) => fs.isDir(f),
+    };
+    const res = info.http(ctx);
+    if (info.accessLog) cluster.log(pod.metadata.uid, listener.name, lr.restarts, cluster.now, info.accessLog(ctx, res).replace("curl/8.5.0", "kube-probe/1.37"));
+    if (res.status >= 200 && res.status < 400) return { ok: true, message: "" };
+    return { ok: false, message: `HTTP probe failed with statuscode: ${res.status}` };
+  }
+  if (!listener) return { ok: false, message: `dial tcp ${ip}:${port}: connect: connection refused` };
+  return { ok: true, message: "" };
+}
+
+function probe(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRuntime, nodeName: string): void {
+  const now = cluster.now;
+  const started = crt.startedAt ?? now;
+  crt.probes ??= {};
+  const due = (kind: "startup" | "liveness" | "readiness", p: Probe): ProbeState | undefined => {
+    const d = probeDefaults(p);
+    const st = (crt.probes![kind] ??= { next: Math.max(now, started + d.delay), ok: 0, fail: 0 });
+    if (now < st.next) return undefined;
+    st.next = now + d.period;
+    return st;
+  };
+  const kill = (why: "liveness" | "startup", p: Probe) => {
+    cluster.record(pod, "Normal", "Killing", `Container ${c.name} failed ${why} probe, will be restarted`, "kubelet", nodeName, `spec.containers{${c.name}}`);
+    const { info } = lookupImage(c.image);
+    const grace = (p.terminationGracePeriodSeconds ?? pod.spec?.terminationGracePeriodSeconds ?? 30) * 1000;
+    crt.phase = "stopping";
+    crt.killAt = now + (handlesSigterm(c, info, crt) ? 300 : grace);
+    crt.ready = false;
+    cluster.markChanged();
+  };
+  const warn = (kind: string, msg: string) => cluster.record(pod, "Warning", "Unhealthy", `${kind} probe failed: ${msg}`, "kubelet", nodeName, `spec.containers{${c.name}}`);
+
+  if (!crt.started) {
+    const p = c.startupProbe;
+    if (!p) {
+      crt.started = true;
+    } else {
+      const st = due("startup", p);
+      if (!st) return;
+      const r = runProbe(cluster, pod, c, p);
+      if (r.ok) {
+        crt.started = true;
+        cluster.markChanged();
+      } else {
+        st.fail++;
+        warn("Startup", r.message);
+        if (st.fail >= probeDefaults(p).failure) kill("startup", p);
+        return;
+      }
+    }
+  }
+
+  if (c.livenessProbe) {
+    const p = c.livenessProbe;
+    const st = due("liveness", p);
+    if (st) {
+      const r = runProbe(cluster, pod, c, p);
+      if (r.ok) st.fail = 0;
+      else {
+        st.fail++;
+        warn("Liveness", r.message);
+        if (st.fail >= probeDefaults(p).failure) {
+          kill("liveness", p);
+          return;
+        }
+      }
+    }
+  }
+
+  if (!c.readinessProbe) {
+    if (!crt.ready) {
+      crt.ready = true;
+      cluster.markChanged();
+    }
+    return;
+  }
+  const p = c.readinessProbe;
+  const st = due("readiness", p);
+  if (!st) return;
+  const r = runProbe(cluster, pod, c, p);
+  const d = probeDefaults(p);
+  if (r.ok) {
+    st.fail = 0;
+    st.ok++;
+    if (!crt.ready && st.ok >= d.success) {
+      crt.ready = true;
+      cluster.markChanged();
+    }
+  } else {
+    st.ok = 0;
+    st.fail++;
+    warn("Readiness", r.message);
+    if (crt.ready && st.fail >= d.failure) {
+      crt.ready = false;
+      cluster.markChanged();
+    }
+  }
+}
+
+// ---------- status ----------
+
 function containerState(pod: Pod, c: Container, crt: ContainerRuntime): { state: ContainerState; ready: boolean; started: boolean } {
   const waiting = (reason: string, message?: string) => ({ state: { waiting: { reason, ...(message ? { message } : {}) } }, ready: false, started: false });
   switch (crt.phase) {
@@ -331,6 +747,8 @@ function containerState(pod: Pod, c: Container, crt: ContainerRuntime): { state:
       return crt.backoffMs ? waiting("ErrImagePull", crt.exitMessage) : waiting("ContainerCreating");
     case "creating":
       return crt.lastTerm ? { state: { terminated: termOf(crt.lastTerm) }, ready: false, started: false } : waiting("ContainerCreating");
+    case "configError":
+      return waiting("CreateContainerConfigError", crt.exitMessage);
     case "pullError":
       return waiting("ErrImagePull", crt.exitMessage);
     case "pullBackoff":
@@ -338,7 +756,7 @@ function containerState(pod: Pod, c: Container, crt: ContainerRuntime): { state:
     case "running":
     case "stopping":
     case "dead":
-      return { state: { running: { startedAt: crt.startedAt ?? 0 } }, ready: true, started: true };
+      return { state: { running: { startedAt: crt.startedAt ?? 0 } }, ready: crt.phase !== "stopping" && (crt.ready ?? true), started: crt.started ?? true };
     case "exited":
     case "done":
       return {
@@ -413,12 +831,23 @@ function writeStatus(cluster: Cluster, pod: Pod, prt: PodRuntime, nodeName: stri
     completed ? { ...cond("ContainersReady", false), reason: "PodCompleted" } : cond("ContainersReady", allReady, "ContainersNotReady", `containers with unready status: [${unready.join(" ")}]`),
     ...prev.filter((c) => c.type === "PodScheduled" || c.type === "DisruptionTarget"),
   ];
-  const next: PodStatus = { ...(pod.status as PodStatus), phase, conditions, containerStatuses: statuses, qosClass: "BestEffort" };
+  const next: PodStatus = { ...(pod.status as PodStatus), phase, conditions, containerStatuses: statuses, qosClass: qosClass(pod.spec) };
   if (deepEqual(next, pod.status)) return; // most steps change nothing: skip the clone + store write
   cluster.put({ ...pod, status: next });
 }
 
+const idCache = new Map<string, string>();
+
 function cluster_hash(s: string): string {
+  const hit = idCache.get(s);
+  if (hit) return hit;
+  const h = computeId(s);
+  if (idCache.size > 2000) idCache.clear();
+  idCache.set(s, h);
+  return h;
+}
+
+function computeId(s: string): string {
   let h = "";
   let x = 0x811c9dc5;
   for (let r = 0; r < 8; r++) {

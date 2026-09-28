@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { Namespace, Node, Pod, Service } from "@/lib/engine";
+import { SYSTEM_NAMESPACES } from "@/lib/engine/bootstrap";
 import type { SimStore } from "@/lib/sim/useSimulation";
 import { podCategory } from "@/lib/sim/status";
 import { explainEvent, isNarrated } from "@/lib/sim/explain";
@@ -9,6 +10,7 @@ import { age } from "@/lib/sim/status";
 import { ClusterView, type Selection } from "./ClusterView";
 import { CommandLog, EventsTable, ResourceTable } from "./Inspector";
 import { Terminal } from "./Terminal";
+import { ClusterText } from "./ClusterText";
 import { Editor } from "./Editor";
 import { DragProvider, Palette } from "./DragLayer";
 import { Dot, Segmented, clock } from "../ui";
@@ -36,6 +38,14 @@ export function SimControls({ sim }: { sim: SimStore }) {
         <span className={`h-1.5 w-1.5 rounded-full ${sim.paused ? "bg-slate-300" : "bg-green-500"}`} />
         {clock(c.now)}
       </div>
+      {sim.crashed && (
+        <div role="alert" className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1 text-[12px] text-red-800" title={sim.crashed}>
+          The simulation hit a bug and stopped.
+          <button onClick={() => sim.reset()} className="font-medium underline underline-offset-2 hover:text-red-950">
+            Start over
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -61,6 +71,7 @@ interface Props {
 export function Workspace({ sim, selection, onSelect, showSystem = false, tabs = ["terminal", "editor", "resources", "events", "commands"], initialTab, overlay, narration = true, dockHeight = "h-72", mobileView = "canvas", interactive = true, palette = false }: Props) {
   const [tab, setTab] = useState<DockTab>(initialTab ?? tabs[0]);
   const [open, setOpen] = useState(tabs.length > 0);
+  const [textView, setTextView] = useState(false);
   // Follow requests from the store (kubectl edit, "Open in editor", "Run").
   const [seen, setSeen] = useState({ edit: sim.editSeq, term: sim.termSeq });
   if (seen.edit !== sim.editSeq || seen.term !== sim.termSeq) {
@@ -74,14 +85,14 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
 
   const c = sim.cluster!;
   const ns = sim.viewNs;
-  const inView = (n?: string) => (ns === "*" ? showSystem || n !== "kube-system" : n === ns);
+  const inView = (n?: string) => (ns === "*" ? showSystem || !SYSTEM_NAMESPACES.has(n ?? "") : n === ns);
   const events = sim.events.filter((e) => inView(e.metadata.namespace));
   const pods = c.list<Pod>("Pod").filter((p) => inView(p.metadata.namespace));
   const readyPods = pods.filter((p) => podCategory(p) === "ok").length;
   const svcs = c.list<Service>("Service").filter((s) => inView(s.metadata.namespace) && s.metadata.name !== "kubernetes");
   const nodes = c.list<Node>("Node");
   const readyNodes = nodes.filter((n) => c.nodeReady(n) && c.state.nodes[n.metadata.name]?.up).length;
-  const namespaces = c.list<Namespace>("Namespace").map((n) => n.metadata.name).filter((n) => showSystem || !n.startsWith("kube-"));
+  const namespaces = c.list<Namespace>("Namespace").map((n) => n.metadata.name).filter((n) => showSystem || !SYSTEM_NAMESPACES.has(n));
   const story = sim.events.filter((e) => isNarrated(e) && inView(e.metadata.namespace)).slice(0, 2);
   const labels: Record<DockTab, React.ReactNode> = {
     terminal: "Terminal",
@@ -136,6 +147,20 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
           )}
         </div>
 
+        <button
+          onClick={() => setTextView(!textView)}
+          aria-pressed={textView}
+          className="absolute bottom-4 left-4 z-10 rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1 text-[11.5px] font-medium text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,.04)] hover:bg-slate-50"
+          style={palette ? { left: 212 } : undefined}
+        >
+          {textView ? "Diagram view" : "Text view"}
+        </button>
+        {textView && (
+          <div className="absolute inset-y-0 right-0 z-20 w-full max-w-md border-l border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,.08)]">
+            <ClusterText c={c} namespace={ns} showSystem={showSystem} onSelect={onSelect} />
+          </div>
+        )}
+
         {narration && story.length > 0 && (
           <div className="pointer-events-none absolute right-4 top-4 hidden w-[420px] max-w-[calc(100%-2rem)] rounded-xl border border-slate-200/80 bg-white/95 px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,.04),0_8px_24px_rgba(15,23,42,.06)] backdrop-blur xl:block">
             <div className="mb-1 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-slate-400">What just happened</div>
@@ -181,7 +206,7 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
             {tab === "terminal" && <Terminal sim={sim} />}
             {tab === "editor" && <Editor sim={sim} />}
             {tab === "commands" && <CommandLog log={sim.log} />}
-            {tab === "resources" && <ResourceTable c={c} />}
+            {tab === "resources" && <ResourceTable c={c} namespace={sim.viewNs === "*" ? sim.namespace : sim.viewNs} />}
             {tab === "events" && <EventsTable events={events} now={c.now} />}
           </div>
         </div>

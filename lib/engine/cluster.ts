@@ -13,17 +13,29 @@ import {
   type Pod,
   type NewObject,
 } from "./types";
+import { resourceName } from "./kinds";
 import { admit } from "./admission";
 import { validate } from "./validation";
-import { clone, deepEqual, Rng, randSuffix } from "./util";
+import { clone, deepEqual, Rng, randSuffix, SIM_EPOCH } from "./util";
 import { runKubelets } from "./controllers/kubelet";
 import { runScheduler } from "./controllers/scheduler";
 import { runReplicaSets } from "./controllers/replicaset";
 import { runDeployments } from "./controllers/deployment";
+import { runStatefulSets } from "./controllers/statefulset";
+import { runDaemonSets } from "./controllers/daemonset";
+import { runJobs } from "./controllers/job";
+import { runCronJobs } from "./controllers/cronjob";
+import { runHPAs } from "./controllers/hpa";
+import { runMetrics, type MetricsState } from "./controllers/metrics";
+import { runStorage } from "./controllers/storage";
+import { runNetworkControllers, ensureNamespaceDefaults } from "./controllers/network";
 import { runNodeLifecycle } from "./controllers/node-lifecycle";
 import { runEndpoints } from "./controllers/endpoints";
 import { runGarbageCollector } from "./controllers/gc";
+import { checkQuota, runDisruptionController, runQuotaController } from "./policy";
 import { bootstrap } from "./bootstrap";
+
+export { resourceName };
 
 export const STEP_MS = 100;
 
@@ -59,6 +71,7 @@ export type ContainerPhase =
   | "pulling"
   | "pullError" // shows ErrImagePull
   | "pullBackoff" // shows ImagePullBackOff
+  | "configError" // shows CreateContainerConfigError
   | "creating"
   | "running"
   | "exited" // shows terminated (Error/Completed) briefly
@@ -88,6 +101,28 @@ export interface ContainerRuntime {
   lastRunStart?: number;
   /** Set once "Started" etc. have fired for this run. */
   announced?: boolean;
+  /** Resolved environment for this run. */
+  env?: Record<string, string>;
+  /** The container's writable layer: path → content. Reset on every restart. */
+  fs?: Record<string, string>;
+  /** Exit code of the last command the program ran (for && and ||). */
+  lastCode?: number;
+  /** Memory the program allocated, CPU it burns (millicores), requests served recently (sim ms). */
+  alloc?: number;
+  burn?: number;
+  reqs?: number[];
+  /** Readiness as the prober sees it; startup probe passed. */
+  ready?: boolean;
+  started?: boolean;
+  probes?: { startup?: ProbeState; liveness?: ProbeState; readiness?: ProbeState };
+  /** Being killed by a failed probe: exits at this time. */
+  killAt?: number;
+}
+
+export interface ProbeState {
+  next: number;
+  ok: number;
+  fail: number;
 }
 
 export interface PodRuntime {
@@ -96,6 +131,13 @@ export interface PodRuntime {
   /** Sandbox is ready (IP assigned) from this time. */
   sandboxAt: number;
   killingAnnounced?: boolean;
+  /** Volumes were mounted at this time. */
+  mountedAt?: number;
+  mountRetryAt?: number;
+  /** ConfigMap/Secret volume contents as the kubelet last projected them. */
+  projected?: Record<string, Record<string, string>>;
+  projectedAt?: number;
+  subPaths?: Record<string, Record<string, string>>;
 }
 
 export interface NodeRuntime {
@@ -126,12 +168,22 @@ export interface ClusterState {
   nextClusterIp: number;
   scheduleAttempts: Record<string, number>;
   accum: number;
+  /** Data in volumes (emptyDir, PersistentVolumes, hostPath): store key → path → content. */
+  volumes: Record<string, Record<string, string>>;
+  /** metrics-server's last scrape. */
+  metrics: MetricsState;
+  /** HPA recommendation history, by HPA uid. */
+  hpa: Record<string, { recs: { t: number; n: number }[] }>;
+  /** Controller timers and one-shot markers: key → sim ms. */
+  timers: Record<string, number>;
+  lbNext: number;
+  eventSeq: number;
 }
 
 export type ClusterSignal =
   | { type: "change" }
   | { type: "event"; event: KubeEvent }
-  | { type: "traffic"; serviceUid?: string; podUid: string; nodeName?: string; ok: boolean; via: "clusterip" | "nodeport" | "pod" };
+  | { type: "traffic"; serviceUid?: string; ingressUid?: string; podUid: string; fromUid?: string; nodeName?: string; ok: boolean; blocked?: boolean; via: "clusterip" | "nodeport" | "lb" | "ingress" | "pod" };
 
 export class ApiError extends Error {
   constructor(
@@ -142,21 +194,6 @@ export class ApiError extends Error {
   }
 }
 
-const RESOURCE_NAMES: Record<string, string> = {
-  Pod: "pods",
-  Service: "services",
-  Endpoints: "endpoints",
-  Node: "nodes",
-  Namespace: "namespaces",
-  Event: "events",
-  ReplicaSet: "replicasets.apps",
-  Deployment: "deployments.apps",
-};
-
-export function resourceName(kind: string): string {
-  return RESOURCE_NAMES[kind] ?? kind.toLowerCase() + "s";
-}
-
 export function objKey(kind: string, namespace: string | undefined, name: string): string {
   return `${kind}/${NAMESPACED_KINDS.has(kind) ? (namespace ?? "default") : ""}/${name}`;
 }
@@ -164,6 +201,8 @@ export function objKey(kind: string, namespace: string | undefined, name: string
 export interface DeleteOptions {
   gracePeriodSeconds?: number;
   force?: boolean;
+  /** Orphan leaves dependents running with this owner's reference removed (kubectl delete --cascade=orphan). */
+  propagationPolicy?: "Background" | "Foreground" | "Orphan";
 }
 
 export class Cluster {
@@ -187,6 +226,13 @@ export class Cluster {
   constructor(configOrState?: Partial<ClusterConfig> | ClusterState) {
     if (configOrState && "objects" in configOrState) {
       this.state = clone(configOrState);
+      // Snapshots from before these fields existed.
+      this.state.volumes ??= {};
+      this.state.metrics ??= { at: 0, pods: {}, nodes: {} };
+      this.state.hpa ??= {};
+      this.state.timers ??= {};
+      this.state.lbNext ??= 0;
+      this.state.eventSeq ??= 0;
       this.rng = new Rng(this.state.rng);
     } else {
       const config = { ...DEFAULT_CONFIG, ...(configOrState ?? {}) };
@@ -202,6 +248,12 @@ export class Cluster {
         nextClusterIp: 1,
         scheduleAttempts: {},
         accum: 0,
+        volumes: {},
+        metrics: { at: 0, pods: {}, nodes: {} },
+        hpa: {},
+        timers: {},
+        lbNext: 0,
+        eventSeq: 0,
       };
       this.rng = new Rng(config.seed);
       bootstrap(this);
@@ -257,11 +309,22 @@ export class Cluster {
     this.state.now += STEP_MS;
     runKubelets(this);
     runNodeLifecycle(this);
+    runStorage(this);
     runScheduler(this);
     runEndpoints(this);
     runReplicaSets(this);
     runDeployments(this);
-    runGarbageCollector(this);
+    runStatefulSets(this);
+    runDaemonSets(this);
+    runJobs(this);
+    runCronJobs(this);
+    runMetrics(this);
+    runHPAs(this);
+    runNetworkControllers(this);
+    runDisruptionController(this);
+    if (this.state.now % 1000 === 0) runQuotaController(this);
+    // The garbage collector works from an informer cache in real clusters; every 500ms is plenty.
+    if (this.state.now % 500 === 0) runGarbageCollector(this);
     this.state.rng = this.rng.state;
   }
 
@@ -288,7 +351,8 @@ export class Cluster {
       if (namespace !== undefined && NAMESPACED_KINDS.has(kind) && o.metadata.namespace !== namespace) continue;
       out.push(o as unknown as T);
     }
-    return out.sort((a, b) => a.metadata.name.localeCompare(b.metadata.name));
+    // Byte order, like Go's sort of names.
+    return out.sort((a, b) => (a.metadata.name < b.metadata.name ? -1 : a.metadata.name > b.metadata.name ? 1 : 0));
   }
 
   byUid(uid: string): AnyObject | undefined {
@@ -309,9 +373,16 @@ export class Cluster {
       (idx.get(obj.kind) ?? idx.set(obj.kind, new Set()).get(obj.kind)!).add(key);
     }
     this.state.objects[key] = next as unknown as AnyObject;
-    if (obj.kind === "Node") this.schedulerWake = true;
+    if (obj.kind === "Node" || obj.kind === "PersistentVolumeClaim" || obj.kind === "PersistentVolume") this.schedulerWake = true;
     this.changed = true;
     return next;
+  }
+
+  /** Like update(), for status writers: only `status` is copied, so fn must change nothing else. Cheap when nothing changed. */
+  updateStatus<T extends KubeObject>(obj: T, fn: (draft: T) => void): T {
+    const draft = { ...obj, status: clone(obj.status) } as T;
+    fn(draft);
+    return this.put(draft);
   }
 
   /** Clone-modify-put in one call. */
@@ -330,6 +401,7 @@ export class Cluster {
     if (obj.kind === "Pod") {
       delete this.state.pods[obj.metadata.uid];
       delete this.state.scheduleAttempts[obj.metadata.uid];
+      for (const k of Object.keys(this.state.volumes)) if (k.startsWith(`emptydir/${obj.metadata.uid}/`)) delete this.state.volumes[k];
     }
     this.changed = true;
   }
@@ -364,7 +436,8 @@ export class Cluster {
         apiVersion: "v1",
         kind: "Event",
         metadata: {
-          name: `${obj.metadata.name}.${(this.rng.int(2 ** 30) * 64 + this.rng.int(64)).toString(16).padStart(16, "1")}`,
+          // <object>.<hex UnixNano>, like client-go's recorder: names sort in recording order.
+          name: `${obj.metadata.name}.${(BigInt(SIM_EPOCH + this.now) * BigInt(1_000_000) + BigInt(this.state.eventSeq++ % 1_000_000)).toString(16)}`,
           namespace: ns,
           uid: this.uid(),
           resourceVersion: "",
@@ -394,7 +467,8 @@ export class Cluster {
   eventsFor(obj: KubeObject): KubeEvent[] {
     return this.list<KubeEvent>("Event", obj.metadata.namespace ?? "default")
       .filter((e) => e.involvedObject.uid === obj.metadata.uid)
-      .sort((a, b) => a.firstTimestamp - b.firstTimestamp);
+      // Names end in hex nanoseconds, so same-tick events keep their recording order.
+      .sort((a, b) => a.firstTimestamp - b.firstTimestamp || (a.metadata.name < b.metadata.name ? -1 : 1));
   }
 
   // ---------- API (what kubectl talks to) ----------
@@ -405,13 +479,13 @@ export class Cluster {
     return o as unknown as T;
   }
 
-  private ensureNamespace(kind: string, ns: string | undefined): void {
+  private ensureNamespace(kind: string, ns: string | undefined, name = ""): void {
     if (!NAMESPACED_KINDS.has(kind)) return;
     const n = this.raw("Namespace", undefined, ns ?? "default");
     if (!n) throw new ApiError(`Error from server (NotFound): namespaces "${ns}" not found`, "NotFound");
     if (n.status && (n.status as { phase: string }).phase === "Terminating")
       throw new ApiError(
-        `Error from server (Forbidden): ${resourceName(kind)} "${"x"}" is forbidden: unable to create new content in namespace ${ns} because it is being terminated`,
+        `Error from server (Forbidden): ${resourceName(kind)} "${name}" is forbidden: unable to create new content in namespace ${ns} because it is being terminated`,
         "Forbidden",
       );
   }
@@ -425,7 +499,7 @@ export class Cluster {
     if (NAMESPACED_KINDS.has(obj.kind)) meta.namespace ??= "default";
     else delete meta.namespace;
     validate(this, obj, undefined);
-    this.ensureNamespace(obj.kind, meta.namespace);
+    this.ensureNamespace(obj.kind, meta.namespace, meta.name);
     if (this.raw(obj.kind, meta.namespace, meta.name)) {
       throw new ApiError(`Error from server (AlreadyExists): ${resourceName(obj.kind)} "${meta.name}" already exists`, "AlreadyExists");
     }
@@ -433,7 +507,10 @@ export class Cluster {
     meta.creationTimestamp = this.now;
     delete (meta as { generateName?: string }).generateName;
     admit(this, obj, undefined);
+    // ResourceQuota runs last, on the fully defaulted object.
+    checkQuota(this, obj);
     const stored = this.put(obj);
+    if (obj.kind === "Namespace") ensureNamespaceDefaults(this, meta.name);
     this.flush();
     return stored as unknown as T;
   }
@@ -453,10 +530,10 @@ export class Cluster {
       deletionTimestamp: prev.metadata.deletionTimestamp,
     };
     if (!NAMESPACED_KINDS.has(obj.kind)) delete obj.metadata.namespace;
-    obj.status = prev.status;
+    if (prev.status !== undefined || obj.status === undefined) obj.status = prev.status;
     validate(this, obj, prev);
     admit(this, obj, prev);
-    if (!deepEqual(obj.spec, prev.spec) || ("subsets" in obj && !deepEqual(obj.subsets, prev.subsets))) {
+    if (!deepEqual(obj.spec, prev.spec) && prev.metadata.generation !== undefined) {
       obj.metadata.generation = (prev.metadata.generation ?? 1) + 1;
     }
     const stored = this.put(obj);
@@ -486,7 +563,8 @@ export class Cluster {
     const prevSpec = (prev.spec ?? {}) as Record<string, unknown>;
     // Fields the applied config leaves out keep their live values (e.g. replicas after `kubectl scale`,
     // or a Service's allocated clusterIP).
-    for (const keep of ["replicas", "clusterIP", "clusterIPs", "nodeName"]) {
+    const keeps = ["replicas", "clusterIP", "clusterIPs", "nodeName", "volumeName", "storageClassName", ...(input.kind === "Job" ? ["selector"] : [])];
+    for (const keep of keeps) {
       if (spec[keep] === undefined && prevSpec[keep] !== undefined) spec[keep] = prevSpec[keep];
     }
     if (input.kind === "Service" && Array.isArray(spec.ports) && Array.isArray(prevSpec.ports)) {
@@ -495,12 +573,18 @@ export class Cluster {
         nodePort: p.nodePort ?? (prevSpec.ports as { nodePort?: number; port: number }[]).find((q) => q.port === p.port)?.nodePort,
       }));
     }
-    merged.spec = spec;
-    if ("subsets" in annotated) merged.subsets = annotated.subsets;
+    if (annotated.spec !== undefined || prev.spec !== undefined) merged.spec = spec;
+    // Kinds without a spec (ConfigMap data, Secret data, Role rules, binding subjects…) take their top-level fields as applied.
+    const TOP = ["subsets", "data", "binaryData", "stringData", "type", "immutable", "rules", "roleRef", "subjects", "provisioner", "reclaimPolicy", "volumeBindingMode", "allowVolumeExpansion", "parameters", "secrets", "automountServiceAccountToken", "aggregationRule", "value", "globalDefault", "description", "preemptionPolicy"];
+    for (const k of TOP) {
+      if (k in annotated) (merged as Record<string, unknown>)[k] = (annotated as Record<string, unknown>)[k];
+      else if (k in merged && k !== "type" && k !== "secrets") delete (merged as Record<string, unknown>)[k];
+    }
     // Compare after defaulting so an identical re-apply reports "unchanged".
     const probe = clone(merged);
     admit(this, probe, prev);
-    if (deepEqual(probe.spec, prev.spec) && deepEqual(probe.metadata.labels, prev.metadata.labels) && deepEqual(probe.metadata.annotations, prev.metadata.annotations)) {
+    const same = (k: string) => deepEqual((probe as Record<string, unknown>)[k], (prev as Record<string, unknown>)[k]);
+    if (same("spec") && TOP.every(same) && deepEqual(probe.metadata.labels, prev.metadata.labels) && deepEqual(probe.metadata.annotations, prev.metadata.annotations)) {
       return { obj: prev as unknown as T, action: "unchanged" };
     }
     return { obj: this.replace(merged) as unknown as T, action: "configured" };
@@ -514,6 +598,16 @@ export class Cluster {
   }
 
   deleteObject(obj: KubeObject, opts: DeleteOptions = {}): void {
+    if (opts.propagationPolicy === "Orphan") {
+      const uid = obj.metadata.uid;
+      for (const o of Object.values(this.state.objects)) {
+        if (!o.metadata.ownerReferences?.some((r) => r.uid === uid)) continue;
+        this.update(o, (d) => {
+          d.metadata.ownerReferences = d.metadata.ownerReferences!.filter((r) => r.uid !== uid);
+          if (d.metadata.ownerReferences.length === 0) delete d.metadata.ownerReferences;
+        });
+      }
+    }
     if (obj.kind === "Pod") {
       const pod = obj as Pod;
       if (opts.force || opts.gracePeriodSeconds === 0 || !pod.spec?.nodeName) {
@@ -542,6 +636,11 @@ export class Cluster {
       for (const p of this.list<Pod>("Pod")) if (p.spec?.nodeName === obj.metadata.name) this.remove(p);
       delete this.state.nodes[obj.metadata.name];
     }
+    // Finalizers (pvc-protection, pv-protection…): mark for deletion; the owning controller finishes it.
+    if (obj.metadata.finalizers?.length) {
+      if (obj.metadata.deletionTimestamp === undefined) this.update(obj, (o) => void (o.metadata.deletionTimestamp = this.now));
+      return;
+    }
     this.remove(obj);
   }
 
@@ -549,7 +648,10 @@ export class Cluster {
 
   log(podUid: string, container: string, restart: number, t: number, text: string): void {
     const key = `${podUid}/${container}/${restart}`;
-    (this.state.logs[key] ??= []).push({ t, text });
+    const lines = (this.state.logs[key] ??= []);
+    lines.push({ t, text });
+    // Container runtimes rotate logs; keep the tail so busy Pods don't grow without bound.
+    if (lines.length > 1200) lines.splice(0, lines.length - 1000);
   }
 
   logsFor(pod: Pod, container: string, previous = false): LogLine[] | undefined {

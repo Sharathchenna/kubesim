@@ -12,22 +12,31 @@ export const REVISION = "deployment.kubernetes.io/revision";
 const DESIRED = "deployment.kubernetes.io/desired-replicas";
 const MAX = "deployment.kubernetes.io/max-replicas";
 
+const hashCache = new WeakMap<PodTemplateSpec, string>();
+
 export function templateHash(tpl: PodTemplateSpec, collisionCount = 0): string {
+  // Stored objects are replaced, never mutated, so a template object always hashes the same.
+  const cached = collisionCount ? undefined : hashCache.get(tpl);
+  if (cached) return cached;
+  const h = computeHash(tpl, collisionCount);
+  if (!collisionCount) hashCache.set(tpl, h);
+  return h;
+}
+
+function computeHash(tpl: PodTemplateSpec, collisionCount: number): string {
   const t = clone(tpl);
   if (t.metadata?.labels) delete t.metadata.labels["pod-template-hash"];
   return safeEncode(String(fnv32a(stableStringify(t) + (collisionCount ? String(collisionCount) : ""))));
 }
 
 export function equalIgnoreHash(a: PodTemplateSpec, b: PodTemplateSpec): boolean {
-  const x = clone(a);
-  const y = clone(b);
-  for (const t of [x, y]) {
-    if (t.metadata?.labels) {
-      delete t.metadata.labels["pod-template-hash"];
-      if (Object.keys(t.metadata.labels).length === 0) delete t.metadata.labels;
-    }
-  }
-  return deepEqual(x, y);
+  if (!deepEqual(a.spec, b.spec)) return false;
+  const strip = (t: PodTemplateSpec) => {
+    const labels = { ...(t.metadata?.labels ?? {}) };
+    delete labels["pod-template-hash"];
+    return { ...(t.metadata ?? {}), labels: Object.keys(labels).length ? labels : undefined };
+  };
+  return deepEqual(strip(a), strip(b));
 }
 
 export function revisionOf(o: { metadata: { annotations?: Record<string, string> } }): number {
@@ -258,7 +267,7 @@ function writeStatus(cluster: Cluster, d: Deployment, newRs: ReplicaSet | undefi
   const specTotal = sum((r) => r.spec?.replicas);
   const complete = updated === replicas && total === replicas && available === replicas;
 
-  cluster.update(d, (x) => {
+  cluster.updateStatus(d, (x) => {
     const prev = x.status ?? {};
     const conds = [...(prev.conditions ?? [])];
     const put = (c: Condition) => {

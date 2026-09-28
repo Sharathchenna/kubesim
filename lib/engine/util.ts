@@ -3,6 +3,22 @@ import type { Labels, LabelSelector } from "./types";
 /** The simulated wall clock starts here; sim time 0 maps to this instant. */
 export const SIM_EPOCH = Date.UTC(2026, 0, 1, 9, 0, 0);
 
+export function goDuration(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m${s % 60}s`;
+  return `${Math.floor(m / 60)}h${m % 60}m${s % 60}s`;
+}
+
+export function unixDate(simMs: number): string {
+  const d = new Date(SIM_EPOCH + simMs);
+  const day = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getUTCDay()];
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()];
+  const t = d.toISOString().slice(11, 19);
+  return `${day} ${mon} ${String(d.getUTCDate()).padStart(2, " ")} ${t} UTC ${d.getUTCFullYear()}`;
+}
+
 export function rfc3339(simMs: number): string {
   return new Date(SIM_EPOCH + simMs).toISOString().replace(/\.\d{3}Z$/, "Z");
 }
@@ -65,8 +81,26 @@ export function clone<T>(v: T): T {
   return v === undefined ? v : (JSON.parse(JSON.stringify(v)) as T);
 }
 
+/** Structural equality with JSON semantics (undefined fields don't count). Hot path: runs on every store write. */
 export function deepEqual(a: unknown, b: unknown): boolean {
-  return stableStringify(a) === stableStringify(b);
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a)) {
+    if (!Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+    return true;
+  }
+  if (Array.isArray(b)) return false;
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  let n = 0;
+  for (const k in x) {
+    if (x[k] === undefined) continue;
+    n++;
+    if (!deepEqual(x[k], y[k])) return false;
+  }
+  for (const k in y) if (y[k] !== undefined) n--;
+  return n === 0;
 }
 
 export function matchesSelector(labels: Labels | undefined, selector: LabelSelector | Labels | undefined): boolean {

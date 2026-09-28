@@ -5,3 +5,7 @@ out
 node_modules
 scripts
 *.tsbuildinfo
+videos
+e2e
+test-results
+playwright-report

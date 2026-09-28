@@ -12,6 +12,9 @@
 
 # testing
 /coverage
+/test-results/
+/playwright-report/
+/.prof/
 
 # next.js
 /.next/
@@ -40,7 +43,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local agent/planning files
+# local agent files
 /.claude/
-/.scratch/
 .vercel

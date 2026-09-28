@@ -115,7 +115,7 @@ export function runReplicaSets(cluster: Cluster): void {
       observedGeneration: rs.metadata.generation,
     };
     const cur = cluster.get<ReplicaSet>("ReplicaSet", ns, rs.metadata.name);
-    cluster.update(cur, (d) => {
+    cluster.updateStatus(cur, (d) => {
       d.status = {
         replicas: status.replicas,
         ...(status.fullyLabeledReplicas ? { fullyLabeledReplicas: status.fullyLabeledReplicas } : {}),

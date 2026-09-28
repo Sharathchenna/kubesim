@@ -6,9 +6,12 @@ import { useState } from "react";
 
 const NAV = [
   { href: "/learn", label: "Lessons" },
+  { href: "/challenges", label: "Challenges" },
+  { href: "/exams", label: "Exams" },
   { href: "/explainers", label: "Explainers" },
   { href: "/concepts", label: "Concepts" },
   { href: "/sandbox", label: "Sandbox" },
+  { href: "/progress", label: "Progress" },
 ];
 
 export function Logo() {
@@ -23,11 +26,11 @@ export function Logo() {
   );
 }
 
-export function AppHeader({ center, right }: { center?: React.ReactNode; right?: React.ReactNode }) {
+export function AppHeader({ center, right, glass }: { center?: React.ReactNode; right?: React.ReactNode; /** See-through and sticky, for marketing pages. */ glass?: boolean }) {
   const path = usePathname();
   const [menu, setMenu] = useState(false);
   return (
-    <header className="relative flex h-14 shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-3 sm:px-4">
+    <header className={`flex h-14 shrink-0 items-center gap-3 border-b px-3 sm:px-4 ${glass ? "sticky top-0 z-40 border-slate-200/60 bg-[#f7f8fa]/70 backdrop-blur-xl backdrop-saturate-150" : "relative border-slate-200/80 bg-white"}`}>
       <a href="#dock-panel" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-slate-900 focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-white">
         Skip to terminal
       </a>

@@ -1,6 +1,6 @@
 # Contributing to kubesim
 
-Thanks for helping people learn Kubernetes. This guide covers the four most common contributions: a Lesson, an Explainer, a Concept Illustration, and an engine fix.
+Thanks for helping people learn Kubernetes. This guide covers the most common contributions: a Lesson, a Challenge, a practice exam task, an Explainer, a Concept Illustration, and an engine fix.
 
 ## Setup
 
@@ -16,9 +16,10 @@ bun run typecheck
 bun run lint
 bun run test
 bun run build      # the static export must succeed
+bun run e2e        # optional locally (CI runs it): Playwright against out/
 ```
 
-Please read [CONTEXT.md](CONTEXT.md) first: it defines the words we use (Learner, Lesson, Step, Check, Sandbox, Explainer, Concept Illustration) and the ones we avoid.
+Please read [CONTEXT.md](CONTEXT.md) first: it defines the words we use (Learner, Lesson, Step, Check, Track, Challenge, Practice Exam, Sandbox, Explainer, Concept Illustration) and the ones we avoid.
 
 ## Add or edit a Lesson
 
@@ -48,6 +49,21 @@ Lessons live in [`lib/lessons/lessons.ts`](lib/lessons/lessons.ts). A Lesson is 
 - Body text: `bash` fences get a Run button per line (lines containing `<placeholder>` don't). `yaml` fences get "Open in editor". ` ```illustration <id>``` ` embeds a Concept Illustration.
 - Write for someone who knows Docker but not Kubernetes. Short sentences, one idea per Step, and point at what to watch on the canvas.
 
+Every Lesson has a `track` (see `TRACKS`); the curriculum map on `/learn` groups Lessons by it.
+
+## Add a Challenge
+
+Challenges live in [`lib/lessons/challenges.ts`](lib/lessons/challenges.ts). A Challenge is a Lesson with a `difficulty` and a `brief`, and its Steps are goals rather than instructions:
+
+- `setup` builds the broken cluster. The `brief` describes the symptom the way a colleague would ("the shop page returns 503 since this morning"), never the cause.
+- Each goal's `body` states the outcome ("customers can reach the shop through the `shop` Service"), and its Check tests exactly that. Goals can be met in any order.
+- `hint` nudges towards where to look; `solution` is one way to fix it.
+- `lessons.test.ts` asserts no goal passes right after setup, then replays every solution.
+
+## Add a practice exam task
+
+Practice exams live in [`lib/lessons/exams.ts`](lib/lessons/exams.ts). Tasks are independent Steps with `points` (a whole exam sums to 100) and usually a `namespace` created in `setup`. Write them like exam questions: exact names, images, ports and namespaces, and no commands. Checks run once, when the Learner submits, so they may be stricter than a Lesson's. The same solvability test applies.
+
 ## Add an Explainer
 
 Explainers live in [`lib/explainers/explainers.ts`](lib/explainers/explainers.ts). Each is a `setup` for the cluster plus `beats`: captions that fire at simulated-time offsets, optionally running an action:
@@ -75,9 +91,12 @@ The engine ([`lib/engine`](lib/engine)) must behave like real Kubernetes. When y
 1. Find the real behaviour and cite it: the Kubernetes source, docs, or output captured from a real cluster. Add it to [`docs/research/kubernetes-behaviour-reference.md`](docs/research/kubernetes-behaviour-reference.md) if it's new.
 2. Add a test in `lib/engine/engine.test.ts` or `lib/kubectl/kubectl.test.ts` that pins the behaviour: timings, event messages, printed output.
 3. Keep it deterministic. Use `cluster.rng`, never `Math.random`, and sim time (`cluster.now`), never wall-clock time.
-4. Keep state as plain JSON in `ClusterState`, so snapshots keep working.
+4. Keep state as plain JSON in `ClusterState`, so snapshots (autosave, shared links) keep working. Old snapshots must still load: default any new `ClusterState` field in the `Cluster` constructor.
+5. Controllers run every 100 ms of simulated time; keep them cheap. Write status with `cluster.updateStatus` so unchanged objects cost almost nothing.
 
-A new kubectl command goes in [`lib/kubectl/kubectl.ts`](lib/kubectl/kubectl.ts). Match the real command's flags, output and error text.
+A new kubectl command goes in [`lib/kubectl/kubectl.ts`](lib/kubectl/kubectl.ts); its `get` columns in [`printers.ts`](lib/kubectl/printers.ts), its `describe` in [`describe.ts`](lib/kubectl/describe.ts), and any `create` generator in [`generators.ts`](lib/kubectl/generators.ts). Match the real command's flags, output and error text. New API kinds are registered once, in [`lib/engine/kinds.ts`](lib/engine/kinds.ts). Commands that change the cluster must call `can(…)` so `--as` impersonation is checked against RBAC.
+
+Commands inside containers (`kubectl exec`, exec probes, and the programs containers run) go through [`lib/engine/exec.ts`](lib/engine/exec.ts), a small BusyBox/coreutils subset over each container's file view ([`fs.ts`](lib/engine/fs.ts)). New images go in [`images.ts`](lib/engine/images.ts); prefer images the official Kubernetes docs use.
 
 ## Pull requests
 

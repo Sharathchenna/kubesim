@@ -5,7 +5,7 @@
 // useSyncExternalStore and re-renders once per animation frame.
 
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { Cluster, request, type KubeEvent } from "@/lib/engine";
+import { Cluster, request, type ClusterState, type KubeEvent } from "@/lib/engine";
 import type { ActionResult } from "./actions";
 import { applyYaml, runKubectl } from "@/lib/kubectl/kubectl";
 
@@ -33,8 +33,13 @@ spec:
 export interface Packet {
   id: number;
   serviceUid?: string;
+  ingressUid?: string;
+  /** Pod the request came from (Pod-to-Pod traffic, load generators). */
+  fromUid?: string;
   podUid: string;
   ok: boolean;
+  /** Dropped by a NetworkPolicy. */
+  blocked?: boolean;
   born: number; // performance.now()
 }
 
@@ -79,6 +84,10 @@ export class SimStore {
   private lastSave = 0;
   /** True when the cluster came from an autosave. */
   restoredFromSave = false;
+  /** True when the cluster came from a shared link. */
+  loadedFromLink = false;
+  /** Set when the engine threw while advancing: the simulation is paused and nothing is autosaved. */
+  crashed?: string;
   private id = 1;
   constructor(private opts: SimOptions = {}) {}
   private raf = 0;
@@ -106,7 +115,8 @@ export class SimStore {
         this.events.unshift(s.event);
         if (this.events.length > 300) this.events.pop();
       } else if (s.type === "traffic") {
-        this.packets.push({ id: this.id++, serviceUid: s.serviceUid, podUid: s.podUid, ok: s.ok, born: performance.now() });
+        // Busy load generators send many requests a second; cap what's drawn.
+        if (this.packets.length < 60) this.packets.push({ id: this.id++, serviceUid: s.serviceUid, ingressUid: s.ingressUid, fromUid: s.fromUid, podUid: s.podUid, ok: s.ok, blocked: s.blocked, born: performance.now() });
       }
     });
   }
@@ -116,16 +126,24 @@ export class SimStore {
     if (!key || typeof localStorage === "undefined") return undefined;
     try {
       const raw = localStorage.getItem(key);
-      return raw ? new Cluster(JSON.parse(raw)) : undefined;
+      if (!raw) return undefined;
+      const c = new Cluster(JSON.parse(raw));
+      // A save from an older engine can load and still fail on its first step: try one on a copy.
+      new Cluster(c.snapshot()).advance(100);
+      return c;
     } catch {
-      localStorage.removeItem(key);
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // Storage unavailable.
+      }
       return undefined;
     }
   }
 
   private persist() {
     const key = this.opts.persistKey;
-    if (!key || !this.cluster) return;
+    if (!key || !this.cluster || this.crashed) return;
     try {
       const snap = this.cluster.snapshot();
       for (const k of Object.keys(snap.logs)) snap.logs[k] = snap.logs[k].slice(-100);
@@ -164,11 +182,19 @@ export class SimStore {
       last = now;
       this.frameNow = now;
       const c = this.cluster!;
-      if (!this.paused) c.tick(dt * this.speed);
-      const due = this.queue.filter((q) => q.at <= c.now);
-      if (due.length) {
-        this.queue = this.queue.filter((q) => q.at > c.now);
-        for (const q of due) q.fn();
+      try {
+        if (!this.paused && !this.crashed) c.tick(dt * this.speed);
+        const due = this.queue.filter((q) => q.at <= c.now);
+        if (due.length) {
+          this.queue = this.queue.filter((q) => q.at > c.now);
+          for (const q of due) q.fn();
+        }
+      } catch (e) {
+        // Keep the page alive: stop the clock and say so, rather than freezing silently.
+        this.crashed = (e as Error)?.message || String(e);
+        this.paused = true;
+        this.queue = [];
+        console.error("kubesim: the simulation stopped", e);
       }
       this.packets = this.packets.filter((p) => now - p.born < PACKET_MS);
       if (now - this.lastSave > 5000) {
@@ -195,6 +221,7 @@ export class SimStore {
     this.bump();
   };
   setPaused = (p: boolean) => {
+    if (this.crashed) return;
     this.paused = p;
     this.bump();
   };
@@ -248,8 +275,8 @@ export class SimStore {
       const r = runKubectl(this.ctx(), t.live);
       t.out = r.out;
       t.ok = r.ok;
-      // rollout status stops by itself once the rollout finishes.
-      if (/rollout status/.test(t.live) && !r.watch) t.live = undefined;
+      // rollout status and wait stop by themselves once their condition holds.
+      if (!r.watch) t.live = undefined;
     }
   }
 
@@ -307,10 +334,10 @@ export class SimStore {
   };
 
   /** Applies YAML (the Editor's Apply button). */
-  apply = (yaml: string) => {
+  apply = (yaml: string, file?: string) => {
     const c = this.cluster;
     if (!c) return;
-    const name = this.editorFile;
+    const name = file ?? this.editorFile;
     this.files[name] = yaml;
     const r = applyYaml(this.ctx(), yaml);
     const cmd = `kubectl apply -f ${name}`;
@@ -321,12 +348,42 @@ export class SimStore {
     return r;
   };
 
+  /** Replaces the cluster with a snapshot (a shared link). */
+  load = (state: ClusterState) => {
+    let next: Cluster;
+    try {
+      next = new Cluster(state);
+      new Cluster(next.snapshot()).advance(100);
+    } catch {
+      throw new Error("the cluster in it doesn't run in this version of kubesim.");
+    }
+    this.crashed = undefined;
+    this.paused = false;
+    this.queue = [];
+    this.log = [];
+    this.term = [];
+    this.history = [];
+    this.namespace = "default";
+    this.viewNs = "*";
+    this.attach(next);
+    this.bootAt = this.cluster!.now;
+    this.restoredFromSave = false;
+    this.loadedFromLink = true;
+    this.persist();
+    this.bump();
+  };
+
+  /** The current cluster, for sharing. */
+  snapshot = () => this.cluster?.snapshot();
+
   setViewNs = (ns: string) => {
     this.viewNs = ns;
     this.bump();
   };
 
   reset = () => {
+    this.crashed = undefined;
+    this.paused = false;
     this.queue = [];
     this.log = [];
     this.term = [];
@@ -334,8 +391,13 @@ export class SimStore {
     this.namespace = "default";
     this.viewNs = "*";
     this.opts.onReset?.();
-    if (this.opts.persistKey) localStorage.removeItem(this.opts.persistKey);
+    try {
+      if (this.opts.persistKey) localStorage.removeItem(this.opts.persistKey);
+    } catch {
+      // Storage unavailable.
+    }
     this.restoredFromSave = false;
+    this.loadedFromLink = false;
     this.boot();
     this.startedAt = performance.now();
     this.bump();

@@ -43,3 +43,19 @@ _Avoid_: Animation, demo, visualisation
 **Concept Illustration**:
 A hand-made SVG diagram inside a Lesson showing something the Simulated Cluster doesn't model, such as control-plane internals.
 _Avoid_: Figure, image, drawing
+
+**Track**:
+A group of Lessons on one topic (Foundations, Workloads, Configuration, Networking, Storage, Operations, Security). The Tracks in order make up the curriculum map.
+_Avoid_: Module, course, chapter
+
+**Challenge**:
+A Simulated Cluster that starts broken or unfinished, plus one or more goals, with no step-by-step instructions. Each goal is a Step whose Check tests the fix; hints and the solution stay hidden until asked for.
+_Avoid_: Puzzle, quiz, lab
+
+**Practice Exam**:
+A timed list of independent tasks in the style of the CKAD or CKA, each worth points, graded from cluster state when the Learner submits or time runs out.
+_Avoid_: Test, quiz, certification
+
+**Shared Link**:
+A URL that carries a compressed snapshot of a Sandbox cluster in its hash, so a Learner can hand a copy of their cluster to someone else. There is still no backend.
+_Avoid_: Permalink, saved cluster

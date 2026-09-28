@@ -35,13 +35,16 @@ export function runEndpoints(cluster: Cluster): void {
       groups.set(key, g);
       const addr: EndpointAddress = {
         ip: p.status!.podIP!,
+        // Pods with a hostname under this (headless) Service get their own DNS name.
+        ...(p.spec?.hostname && p.spec.subdomain === svc.metadata.name ? { hostname: p.spec.hostname } : {}),
         nodeName: p.spec?.nodeName,
         targetRef: { kind: "Pod", name: p.metadata.name, namespace: ns, uid: p.metadata.uid },
       };
-      if (isPodReady(p) && p.metadata.deletionTimestamp === undefined) g.ready.push(addr);
+      if ((isPodReady(p) || svc.spec?.publishNotReadyAddresses) && p.metadata.deletionTimestamp === undefined) g.ready.push(addr);
       else g.notReady.push(addr);
     }
-    const byIp = (a: EndpointAddress, b: EndpointAddress) => a.ip.localeCompare(b.ip, undefined, { numeric: true });
+    const ipNum = (ip: string) => ip.split(".").reduce((n, o) => n * 256 + Number(o), 0);
+    const byIp = (a: EndpointAddress, b: EndpointAddress) => ipNum(a.ip) - ipNum(b.ip);
     const subsets: EndpointSubset[] = [...groups.values()].map((g) => ({
       ...(g.ready.length ? { addresses: g.ready.sort(byIp) } : {}),
       ...(g.notReady.length ? { notReadyAddresses: g.notReady.sort(byIp) } : {}),

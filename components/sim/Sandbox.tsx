@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { Cluster, Deployment, Node, Pod } from "@/lib/engine";
 import * as A from "@/lib/sim/actions";
 import { useSimulation, type SimStore } from "@/lib/sim/useSimulation";
@@ -10,10 +10,9 @@ import { Btn, Card, Dot, Heading, Segmented, inputCls as input } from "../ui";
 import type { Selection } from "./ClusterView";
 import { Inspector } from "./Inspector";
 import { MobileTabs, SimControls, Workspace } from "./Workspace";
+import { SHARE_PARAM, decodeCluster, encodeCluster, tokenFromHash } from "@/lib/sim/share";
 
 type Sim = SimStore;
-
-// ---------------------------------------------------------------- scenarios
 
 // ---------------------------------------------------------------- scenarios
 
@@ -124,7 +123,241 @@ const SCENARIOS: { id: string; title: string; blurb: string; icon: string; go: (
       sim.schedule([{ after: c.raw("Deployment", "default", "web") ? 300 : 7000, fn: () => sim.run((cl) => A.drain(cl, "worker-1")) }]);
     },
   },
+  {
+    id: "probes",
+    icon: "♥",
+    title: "Health checks",
+    blurb: "A readiness probe on the wrong path keeps Pods out of the Service. Then a fix rolls out.",
+    go: (sim) => {
+      sim.apply(PROBE_YAML, "probe.yaml");
+      sim.schedule([
+        { after: 12000, fn: () => sim.exec("kubectl get endpoints shop") },
+        { after: 16000, fn: () => sim.exec(`kubectl patch deployment shop -p '{"spec":{"template":{"spec":{"containers":[{"name":"shop","readinessProbe":{"httpGet":{"path":"/","port":80}}}]}}}}'`) },
+      ]);
+    },
+  },
+  {
+    id: "hpa",
+    icon: "⇡",
+    title: "Autoscale under load",
+    blurb: "The official HPA walkthrough: a load generator pushes CPU up and the HPA adds Pods. Runs at 5×.",
+    go: (sim) => {
+      sim.apply(HPA_YAML, "hpa.yaml");
+      sim.exec("kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10");
+      sim.setSpeed(5);
+      sim.schedule([{ after: 20000, fn: () => sim.exec(`kubectl run load-generator --image=busybox:1.28 --restart=Never -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://php-apache; done"`) }]);
+    },
+  },
+  {
+    id: "jobs",
+    icon: "✓",
+    title: "Jobs and CronJobs",
+    blurb: "A Job computes pi to 500 digits; a CronJob starts a new Job every minute. Runs at 5×.",
+    go: (sim) => {
+      sim.exec(`kubectl create job pi --image=perl:5.34.0 -- perl -Mbignum=bpi -wle "print bpi(500)"`);
+      sim.exec(`kubectl create cronjob hello --image=busybox --schedule="*/1 * * * *" -- sh -c "date; echo Hello from the cluster"`);
+      sim.setSpeed(5);
+    },
+  },
+  {
+    id: "sts",
+    icon: "≡",
+    title: "StatefulSet with storage",
+    blurb: "Three Pods start in order, each with its own volume. Delete web-0: it comes back with its data.",
+    go: (sim) => {
+      sim.apply(STS_YAML, "sts.yaml");
+      sim.schedule([
+        { after: 25000, fn: () => sim.exec(`kubectl exec web-0 -- sh -c 'echo "hello from web-0" > /usr/share/nginx/html/index.html'`) },
+        { after: 27000, fn: () => sim.exec("kubectl delete pod web-0") },
+        { after: 45000, fn: () => sim.exec("kubectl run check --rm -it --image=busybox -- wget -qO- http://web-0.nginx") },
+      ]);
+    },
+  },
+  {
+    id: "ingress",
+    icon: "⤳",
+    title: "Ingress routing",
+    blurb: "Two apps behind one Ingress: /apple and /banana go to different Services.",
+    go: (sim) => {
+      sim.apply(INGRESS_YAML, "ingress.yaml");
+      sim.schedule([
+        { after: 12000, fn: () => sim.exec("curl http://localhost/apple") },
+        { after: 13500, fn: () => sim.exec("curl http://localhost/banana") },
+        { after: 15000, fn: () => sim.exec("curl http://localhost/cherry") },
+      ]);
+    },
+  },
+  {
+    id: "netpol",
+    icon: "⛨",
+    title: "Lock it down",
+    blurb: "A default-deny NetworkPolicy blocks all traffic to the Pods; a second one lets the frontend back in.",
+    go: (sim, c) => {
+      ensureWeb(sim, c, "nginx:1.27", 2);
+      const t = c.raw("Deployment", "default", "web") ? 1000 : 9000;
+      sim.schedule([
+        { after: t, fn: () => sim.exec("kubectl run probe-1 --rm -it --image=busybox --labels=app=frontend -- wget -qO- --timeout=2 http://web") },
+        { after: t + 1500, fn: () => sim.apply(DENY_YAML, "deny.yaml") },
+        { after: t + 3000, fn: () => sim.exec("kubectl run probe-2 --rm -it --image=busybox --labels=app=frontend -- wget -qO- --timeout=2 http://web") },
+        { after: t + 5000, fn: () => sim.apply(ALLOW_YAML, "allow.yaml") },
+        { after: t + 6500, fn: () => sim.exec("kubectl run probe-3 --rm -it --image=busybox --labels=app=frontend -- wget -qO- --timeout=2 http://web") },
+      ]);
+    },
+  },
 ];
+
+const PROBE_YAML = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shop
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: shop}
+  template:
+    metadata:
+      labels: {app: shop}
+    spec:
+      containers:
+      - name: shop
+        image: nginx:1.27
+        readinessProbe:
+          httpGet: {path: /healthz, port: 80}
+          periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shop
+spec:
+  selector: {app: shop}
+  ports: [{port: 80}]
+`;
+
+const HPA_YAML = `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: php-apache
+spec:
+  selector:
+    matchLabels: {run: php-apache}
+  template:
+    metadata:
+      labels: {run: php-apache}
+    spec:
+      containers:
+      - name: php-apache
+        image: registry.k8s.io/hpa-example
+        ports: [{containerPort: 80}]
+        resources:
+          limits: {cpu: 500m}
+          requests: {cpu: 200m}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: php-apache
+spec:
+  selector: {run: php-apache}
+  ports: [{port: 80}]
+`;
+
+const STS_YAML = `apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  clusterIP: None
+  selector: {app: nginx}
+  ports: [{port: 80, name: web}]
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: web
+spec:
+  serviceName: nginx
+  replicas: 3
+  selector:
+    matchLabels: {app: nginx}
+  template:
+    metadata:
+      labels: {app: nginx}
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27
+        ports: [{containerPort: 80, name: web}]
+        volumeMounts:
+        - {name: www, mountPath: /usr/share/nginx/html}
+  volumeClaimTemplates:
+  - metadata: {name: www}
+    spec:
+      accessModes: [ReadWriteOnce]
+      resources: {requests: {storage: 1Gi}}
+`;
+
+const INGRESS_YAML = `apiVersion: apps/v1
+kind: Deployment
+metadata: {name: apple}
+spec:
+  selector: {matchLabels: {app: apple}}
+  template:
+    metadata: {labels: {app: apple}}
+    spec:
+      containers: [{name: apple, image: hashicorp/http-echo, args: ["-text=apple"]}]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: banana}
+spec:
+  selector: {matchLabels: {app: banana}}
+  template:
+    metadata: {labels: {app: banana}}
+    spec:
+      containers: [{name: banana, image: hashicorp/http-echo, args: ["-text=banana"]}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: apple}
+spec: {selector: {app: apple}, ports: [{port: 5678}]}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: banana}
+spec: {selector: {app: banana}, ports: [{port: 5678}]}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata: {name: fruit}
+spec:
+  rules:
+  - http:
+      paths:
+      - {path: /apple, pathType: Prefix, backend: {service: {name: apple, port: {number: 5678}}}}
+      - {path: /banana, pathType: Prefix, backend: {service: {name: banana, port: {number: 5678}}}}
+`;
+
+const DENY_YAML = `apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: default-deny}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+`;
+
+const ALLOW_YAML = `apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata: {name: allow-frontend}
+spec:
+  podSelector:
+    matchLabels: {app: web}
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels: {app: frontend}
+    ports: [{port: 80}]
+`;
 
 // ---------------------------------------------------------------- panels
 
@@ -274,8 +507,41 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
 
 // ---------------------------------------------------------------- page
 
+/** Loads a cluster from a shared link (#cluster=…), once. */
+function useSharedLink(sim: Sim): { status: string | null; share: () => void } {
+  const [status, setStatus] = useState<string | null>(null);
+  useEffect(() => {
+    const token = tokenFromHash(window.location.hash);
+    if (!token) return;
+    decodeCluster(token)
+      .then((state) => {
+        sim.load(state);
+        setStatus("Loaded the shared cluster");
+      })
+      .catch((e) => setStatus(`Couldn't open that link: ${(e as Error).message}`))
+      .finally(() => history.replaceState(null, "", window.location.pathname + window.location.search));
+  }, [sim]);
+  const share = () => {
+    const snap = sim.snapshot();
+    if (!snap) return;
+    encodeCluster(snap)
+      .then(async (token) => {
+        const url = `${window.location.origin}${window.location.pathname}#${SHARE_PARAM}=${token}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          setStatus(`Link copied (${Math.ceil(url.length / 1024)} KB). Anyone who opens it gets a copy of this cluster.`);
+        } catch {
+          window.prompt("Copy this link:", url);
+        }
+      })
+      .catch(() => setStatus("Sharing needs a newer browser (CompressionStream)."));
+  };
+  return { status, share };
+}
+
 export function Sandbox() {
   const sim = useSimulation({ persistKey: "kubesim.sandbox.v1" });
+  const { status: shareStatus, share } = useSharedLink(sim);
   const [mobileTab, setMobileTab] = useState<"cluster" | "panel" | "terminal">("cluster");
   const [sel, setSel] = useState<Selection>(null);
   const [tab, setTab] = useState<"scenarios" | "build" | "inspect">("scenarios");
@@ -298,7 +564,13 @@ export function Sandbox() {
         center={
           <>
             <SimControls sim={sim} />
-            {sim.restoredFromSave && sim.queue.length === 0 && <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-medium text-slate-600 xl:inline">Restored your saved cluster</span>}
+            {shareStatus ? (
+              <span role="status" className="hidden max-w-[360px] truncate rounded-full bg-blue-50 px-2 py-0.5 text-[11.5px] font-medium text-blue-700 xl:inline" title={shareStatus}>
+                {shareStatus}
+              </span>
+            ) : (
+              sim.restoredFromSave && sim.queue.length === 0 && <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-medium text-slate-600 xl:inline">Restored your saved cluster</span>
+            )}
             {sim.queue.length > 0 && <span className="hidden rounded-full xl:inline bg-blue-50 px-2 py-0.5 text-[11.5px] font-medium text-blue-700">Scenario running</span>}
           </>
         }
@@ -310,6 +582,9 @@ export function Sandbox() {
               </button>
               <span className="hidden md:inline">System pods</span>
             </label>
+            <Btn onClick={share} title="Copy a link that opens a copy of this cluster">
+              Share
+            </Btn>
             <Btn
               onClick={() => {
                 sim.reset();
