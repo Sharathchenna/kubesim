@@ -1,16 +1,8 @@
-import type { Cluster, Deployment, Pod, ReplicaSet } from "@/lib/engine";
+import { podStatusColumns, type Cluster, type Deployment, type Pod, type ReplicaSet } from "@/lib/engine";
 
-/** The STATUS column kubectl prints for a Pod. */
+/** The STATUS column kubectl prints for a Pod (printPod: Init:0/1, PodInitializing, CrashLoopBackOff, Terminating…). */
 export function podStatus(p: Pod): string {
-  if (p.metadata.deletionTimestamp !== undefined) return "Terminating";
-  const cs = p.status?.containerStatuses ?? [];
-  for (const c of cs) if (c.state.waiting?.reason && c.state.waiting.reason !== "ContainerCreating") return c.state.waiting.reason;
-  for (const c of cs) if (c.state.terminated?.reason && p.status?.phase !== "Succeeded" && p.status?.phase !== "Failed") return c.state.terminated.reason;
-  if (p.status?.phase === "Succeeded") return "Completed";
-  if (p.status?.phase === "Failed") return "Error";
-  if (cs.some((c) => c.state.waiting?.reason === "ContainerCreating")) return "ContainerCreating";
-  if (p.spec?.nodeName && p.status?.phase === "Pending") return "ContainerCreating";
-  return p.status?.phase ?? "Pending";
+  return podStatusColumns(p).status;
 }
 
 export type PodCategory = "ok" | "starting" | "bad" | "done" | "gone" | "stale";
@@ -23,26 +15,37 @@ export function podCategory(p: Pod): PodCategory {
     const ready = p.status?.conditions?.find((c) => c.type === "Ready")?.status === "True";
     return ready ? "ok" : "starting";
   }
-  if (s === "Pending" || s === "ContainerCreating") return "starting";
+  if (["Pending", "ContainerCreating", "PodInitializing", "NotReady", "SchedulingGated"].includes(s) || /^Init:\d+\/\d+$/.test(s)) return "starting";
   return "bad";
 }
 
+/** The READY column: ready containers (and started sidecars) out of all of them. */
 export function podReady(p: Pod): string {
-  const cs = p.status?.containerStatuses ?? [];
-  return `${cs.filter((c) => c.ready).length}/${p.spec?.containers.length ?? 0}`;
+  return podStatusColumns(p).ready;
 }
 
+/** The RESTARTS count kubectl prints (app containers, plus sidecars once initialized). */
 export function restarts(p: Pod): number {
-  return (p.status?.containerStatuses ?? []).reduce((a, c) => a + c.restartCount, 0);
+  return podStatusColumns(p).restarts;
 }
 
+/** apimachinery's duration.HumanDuration, which kubectl uses for AGE, LAST SEEN and describe's Age. */
 export function age(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
+  const s = Math.floor(ms / 1000);
+  if (s < -1) return "<invalid>";
+  if (s < 0) return "0s";
   if (s < 120) return `${s}s`;
   const m = Math.floor(s / 60);
-  if (m < 10) return `${m}m${s % 60 ? `${s % 60}s` : ""}`;
+  if (m < 10) return s % 60 ? `${m}m${s % 60}s` : `${m}m`;
   if (m < 180) return `${m}m`;
-  return `${Math.floor(m / 60)}h`;
+  const h = Math.floor(m / 60);
+  if (h < 8) return m % 60 ? `${h}h${m % 60}m` : `${h}h`;
+  if (h < 48) return `${h}h`;
+  if (h < 24 * 8) return h % 24 ? `${Math.floor(h / 24)}d${h % 24}h` : `${Math.floor(h / 24)}d`;
+  if (h < 24 * 365 * 2) return `${Math.floor(h / 24)}d`;
+  const days = Math.floor(h / 24);
+  if (h < 24 * 365 * 8) return days % 365 ? `${Math.floor(days / 365)}y${days % 365}d` : `${Math.floor(days / 365)}y`;
+  return `${Math.floor(days / 365)}y`;
 }
 
 /** True only while a Deployment is actually moving Pods to a new template. */

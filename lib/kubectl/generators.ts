@@ -7,7 +7,13 @@ import { kindByName } from "@/lib/engine";
 
 export class GenError extends Error {}
 
-type Flags = Record<string, string | true | string[]>;
+type Flags = Record<string, string | boolean | string[]>;
+
+/** strconv.Atoi, as generators that take a port string report it. */
+function atoi(v: string): number {
+  if (!/^[+-]?\d+$/.test(v)) throw new GenError(`error: strconv.Atoi: parsing "${v}": invalid syntax`);
+  return parseInt(v, 10);
+}
 
 const str = (f: Flags, ...names: string[]): string | undefined => {
   for (const n of names) {
@@ -37,8 +43,9 @@ function envList(f: Flags) {
 const containerName = (image: string) => image.split("/").pop()!.split(":")[0].split("@")[0];
 
 export function genPod(name: string, image: string, ns: string, f: Flags, rest: string[]): Pod {
-  if (!name) throw new GenError("error: NAME is required for run");
-  if (!image) throw new GenError("error: required flag(s) \"image\" not set");
+  if (!name) throw new GenError("error: NAME is required for run\nSee 'kubectl run -h' for help and examples");
+  if (f["--image"] === undefined) throw new GenError('error: required flag(s) "image" not set');
+  if (!image) throw new GenError("error: --image is required");
   const labels = str(f, "--labels", "-l") ? Object.fromEntries(str(f, "--labels", "-l")!.split(",").map((x) => kv(x, "label"))) : { run: name };
   const restart = str(f, "--restart") ?? "Always";
   if (!["Always", "OnFailure", "Never"].includes(restart)) throw new GenError(`error: invalid restart policy: ${restart}`);
@@ -46,7 +53,7 @@ export function genPod(name: string, image: string, ns: string, f: Flags, rest: 
   const env = envList(f);
   const container: Record<string, unknown> = { name, image, resources: {} };
   if (rest.length) container[f["--command"] ? "command" : "args"] = rest;
-  if (port) container.ports = [{ containerPort: parseInt(port, 10) }];
+  if (port) container.ports = [{ containerPort: atoi(port) }];
   if (env.length) container.env = env;
   return {
     apiVersion: "v1",
@@ -58,11 +65,13 @@ export function genPod(name: string, image: string, ns: string, f: Flags, rest: 
 }
 
 export function genDeployment(name: string, ns: string, f: Flags, rest: string[]): Deployment {
-  const images = all(f, "--image");
+  const images = all(f, "--image").filter(Boolean);
   if (!name) throw new GenError("error: exactly one NAME is required, got 0");
-  if (!images.length) throw new GenError('error: required flag(s) "image" not set');
+  if (f["--image"] === undefined) throw new GenError('error: required flag(s) "image" not set');
+  if (!images.length) throw new GenError("error: at least one image must be specified");
+  if (images.length > 1 && rest.length) throw new GenError("error: cannot specify multiple --image options and command");
   const replicas = parseInt(str(f, "--replicas") ?? "1", 10);
-  const port = str(f, "--port");
+  const port = str(f, "--port") === "-1" ? undefined : str(f, "--port");
   const containers = images.map((image, i) => ({
     name: containerName(image),
     image,
@@ -79,12 +88,33 @@ export function genDeployment(name: string, ns: string, f: Flags, rest: string[]
   } as unknown as Deployment;
 }
 
-function parseTcp(spec: string): { port: number; targetPort: number } {
-  const [a, b] = spec.split(":");
-  const port = parseInt(a, 10);
-  const targetPort = parseInt(b ?? a, 10);
-  if (!(port > 0)) throw new GenError(`error: invalid port "${spec}"`);
-  return { port, targetPort };
+/** Real kubectl's validation.IsValidPortName (an IANA_SVC_NAME), joined with "," like create_service.go does. */
+function portNameErrors(n: string): string[] {
+  const errs: string[] = [];
+  if (n.length > 15) errs.push("must be no more than 15 characters");
+  if (!/^[-a-z0-9]+$/.test(n)) errs.push("must contain only alpha-numeric characters (a-z, 0-9), and hyphens (-)");
+  if (!/[a-z]/.test(n)) errs.push("must contain at least one letter (a-z)");
+  if (n.includes("--")) errs.push("must not contain consecutive hyphens");
+  if (n.startsWith("-") || n.endsWith("-")) errs.push("must not begin or end with a hyphen");
+  return errs;
+}
+
+/** create_service.go parsePorts: "port" or "port:targetPort", where targetPort may be a named container port. */
+function parseTcp(spec: string): { port: number; targetPort: number | string } {
+  const parts = spec.split(":");
+  if (parts.length > 2) throw new GenError(`error: invalid port mapping "${spec}": expected port or port:targetPort`);
+  const port = /^\d+$/.test(parts[0]) ? parseInt(parts[0], 10) : NaN;
+  if (!(port > 0 && port <= 65535)) throw new GenError(`error: invalid port "${spec}"`);
+  if (parts.length === 1) return { port, targetPort: port };
+  const b = parts[1];
+  if (/^\d+$/.test(b)) {
+    const n = parseInt(b, 10);
+    if (!(n >= 1 && n <= 65535)) throw new GenError("error: must be between 1 and 65535, inclusive");
+    return { port, targetPort: n };
+  }
+  const errs = portNameErrors(b);
+  if (errs.length) throw new GenError(`error: ${errs.join(",")}`);
+  return { port, targetPort: b };
 }
 
 export function genService(type: string, name: string, ns: string, f: Flags): Service {
@@ -98,10 +128,11 @@ export function genService(type: string, name: string, ns: string, f: Flags): Se
   }
   const tcps = all(f, "--tcp");
   if (!tcps.length && str(f, "--clusterip") !== "None") throw new GenError("error: at least one tcp port specifier must be provided");
-  const nodePort = str(f, "--node-port");
+  const nodePort = str(f, "--node-port") === "0" ? undefined : str(f, "--node-port");
   const ports = tcps.map((x, i) => {
     const { port, targetPort } = parseTcp(x);
-    return { name: `${port}-${targetPort}`, port, protocol: "TCP", targetPort, ...(i === 0 && nodePort ? { nodePort: parseInt(nodePort, 10) } : {}) };
+    // Real kubectl names the port after the raw spec: "80:http" -> "80-http", "80" -> "80".
+    return { name: x.replace(/:/g, "-"), port, protocol: "TCP", targetPort, ...(i === 0 && nodePort ? { nodePort: parseInt(nodePort, 10) } : {}) };
   });
   return {
     apiVersion: "v1",
@@ -301,7 +332,7 @@ export function genExpose(c: Cluster, kind: string, name: string, ns: string, f:
   }
   if (!selector || !Object.keys(selector).length) throw new GenError(`error: couldn't retrieve selectors via --selector flag or introspection: the ${kind} has no labels`);
   const portFlag = str(f, "--port");
-  const port = portFlag ? parseInt(portFlag, 10) : ports[0]?.containerPort;
+  const port = portFlag ? atoi(portFlag) : ports[0]?.containerPort;
   if (!port) throw new GenError(`error: couldn't find port via --port flag or introspection`);
   const tp = str(f, "--target-port");
   const type = str(f, "--type") ?? "ClusterIP";
@@ -322,11 +353,15 @@ export function genExpose(c: Cluster, kind: string, name: string, ns: string, f:
 export function genHPA(kind: string, name: string, ns: string, f: Flags): AnyObject {
   const max = str(f, "--max");
   if (!max) throw new GenError('error: required flag(s) "max" not set');
+  const min = str(f, "--min");
+  if (parseInt(max, 10) < 1) throw new GenError(`error: --max=MAXPODS is required and must be at least 1, max: ${max}`);
+  if (min !== undefined && parseInt(min, 10) !== -1 && parseInt(max, 10) < parseInt(min, 10)) throw new GenError(`error: --max=MAXPODS must be larger or equal to --min=MINPODS, max: ${max}, min: ${min}`);
   // --cpu takes a percentage ("50%") or a quantity per Pod ("500m"); --cpu-percent is the old spelling.
   const cpuFlag = str(f, "--cpu");
   const avg = cpuFlag && !cpuFlag.endsWith("%") ? cpuFlag : undefined;
   const mem = str(f, "--memory");
-  const cpu = str(f, "--cpu-percent") ?? (avg ? undefined : cpuFlag?.replace(/%$/, ""));
+  const cpuPct = str(f, "--cpu-percent");
+  const cpu = (cpuPct !== undefined && cpuPct !== "-1" ? cpuPct : undefined) ?? (avg ? undefined : cpuFlag?.replace(/%$/, ""));
   const extra = [
     ...(avg ? [{ resource: { name: "cpu", target: { averageValue: avg, type: "AverageValue" } }, type: "Resource" }] : []),
     ...(mem ? [mem.endsWith("%") ? { resource: { name: "memory", target: { averageUtilization: parseInt(mem, 10), type: "Utilization" } }, type: "Resource" } : { resource: { name: "memory", target: { averageValue: mem, type: "AverageValue" } }, type: "Resource" }] : []),
@@ -337,7 +372,7 @@ export function genHPA(kind: string, name: string, ns: string, f: Flags): AnyObj
     metadata: { name: str(f, "--name") ?? name, namespace: ns },
     spec: {
       maxReplicas: parseInt(max, 10),
-      ...(str(f, "--min") ? { minReplicas: parseInt(str(f, "--min")!, 10) } : {}),
+      ...(min !== undefined && min !== "-1" ? { minReplicas: parseInt(min, 10) } : {}),
       ...(cpu || extra.length ? { metrics: [...(cpu ? [{ resource: { name: "cpu", target: { averageUtilization: parseInt(cpu, 10), type: "Utilization" } }, type: "Resource" }] : []), ...extra] } : {}),
       scaleTargetRef: { apiVersion: "apps/v1", kind, name },
     },

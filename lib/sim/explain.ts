@@ -75,7 +75,7 @@ const EXPLAIN: Record<string, Explainer> = {
   },
   NodeNotReady: (e) => (e.involvedObject.kind === "Node" ? `${name(e)} stopped sending heartbeats. It's now NotReady; its Pods stop receiving traffic.` : `${name(e)} is on a node that stopped responding.`),
   NodeReady: (e) => `${name(e)} is healthy again.`,
-  TaintManagerEviction: (e) => `${name(e)} waited too long on a dead node and is being evicted; its ReplicaSet will replace it elsewhere.`,
+  TaintManagerEviction: (e) => `${name(e)} sat too long on a dead node, so it is being evicted (removed); its ReplicaSet will replace it on a healthy Node.`,
   RegisteredNode: (e) => `${name(e)} joined the cluster.`,
   WaitForFirstConsumer: (e) => `PersistentVolumeClaim ${name(e)} waits for a Pod to use it, so the volume is created on that Pod's Node.`,
   ExternalProvisioning: (e) => `Waiting for the storage provisioner to create a volume for ${name(e)}.`,

@@ -3,13 +3,32 @@
 // yaml | json | name | wide | jsonpath | custom-columns formats.
 
 import YAML from "yaml";
-import { KINDS, rfc3339, type AnyObject, type Cluster, type ConfigMap, type CronJob, type DaemonSet, type Deployment, type Endpoints, type HorizontalPodAutoscaler, type Ingress, type Job, type KubeEvent, type NetworkPolicy, type Node, type PersistentVolume, type PersistentVolumeClaim, type Pod, type ReplicaSet, type RoleBinding, type Secret, type Service, type StatefulSet, type StorageClass } from "@/lib/engine";
+import { KINDS, rfc3339, type AnyObject, type Cluster, type ConfigMap, type CronJob, type DaemonSet, type Deployment, type Endpoints, type EndpointSlice, type HorizontalPodAutoscaler, type Ingress, type Job, type KubeEvent, type NetworkPolicy, type Node, type PersistentVolume, type PersistentVolumeClaim, type Pod, type ReplicaSet, type RoleBinding, type Secret, type Service, type StatefulSet, type StorageClass } from "@/lib/engine";
 import { ACCESS_SHORT } from "@/lib/engine/controllers/storage";
 import { age, podReady, podStatus, restarts } from "@/lib/sim/status";
-import { evalPath, formatValue, jsonpath } from "./jsonpath";
+import { evalPath, formatValue, jsonpath, jsonpathValues } from "./jsonpath";
 
 /** kubectl's YAML: list items sit under their key without extra indent. */
 export const YAML_OPTS = { indentSeq: false } as const;
+
+export class PrintError extends Error {}
+
+/**
+ * Strings sigs.k8s.io/yaml (go-yaml v2, YAML 1.1) quotes but a YAML 1.2 printer wouldn't:
+ * timestamps (creationTimestamp: "2026-01-01T09:00:00Z"), yes/no/on/off, and base-60 numbers.
+ */
+const GO_QUOTED = [/^(y|Y|yes|Yes|YES|n|N|no|No|NO|on|On|ON|off|Off|OFF)$/, /^\d{4}-\d{1,2}-\d{1,2}([Tt ]|$)/, /^[-+]?\d[\d_]*(:[0-5]?\d)+(\.[\d_]*)?$/, /^[-+]?\d[\d_]*_[\d_]*$/];
+
+/** YAML as kubectl prints it. */
+export function toYaml(value: unknown): string {
+  const doc = new YAML.Document(value);
+  YAML.visit(doc, {
+    Scalar(_, node) {
+      if (typeof node.value === "string" && GO_QUOTED.some((re) => re.test(node.value as string))) node.type = "QUOTE_DOUBLE";
+    },
+  });
+  return doc.toString(YAML_OPTS);
+}
 
 export function baseTable(rows: string[][]): string {
   if (rows.length === 0) return "";
@@ -55,6 +74,8 @@ const sel = (s?: { matchLabels?: Record<string, string>; matchExpressions?: { ke
   return parts.join(",");
 };
 const csv = (xs: string[]) => xs.join(",");
+/** listWithMoreString (printers.go): first three items, then " + N more...", or <unset> when empty. */
+const listWithMore = (xs: string[], max = 3) => (xs.length ? xs.slice(0, max).join(",") + (xs.length > max ? ` + ${xs.length - max} more...` : "") : "<unset>");
 
 /** "5 (85s ago)": restarts plus how long ago the latest one finished. */
 function restartsCell(c: Cluster, p: Pod): string {
@@ -62,6 +83,14 @@ function restartsCell(c: Cluster, p: Pod): string {
   if (!n) return "0";
   const last = Math.max(0, ...(p.status?.containerStatuses ?? []).map((s) => s.lastState.terminated?.finishedAt ?? 0));
   return last ? `${n} (${age(c.now - last)} ago)` : String(n);
+}
+
+/** printPod's READINESS GATES: true gate conditions out of all gates, or <none>. */
+function readinessGates(p: Pod): string {
+  const gates = p.spec?.readinessGates ?? [];
+  if (!gates.length) return "<none>";
+  const ok = gates.filter((g) => p.status?.conditions?.find((c) => c.type === g.conditionType)?.status === "True").length;
+  return `${ok}/${gates.length}`;
 }
 
 function jobStatus(j: Job): string {
@@ -75,10 +104,6 @@ function jobStatus(j: Job): string {
   if (has("FailureTarget")) return "FailureTarget";
   if (has("SuccessCriteriaMet")) return "SuccessCriteriaMet";
   return "Running";
-}
-
-function durationCell(ms: number): string {
-  return age(ms);
 }
 
 /** Ingress HOSTS: hosts in rule order (empty skipped), "*" if none, "+ N more..." after 3. */
@@ -132,7 +157,7 @@ export function tableRows(c: Cluster, kind: string, objs: AnyObject[], wide: boo
     case "Pod":
       return [
         ["NAME", "READY", "STATUS", "RESTARTS", "AGE", ...(wide ? ["IP", "NODE", "NOMINATED NODE", "READINESS GATES"] : [])],
-        ...(objs as unknown as Pod[]).map((p) => [p.metadata.name, podReady(p), podStatus(p), restartsCell(c, p), a(p as unknown as AnyObject), ...(wide ? [p.status?.podIP ?? "<none>", p.spec?.nodeName ?? "<none>", "<none>", "<none>"] : [])]),
+        ...(objs as unknown as Pod[]).map((p) => [p.metadata.name, podReady(p), podStatus(p), restartsCell(c, p), a(p as unknown as AnyObject), ...(wide ? [p.status?.podIP ?? "<none>", p.spec?.nodeName ?? "<none>", p.status?.nominatedNodeName ?? "<none>", readinessGates(p)] : [])]),
       ];
     case "Deployment":
       return [
@@ -166,7 +191,7 @@ export function tableRows(c: Cluster, kind: string, objs: AnyObject[], wide: boo
           const par = j.spec?.parallelism ?? 1;
           const completions = comp === null || comp === undefined ? (par > 1 ? `${done}/1 of ${par}` : `${done}/1`) : `${done}/${comp}`;
           const start = j.status?.startTime;
-          const dur = start === undefined ? "" : durationCell((j.status?.completionTime ?? c.now) - start);
+          const dur = start === undefined ? "" : age((j.status?.completionTime ?? c.now) - start);
           return [j.metadata.name, jobStatus(j), completions, dur, a(j as unknown as AnyObject), ...(wide ? [...containersOf(j.spec?.template.spec), sel(j.spec?.selector)] : [])];
         }),
       ];
@@ -209,6 +234,18 @@ export function tableRows(c: Cluster, kind: string, objs: AnyObject[], wide: boo
           const addrs = (e.subsets ?? []).flatMap((s) => (s.addresses ?? []).flatMap((x) => (s.ports?.length ? s.ports : [{ port: 0 }]).map((p) => (p.port ? `${x.ip}:${p.port}` : x.ip))));
           return [e.metadata.name, addrs.length ? addrs.slice(0, 3).join(",") + (addrs.length > 3 ? ` + ${addrs.length - 3} more...` : "") : "<none>", a(e as unknown as AnyObject)];
         }),
+      ];
+    case "EndpointSlice":
+      // printEndpointSlice: formatDiscoveryPorts / formatDiscoveryEndpoints, three items then "+ N more...".
+      return [
+        ["NAME", "ADDRESSTYPE", "PORTS", "ENDPOINTS", "AGE"],
+        ...(objs as unknown as EndpointSlice[]).map((e) => [
+          e.metadata.name,
+          e.addressType,
+          listWithMore((e.ports ?? []).map((p) => (p.port !== undefined ? String(p.port) : p.name ? p.name : "*"))),
+          listWithMore((e.endpoints ?? []).flatMap((x) => x.addresses)),
+          a(e as unknown as AnyObject),
+        ]),
       ];
     case "ConfigMap":
       return [["NAME", "DATA", "AGE"], ...(objs as unknown as ConfigMap[]).map((m) => [m.metadata.name, String(Object.keys(m.data ?? {}).length + Object.keys(m.binaryData ?? {}).length), a(m as unknown as AnyObject)])];
@@ -294,40 +331,72 @@ export function tableRows(c: Cluster, kind: string, objs: AnyObject[], wide: boo
     case "Event":
       return [
         ["LAST SEEN", "TYPE", "REASON", "OBJECT", "MESSAGE"],
-        ...(objs as unknown as KubeEvent[]).sort((x, y) => x.lastTimestamp - y.lastTimestamp).map((e) => [age(c.now - e.lastTimestamp), e.type, e.reason, `${e.involvedObject.kind.toLowerCase()}/${e.involvedObject.name}`, e.message.replace(/\n/g, " ")]),
+        // Unsorted, like the API returns them (by name); use --sort-by or `kubectl events` for time order.
+        ...(objs as unknown as KubeEvent[]).map((e) => [age(c.now - e.lastTimestamp), e.type, e.reason, `${e.involvedObject.kind.toLowerCase()}/${e.involvedObject.name}`, e.message.replace(/\n/g, " ")]),
       ];
   }
   return [["NAME", "AGE"], ...objs.map((o) => [o.metadata.name, a(o)])];
 }
 
+const asList = (objs: AnyObject[]) => ({ apiVersion: "v1", items: objs.map((o) => toApiShape(o)), kind: "List", metadata: { resourceVersion: "" } });
+
+/** Formats that print every object together, not one table per kind. */
+export const isWholeFormat = (output?: string) => !!output && (output === "yaml" || output === "json" || output.startsWith("jsonpath") || output.startsWith("custom-columns"));
+
+/** customcolumn.go: "HEADER:jsonpath" pairs; the path may be .a.b, a.b or {.a.b}. */
+function parseColumns(spec: string): { h: string; p: string }[] {
+  if (!spec) throw new PrintError("error: custom-columns format specified but no custom columns given");
+  return spec.split(",").map((part) => {
+    const i = part.indexOf(":");
+    if (i < 0) throw new PrintError(`error: unexpected custom-columns spec: ${part}, expected <header>:<json-path-expr>`);
+    let p = part.slice(i + 1).trim();
+    if (p.startsWith("{") && p.endsWith("}")) p = p.slice(1, -1);
+    if (!p) throw new PrintError(`error: unexpected path string, expected a 'name1.name2' or '.name1.name2' or '{name1.name2}' or '{.name1.name2}'`);
+    return { h: part.slice(0, i), p: p.startsWith(".") || p.startsWith("$") ? p : `.${p}` };
+  });
+}
+
+const FORMATS = "custom-columns,json,jsonpath,jsonpath-as-json,name,wide,yaml";
+
+/** Prints objects (possibly of several kinds) in a whole-output format: one List, one jsonpath root, one custom-columns table. */
+export function printWhole(objs: AnyObject[], opts: PrintOptions): string {
+  const output = opts.output!;
+  const single = objs.length === 1 && !opts.allNs && !opts.listed;
+  if (output === "yaml") return toYaml(single ? toApiShape(objs[0]) : asList(objs)).trimEnd();
+  if (output === "json") return JSON.stringify(single ? toApiShape(objs[0]) : asList(objs), null, 4);
+  if (output.startsWith("jsonpath=") || output.startsWith("jsonpath-as-json=")) {
+    const tpl = output.slice(output.indexOf("=") + 1).replace(/^'(.*)'$/, "$1");
+    const root = single ? toApiShape(objs[0]) : asList(objs);
+    if (output.startsWith("jsonpath-as-json=")) return JSON.stringify(jsonpathValues(root, tpl), null, 4);
+    return jsonpath(root, tpl);
+  }
+  if (output.startsWith("custom-columns=")) {
+    const cols = parseColumns(output.slice(15));
+    const rows = [cols.map((x) => x.h), ...objs.map((o) => cols.map((col) => evalPath(toApiShape(o), col.p).map(formatValue).join(",") || "<none>"))];
+    return baseTable(opts.noHeaders ? rows.slice(1) : rows);
+  }
+  throw new PrintError(`error: unable to match a printer suitable for the output format "${output}", allowed formats are: ${FORMATS} (the simulator supports these; real kubectl also has go-template and the -file variants)`);
+}
+
+/** Checks an -o value before anything runs, so `create --dry-run -o bogus` fails without side effects. */
+export function checkOutput(output: string | undefined, allowWide = true): void {
+  if (output === undefined || output === "" || output === "name" || (allowWide && output === "wide") || isWholeFormat(output)) {
+    if (output?.startsWith("custom-columns=")) parseColumns(output.slice(15));
+    // Parse the template now, so a bad one fails even when nothing matches.
+    if (output?.startsWith("jsonpath")) jsonpath({}, output.slice(output.indexOf("=") + 1).replace(/^'(.*)'$/, "$1"));
+    return;
+  }
+  throw new PrintError(`error: unable to match a printer suitable for the output format "${output}", allowed formats are: ${FORMATS} (the simulator supports these; real kubectl also has go-template and the -file variants)`);
+}
+
 /** Renders objects of one kind in a -o format (or as a table). */
 export function printObjects(c: Cluster, k: KindRef, objs: AnyObject[], opts: PrintOptions): string {
   const output = opts.output;
-  if (output === "yaml") {
-    const shaped = objs.map((o) => toApiShape(o));
-    return shaped.length === 1 ? YAML.stringify(shaped[0], YAML_OPTS).trimEnd() : YAML.stringify({ apiVersion: "v1", items: shaped, kind: "List", metadata: { resourceVersion: "" } }, YAML_OPTS).trimEnd();
-  }
-  if (output === "json") return JSON.stringify(objs.length === 1 ? toApiShape(objs[0]) : { apiVersion: "v1", items: objs.map((o) => toApiShape(o)), kind: "List", metadata: { resourceVersion: "" } }, null, 4);
   if (output === "name") return objs.map((o) => refName(k, o.metadata.name)).join("\n");
-  if (output?.startsWith("jsonpath=") || output?.startsWith("jsonpath-as-json=")) {
-    const tpl = output.slice(output.indexOf("=") + 1).replace(/^'(.*)'$/, "$1");
-    const root = objs.length === 1 && !opts.allNs && !opts.listed ? toApiShape(objs[0]) : { apiVersion: "v1", items: objs.map((o) => toApiShape(o)), kind: "List", metadata: { resourceVersion: "" } };
-    return jsonpath(root, tpl);
-  }
-  if (output?.startsWith("custom-columns=")) {
-    const cols = output.slice(15).split(",").map((c) => {
-      const i = c.indexOf(":");
-      return { h: c.slice(0, i), p: c.slice(i + 1) };
-    });
-    const rows = [cols.map((x) => x.h), ...objs.map((o) => cols.map((col) => evalPath(toApiShape(o), col.p.startsWith("{") ? col.p.slice(1, -1) : col.p).map(formatValue).join(",") || "<none>"))];
-    return baseTable(opts.noHeaders ? rows.slice(1) : rows);
-  }
-  if (output && output !== "wide") throw new Error(`unable to match a printer suitable for the output format "${output}", allowed formats are: custom-columns,custom-columns-file,go-template,go-template-file,json,jsonpath,jsonpath-as-json,jsonpath-file,name,template,templatefile,wide,yaml`);
+  if (output && output !== "wide") return printWhole(objs, opts);
   let rows = tableRows(c, k.kind, objs, output === "wide");
-  // Events are sorted inside tableRows; keep the other columns aligned with objs.
-  const ordered = k.kind === "Event" ? [...(objs as unknown as KubeEvent[])].sort((x, y) => x.lastTimestamp - y.lastTimestamp) : objs;
-  if (opts.labelColumns?.length) rows = rows.map((r, i) => [...r, ...opts.labelColumns!.map((l) => (i === 0 ? l.split("/").pop()!.toUpperCase() : ((ordered[i - 1] as AnyObject).metadata.labels?.[l] ?? "")))]);
-  if (opts.showLabels && k.kind !== "Event") rows = rows.map((r, i) => [...r, i === 0 ? "LABELS" : lbl((ordered[i - 1] as AnyObject).metadata.labels) || "<none>"]);
-  if (opts.allNs && k.namespaced) rows = rows.map((r, i) => [i === 0 ? "NAMESPACE" : ((ordered[i - 1] as AnyObject).metadata.namespace ?? ""), ...r]);
+  if (opts.labelColumns?.length) rows = rows.map((r, i) => [...r, ...opts.labelColumns!.map((l) => (i === 0 ? l.split("/").pop()!.toUpperCase() : ((objs[i - 1] as AnyObject).metadata.labels?.[l] ?? "")))]);
+  if (opts.showLabels && k.kind !== "Event") rows = rows.map((r, i) => [...r, i === 0 ? "LABELS" : lbl((objs[i - 1] as AnyObject).metadata.labels) || "<none>"]);
+  if (opts.allNs && k.namespaced) rows = rows.map((r, i) => [i === 0 ? "NAMESPACE" : ((objs[i - 1] as AnyObject).metadata.namespace ?? ""), ...r]);
   return baseTable(opts.noHeaders ? rows.slice(1) : rows);
 }

@@ -155,7 +155,8 @@ describe("write commands", () => {
     c.advance(15_000);
     expect(c.get<Deployment>("Deployment", "default", "web").spec!.template.spec.containers[0].image).toBe("nginx:1.26");
     expect(k("kubectl rollout pause deployment/web").out).toBe("deployment.apps/web paused");
-    expect(k("kubectl rollout pause deployment/web").out).toBe("deployment.apps/web already paused");
+    // objectpauser.go: pausing a paused Deployment is an error, not a no-op.
+    expect(k("kubectl rollout pause deployment/web")).toEqual({ out: 'error: deployments.apps "web" is already paused', ok: false });
     expect(k("kubectl rollout resume deployment/web").out).toBe("deployment.apps/web resumed");
   });
 
@@ -254,11 +255,11 @@ describe("review fixes", () => {
   test("unknown flags and missing flag values are errors, like real kubectl", () => {
     const { k } = session();
     expect(k("kubectl get pods --bogus")).toEqual({ out: "error: unknown flag: --bogus\nSee 'kubectl get --help' for usage.", ok: false });
-    expect(k("kubectl create deployment web --image=nginx --replica=3").out).toBe("error: unknown flag: --replica\nSee 'kubectl create --help' for usage.");
+    expect(k("kubectl create deployment web --image=nginx --replica=3").out).toBe("error: unknown flag: --replica\nSee 'kubectl create deployment --help' for usage.");
     expect(k("kubectl get pods -z").out).toMatch(/^error: unknown shorthand flag: 'z' in -z/);
-    expect(k("kubectl get pods -o").out).toBe("error: flag needs an argument: 'o' in -o");
+    expect(k("kubectl get pods -o").out).toBe("error: flag needs an argument: 'o' in -o\nSee 'kubectl get --help' for usage.");
     k("kubectl create deployment web --image=nginx");
-    expect(k("kubectl scale deployment web --replicas=abc").out).toBe('error: invalid argument "abc" for "--replicas" flag: strconv.ParseInt: parsing "abc": invalid syntax');
+    expect(k("kubectl scale deployment web --replicas=abc").out).toBe('error: invalid argument "abc" for "--replicas" flag: strconv.ParseInt: parsing "abc": invalid syntax\nSee \'kubectl scale --help\' for usage.');
     // Ignored-but-real flags still work.
     expect(k("kubectl get pods --ignore-not-found --request-timeout=5s").ok).toBe(true);
   });
@@ -306,5 +307,88 @@ describe("review fixes", () => {
     const secs = ages.map((a) => (a.match(/(\d+)m/)?.[1] ? +a.match(/(\d+)m/)![1] * 60 : 0) + +(a.match(/(\d+)s/)?.[1] ?? 0));
     expect([...secs].sort((x, y) => y - x)).toEqual(secs);
     expect(k("kubectl logs deployment/web").out.split("\n")[0]).toMatch(/^Found 2 pods, using pod\/web-/);
+  });
+});
+
+describe("fact-check fixes: kubectl CLI parity", () => {
+  test("expose rejects StatefulSet and DaemonSet with real kubectl's GroupKind wording", () => {
+    const { ctx, k } = session();
+    ctx.files["sts.yaml"] = `apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db}
+spec:
+  serviceName: db
+  replicas: 1
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db}}
+    spec: {containers: [{name: db, image: postgres, ports: [{containerPort: 5432}]}]}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata: {name: agent}
+spec:
+  selector: {matchLabels: {app: agent}}
+  template:
+    metadata: {labels: {app: agent}}
+    spec: {containers: [{name: agent, image: busybox, ports: [{containerPort: 9100}]}]}`;
+    expect(k("kubectl apply -f sts.yaml").ok).toBe(true);
+    expect(k("kubectl expose statefulset db --port=5432")).toEqual({ out: "error: cannot expose a StatefulSet.apps", ok: false });
+    expect(k("kubectl expose ds/agent --port=9100")).toEqual({ out: "error: cannot expose a DaemonSet.apps", ok: false });
+    expect(k("kubectl expose sts missing --port=1").out).toBe('Error from server (NotFound): statefulsets.apps "missing" not found');
+    k("kubectl create deployment web --image=nginx");
+    expect(k("kubectl expose deployment web --port=80").out).toBe("service/web exposed");
+  });
+
+  test("create service --tcp keeps a named targetPort and names the port like real kubectl", () => {
+    const { k } = session();
+    const svc = JSON.parse(k("kubectl create service clusterip web --tcp=80:http --tcp=443:8443 --tcp=9000 --dry-run=client -o json").out);
+    expect(svc.spec.ports).toEqual([
+      { name: "80-http", port: 80, protocol: "TCP", targetPort: "http" },
+      { name: "443-8443", port: 443, protocol: "TCP", targetPort: 8443 },
+      { name: "9000", port: 9000, protocol: "TCP", targetPort: 9000 },
+    ]);
+    expect(k("kubectl create service clusterip bad --tcp=80:Http").ok).toBe(false);
+  });
+
+  test("create deployment: multiple --image plus a command is an error; -r is --replicas", () => {
+    const { k } = session();
+    expect(k("kubectl create deployment web --image=nginx --image=redis -- sleep 1")).toEqual({ out: "error: cannot specify multiple --image options and command", ok: false });
+    const d = JSON.parse(k("kubectl create deployment web --image=nginx -r 3 --dry-run=client -o json").out);
+    expect(d.spec.replicas).toBe(3);
+    expect(JSON.parse(k("kubectl create deploy web --image=nginx -r=2 --dry-run=client -o json").out).spec.replicas).toBe(2);
+    expect(k("kubectl get pods -r").out).toMatch(/^error: unknown shorthand flag: 'r' in -r/);
+  });
+
+  test("unknown -o lists only formats the simulator supports", () => {
+    const { k } = session();
+    k("kubectl run web --image=nginx");
+    const r = k("kubectl get pods -o go-template={{.kind}}");
+    expect(r.ok).toBe(false);
+    expect(r.out).toContain('output format "go-template={{.kind}}"');
+    expect(r.out).not.toMatch(/allowed formats are: [^(]*go-template/);
+  });
+
+  test("create service takes --clusterip; --cluster-ip belongs to expose", () => {
+    const { k } = session();
+    expect(k("kubectl create service clusterip db --clusterip=None").out).toBe("service/db created");
+    expect(k("kubectl get svc db -o jsonpath={.spec.clusterIP}").out).toBe("None");
+    expect(k("kubectl create service clusterip db2 --tcp=80 --cluster-ip=None")).toEqual({ out: "error: unknown flag: --cluster-ip\nSee 'kubectl create service clusterip --help' for usage.", ok: false });
+    k("kubectl create deployment web --image=nginx --port=80");
+    expect(k("kubectl expose deployment web --cluster-ip=None").out).toBe("service/web exposed");
+    expect(k("kubectl expose deployment web --name=web2 --clusterip=None").out).toMatch(/^error: unknown flag: --clusterip/);
+  });
+
+  test("bare kubectl top prints its help and fails; top pods/nodes aliases still work", () => {
+    const { c, k } = session({ systemPods: true });
+    const r = k("kubectl top");
+    expect(r.ok).toBe(false);
+    expect(r.out).toContain("Available Commands:\n  node ");
+    expect(r.out).toContain("  pod ");
+    // DefaultSubCommandRun → RequireNoArguments.
+    expect(k("kubectl top foo").out).toBe("error: unknown command \"foo\"\nSee 'kubectl top -h' for help and examples");
+    k("kubectl create deployment web --image=nginx");
+    c.advance(40_000);
+    for (const w of ["pod", "pods", "po", "node", "nodes", "no"]) expect(k(`kubectl top ${w}`).out).toMatch(/^NAME\s+CPU\(cores\)/);
   });
 });

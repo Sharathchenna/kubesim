@@ -1,7 +1,8 @@
 // Sandbox actions: each one changes the Simulated Cluster and returns the
 // kubectl command a Learner would type to do the same thing.
 
-import { ApiError, Cluster, addNode, execEnv, killNode, kindByName, recoverNode, runArgv, type Deployment, type Node, type Pod, type Service, type StatefulSet } from "@/lib/engine";
+import { ApiError, Cluster, addNode, execEnv, killNode, kindByName, recoverNode, runArgv, type Deployment, type Node, type Pod, type ReplicaSet, type StatefulSet } from "@/lib/engine";
+import { genDeployment, genExpose, genPod } from "@/lib/kubectl/generators";
 
 export type ActionResult = { cmd: string; out: string; ok: boolean };
 
@@ -15,19 +16,14 @@ function attempt(cmd: string, fn: () => string): ActionResult {
 
 export const IMAGES = ["nginx:1.27", "nginx:1.26", "nginxdemos/hello:plain-text", "httpd:2.4", "redis:7", "hashicorp/http-echo"];
 
+/** Quotes a word for the command line shown to the Learner, like a shell would need it. */
+const q = (w: string) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `"${w.replace(/(["\\$`])/g, "\\$1")}"`);
+
 export function createDeployment(c: Cluster, name: string, image: string, replicas: number): ActionResult {
-  return attempt(`kubectl create deployment ${name} --image=${image} --replicas=${replicas}`, () => {
-    const args = image.startsWith("hashicorp/http-echo") ? { args: [`-text=hello from ${name}`] } : {};
-    c.create({
-      apiVersion: "apps/v1",
-      kind: "Deployment",
-      metadata: { name, labels: { app: name } },
-      spec: {
-        replicas,
-        selector: { matchLabels: { app: name } },
-        template: { metadata: { labels: { app: name } }, spec: { containers: [{ name: image.split("/").pop()!.split(":")[0], image, ...args }] } },
-      },
-    });
+  // http-echo needs -text; `kubectl create deployment … -- CMD` sets the container's command, so pass its binary too.
+  const cmd = image.startsWith("hashicorp/http-echo") ? ["/http-echo", `-text=hello from ${name}`] : [];
+  return attempt(`kubectl create deployment ${name} --image=${image} --replicas=${replicas}${cmd.length ? ` -- ${cmd.map(q).join(" ")}` : ""}`, () => {
+    c.create(genDeployment(name, "default", { "--image": [image], "--replicas": String(replicas) }, cmd));
     return `deployment.apps/${name} created`;
   });
 }
@@ -52,19 +48,34 @@ export function setImage(c: Cluster, name: string, image: string): ActionResult 
   });
 }
 
+const revisionOf = (r: { metadata: { annotations?: Record<string, string> } }) => Number(r.metadata.annotations?.["deployment.kubernetes.io/revision"] ?? 0);
+
+/**
+ * What `kubectl rollout undo deployment` would do (rollback.go): the template to roll back to, or why it can't.
+ * `skip` means the current template already matches that revision.
+ */
+export function undoTarget(c: Cluster, d: Deployment, toRevision?: number): { template?: NonNullable<Deployment["spec"]>["template"]; revision?: number; skip?: boolean; error?: string } {
+  const name = d.metadata.name;
+  if (d.spec?.paused) return { error: `error: you cannot rollback a paused deployment; resume it first with 'kubectl rollout resume deployment/${name}' and try again` };
+  const rss = c
+    .list<ReplicaSet>("ReplicaSet", d.metadata.namespace)
+    .filter((r) => r.metadata.ownerReferences?.some((o) => o.uid === d.metadata.uid))
+    .sort((a, b) => revisionOf(b) - revisionOf(a));
+  const prev = toRevision ? rss.find((r) => revisionOf(r) === toRevision) : rss[1];
+  if (!prev) return { error: toRevision ? `error: unable to find specified revision ${toRevision} in history` : `error: no rollout history found for deployment "${name}"` };
+  const tpl = structuredClone(prev.spec!.template);
+  if (tpl.metadata?.labels) delete tpl.metadata.labels["pod-template-hash"];
+  const skip = JSON.stringify(tpl) === JSON.stringify(d.spec!.template);
+  return { template: tpl, revision: revisionOf(prev), skip };
+}
+
 export function rolloutUndo(c: Cluster, name: string, ns = "default", toRevision?: number): ActionResult {
   return attempt(`kubectl rollout undo deployment/${name}${toRevision ? ` --to-revision=${toRevision}` : ""}`, () => {
     const d = c.get<Deployment>("Deployment", ns, name);
-    const rss = c
-      .list("ReplicaSet", ns)
-      .filter((r) => r.metadata.ownerReferences?.some((o) => o.uid === d.metadata.uid))
-      .sort((a, b) => Number(b.metadata.annotations?.["deployment.kubernetes.io/revision"]) - Number(a.metadata.annotations?.["deployment.kubernetes.io/revision"]));
-    const prev = (toRevision ? rss.find((r) => Number(r.metadata.annotations?.["deployment.kubernetes.io/revision"]) === toRevision) : rss[1]) as unknown as Deployment | undefined;
-    if (!prev) throw new Error(toRevision ? `error: unable to find specified revision ${toRevision} in history` : `error: no rollout history found for deployment "${name}"`);
-    const tpl = structuredClone(prev.spec!.template);
-    delete tpl.metadata!.labels!["pod-template-hash"];
-    if (JSON.stringify(tpl) === JSON.stringify(d.spec!.template)) return `deployment.apps/${name} skipped rollback (current template already matches revision ${prev.metadata.annotations?.["deployment.kubernetes.io/revision"]})`;
-    c.replace({ ...d, spec: { ...d.spec!, template: tpl } });
+    const t = undoTarget(c, d, toRevision);
+    if (t.error) throw new Error(t.error);
+    if (t.skip) return `deployment.apps/${name} skipped rollback (current template already matches revision ${t.revision})`;
+    c.replace({ ...d, spec: { ...d.spec!, template: t.template! } });
     return `deployment.apps/${name} rolled back`;
   });
 }
@@ -85,23 +96,21 @@ export function deletePod(c: Cluster, name: string, ns = "default"): ActionResul
 
 export function runCrashPod(c: Cluster): ActionResult {
   const name = `crashy-${Math.floor(Math.random() * 900 + 100)}`;
-  return attempt(`kubectl run ${name} --image=busybox -- sh -c "echo starting; sleep 3; exit 1"`, () => {
-    c.create({ apiVersion: "v1", kind: "Pod", metadata: { name, labels: { run: name } }, spec: { containers: [{ name, image: "busybox", command: ["sh", "-c", "echo starting; sleep 3; exit 1"] }] } });
+  const argv = ["sh", "-c", "echo starting; sleep 3; exit 1"];
+  return attempt(`kubectl run ${name} --image=busybox -- ${argv.map(q).join(" ")}`, () => {
+    // kubectl run puts what follows -- in args (the image has no ENTRYPOINT, so sh runs).
+    c.create(genPod(name, "busybox", "default", { "--image": "busybox" }, argv));
     return `pod/${name} created`;
   });
 }
 
 export function expose(c: Cluster, name: string, type: "ClusterIP" | "NodePort"): ActionResult {
-  return attempt(`kubectl expose deployment ${name} --port=80${type === "NodePort" ? " --type=NodePort" : ""}`, () => {
-    const d = c.get<Deployment>("Deployment", "default", name);
-    const image = d.spec!.template.spec.containers[0].image;
-    const target = image.includes("http-echo") ? 5678 : image.startsWith("redis") ? 6379 : 80;
-    c.create<Service>({
-      apiVersion: "v1",
-      kind: "Service",
-      metadata: { name, labels: { app: name } },
-      spec: { type, selector: d.spec!.selector.matchLabels, ports: [{ port: 80, targetPort: target }] },
-    });
+  const d = c.raw("Deployment", "default", name) as unknown as Deployment | undefined;
+  const image = d?.spec?.template.spec.containers[0]?.image ?? "";
+  const target = image.includes("http-echo") ? 5678 : image.startsWith("redis") ? 6379 : 80;
+  const flags: Record<string, string> = { "--port": "80", ...(target !== 80 ? { "--target-port": String(target) } : {}), ...(type === "NodePort" ? { "--type": "NodePort" } : {}) };
+  return attempt(`kubectl expose deployment ${name} ${Object.entries(flags).map(([k, v]) => `${k}=${v}`).join(" ")}`, () => {
+    c.create(genExpose(c, "Deployment", name, "default", flags));
     return `service/${name} exposed`;
   });
 }
@@ -169,14 +178,14 @@ export function drain(c: Cluster, node: string, opts: DrainOptions = { ignoreDae
 }
 
 export function chaosKill(c: Cluster, node: string): ActionResult {
-  return attempt(`# chaos: power off ${node}`, () => {
+  return attempt(`# chaos: simulate failure on ${node}`, () => {
     killNode(c, node);
-    return `${node} lost power. It goes NotReady after ~50s; its Pods are evicted 5 min later.`;
+    return `${node} has failed (simulated power loss). It goes NotReady after ~50s; its Pods are evicted (replaced on other Nodes) 5 min later.`;
   });
 }
 
 export function chaosRecover(c: Cluster, node: string): ActionResult {
-  return attempt(`# chaos: power on ${node}`, () => {
+  return attempt(`# chaos: recover ${node}`, () => {
     recoverNode(c, node);
     return `${node} is back. Its kubelet cleans up evicted Pods.`;
   });
@@ -225,7 +234,7 @@ export function execIn(c: Cluster, podName: string, argv: string[], ns = "defaul
 export function runLoadGenerator(c: Cluster, target = "php-apache"): ActionResult {
   const script = `while sleep 0.01; do wget -q -O- http://${target}; done`;
   return attempt(`kubectl run load-generator --image=busybox:1.28 --restart=Never -- /bin/sh -c "${script}"`, () => {
-    c.create({ apiVersion: "v1", kind: "Pod", metadata: { name: "load-generator", labels: { run: "load-generator" } }, spec: { restartPolicy: "Never", containers: [{ name: "load-generator", image: "busybox:1.28", args: ["/bin/sh", "-c", script] }] } });
+    c.create(genPod("load-generator", "busybox:1.28", "default", { "--image": "busybox:1.28", "--restart": "Never" }, ["/bin/sh", "-c", script]));
     return "pod/load-generator created";
   });
 }

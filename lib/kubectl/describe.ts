@@ -13,6 +13,7 @@ import {
   type DaemonSet,
   type Deployment,
   type Endpoints,
+  type EndpointSlice,
   type HorizontalPodAutoscaler,
   type Ingress,
   type Job,
@@ -49,7 +50,7 @@ export function rfc1123z(simMs: number): string {
   return `${DAYS[d.getUTCDay()]}, ${p(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} +0000`;
 }
 
-const L = (key: string, v: unknown, w = 18) => `${(key + ":").padEnd(w)}${v === undefined || v === "" ? "<none>" : v}`;
+const L = (key: string, v: unknown, w = 18) => `${(key + ":").padEnd(Math.max(w, key.length + 3))}${v === undefined || v === "" ? "<none>" : v}`;
 const multi = (entries: string[], w: number) => (entries.length ? entries.join("\n" + " ".repeat(w)) : "<none>");
 const labelsStr = (l: Record<string, string> | undefined, w = 18) => multi(Object.entries(l ?? {}).map(([k, v]) => `${k}=${v}`), w);
 const annotationsStr = (a: Record<string, string> | undefined, w = 18) =>
@@ -223,8 +224,12 @@ export function describeObject(c: Cluster, kind: string, o: AnyObject): string {
         "IPs:",
         p.status?.podIP ? `  IP:           ${p.status.podIP}` : "  <none>",
         ...(o.metadata.ownerReferences?.some((r) => r.controller) ? [`Controlled By:  ${ownerOf(o)}`] : []),
-        "Containers:",
       );
+      if (p.spec?.initContainers?.length) {
+        lines.push("Init Containers:");
+        for (const ct of p.spec.initContainers) lines.push(...containerBlock(ct, p.status?.initContainerStatuses?.find((s) => s.name === ct.name)));
+      }
+      lines.push("Containers:");
       for (const ct of p.spec!.containers) lines.push(...containerBlock(ct, p.status?.containerStatuses?.find((s) => s.name === ct.name)));
       lines.push("Conditions:", "  Type                        Status", ...(p.status?.conditions ?? []).map((cd) => `  ${cd.type.padEnd(28)}${cd.status} `));
       lines.push(...volumesBlock(p.spec));
@@ -237,7 +242,6 @@ export function describeObject(c: Cluster, kind: string, o: AnyObject): string {
       const ru = d.spec?.strategy?.rollingUpdate;
       const rss = c.list<ReplicaSet>("ReplicaSet", ns).filter((r) => r.metadata.ownerReferences?.some((x) => x.uid === d.metadata.uid));
       const newRs = rss.find((r) => r.metadata.annotations?.["deployment.kubernetes.io/revision"] === d.metadata.annotations?.["deployment.kubernetes.io/revision"]);
-      lines.splice(1, 0);
       lines.push(
         L("CreationTimestamp", rfc1123z(d.metadata.creationTimestamp), 24),
         L("Labels", labelsStr(d.metadata.labels, 24), 24),
@@ -280,15 +284,17 @@ export function describeObject(c: Cluster, kind: string, o: AnyObject): string {
       const s = o as unknown as StatefulSet;
       const pods = c.list<Pod>("Pod", ns).filter((p) => p.metadata.ownerReferences?.some((x) => x.uid === s.metadata.uid));
       const count = (ph: string) => pods.filter((p) => p.status?.phase === ph).length;
+      lines[0] = L("Name", s.metadata.name, 20);
+      lines[1] = L("Namespace", ns, 20);
       lines.push(
-        L("CreationTimestamp", rfc1123z(s.metadata.creationTimestamp)),
-        L("Selector", selStr(s.spec!.selector)),
-        L("Labels", labelsStr(s.metadata.labels)),
-        L("Annotations", annotationsStr(s.metadata.annotations)),
-        L("Replicas", `${s.spec?.replicas ?? 1} desired | ${s.status?.replicas ?? 0} total`),
-        L("Update Strategy", s.spec?.updateStrategy?.type ?? "RollingUpdate"),
+        L("CreationTimestamp", rfc1123z(s.metadata.creationTimestamp), 20),
+        L("Selector", selStr(s.spec!.selector), 20),
+        L("Labels", labelsStr(s.metadata.labels, 20), 20),
+        L("Annotations", annotationsStr(s.metadata.annotations, 20), 20),
+        L("Replicas", `${s.spec?.replicas ?? 1} desired | ${s.status?.replicas ?? 0} total`, 20),
+        L("Update Strategy", s.spec?.updateStrategy?.type ?? "RollingUpdate", 20),
         ...(s.spec?.updateStrategy?.type !== "OnDelete" ? [`  Partition:        ${s.spec?.updateStrategy?.rollingUpdate?.partition ?? 0}`] : []),
-        L("Pods Status", `${count("Running")} Running / ${count("Pending")} Waiting / ${count("Succeeded")} Succeeded / ${count("Failed")} Failed`),
+        L("Pods Status", `${count("Running")} Running / ${count("Pending")} Waiting / ${count("Succeeded")} Succeeded / ${count("Failed")} Failed`, 20),
         ...templateBlock(s.spec!.template),
         "Volume Claims:",
         ...((s.spec?.volumeClaimTemplates ?? []).length
@@ -569,13 +575,14 @@ export function describeObject(c: Cluster, kind: string, o: AnyObject): string {
         return { cpu: acc.cpu + r.cpu, mem: acc.mem + r.memory, lcpu: acc.lcpu + l.cpu, lmem: acc.lmem + l.memory };
       }, { cpu: 0, mem: 0, lcpu: 0, lmem: 0 });
       const cap = (m: Record<string, string>) => Object.entries(m).map(([k, v]) => `  ${(k + ":").padEnd(19)}${v}`);
+      lines[0] = L("Name", n.metadata.name, 20);
       lines.push(
-        L("Roles", n.metadata.labels?.["node-role.kubernetes.io/control-plane"] !== undefined ? "control-plane" : "<none>"),
-        L("Labels", labelsStr(n.metadata.labels)),
-        L("Annotations", annotationsStr(n.metadata.annotations)),
-        L("CreationTimestamp", rfc1123z(n.metadata.creationTimestamp)),
-        L("Taints", multi((n.spec?.taints ?? []).map((t) => `${t.key}${t.value ? `=${t.value}` : ""}:${t.effect}`), 18)),
-        L("Unschedulable", n.spec?.unschedulable ? "true" : "false"),
+        L("Roles", n.metadata.labels?.["node-role.kubernetes.io/control-plane"] !== undefined ? "control-plane" : "<none>", 20),
+        L("Labels", labelsStr(n.metadata.labels, 20), 20),
+        L("Annotations", annotationsStr(n.metadata.annotations, 20), 20),
+        L("CreationTimestamp", rfc1123z(n.metadata.creationTimestamp), 20),
+        L("Taints", multi((n.spec?.taints ?? []).map((t) => `${t.key}${t.value ? `=${t.value}` : ""}:${t.effect}`), 20), 20),
+        L("Unschedulable", n.spec?.unschedulable ? "true" : "false", 20),
         "Conditions:",
         "  Type             Status   LastHeartbeatTime                 LastTransitionTime                Reason                       Message",
         "  ----             ------   -----------------                 ------------------                ------                       -------",
@@ -589,8 +596,8 @@ export function describeObject(c: Cluster, kind: string, o: AnyObject): string {
         ...cap(n.status!.allocatable),
         "System Info:",
         ...Object.entries(n.status!.nodeInfo).map(([k, v]) => `  ${(k.replace(/([A-Z])/g, " $1").replace(/^./, (x) => x.toUpperCase()) + ":").padEnd(27)}${v}`),
-        L("PodCIDR", n.spec?.podCIDR),
-        L("PodCIDRs", n.spec?.podCIDR),
+        L("PodCIDR", n.spec?.podCIDR, 30),
+        L("PodCIDRs", n.spec?.podCIDR, 30),
         `Non-terminated Pods:          (${pods.length} in total)`,
         baseTable([
           ["  Namespace", "Name", "CPU Requests", "CPU Limits", "Memory Requests", "Memory Limits", "Age"],
@@ -624,6 +631,30 @@ export function describeObject(c: Cluster, kind: string, o: AnyObject): string {
       lines.push(L("Labels", labelsStr(e.metadata.labels, 14), 14), L("Annotations", annotationsStr(e.metadata.annotations, 14), 14), "Subsets:");
       for (const s of e.subsets ?? []) {
         lines.push(`  Addresses:          ${(s.addresses ?? []).map((a) => a.ip).join(",") || "<none>"}`, `  NotReadyAddresses:  ${(s.notReadyAddresses ?? []).map((a) => a.ip).join(",") || "<none>"}`, "  Ports:", "    Name     Port  Protocol", "    ----     ----  --------", ...(s.ports ?? []).map((p) => `    ${(p.name ?? "<unset>").padEnd(9)}${String(p.port).padEnd(6)}${p.protocol}`), "");
+      }
+      lines[0] = L("Name", e.metadata.name, 14);
+      lines[1] = L("Namespace", ns, 14);
+      break;
+    }
+    case "EndpointSlice": {
+      // describeEndpointSliceV1.
+      const e = o as unknown as EndpointSlice;
+      lines.push(L("Labels", labelsStr(e.metadata.labels, 14), 14), L("Annotations", annotationsStr(e.metadata.annotations, 14), 14), L("AddressType", e.addressType, 14));
+      if (!e.ports?.length) lines.push("Ports: <unset>");
+      else {
+        const rows = [["  Name", "Port", "Protocol"], ["  ----", "----", "--------"], ...e.ports.map((p) => [`  ${p.name || "<unset>"}`, p.port !== undefined ? String(p.port) : "<unset>", p.protocol ?? "TCP"])];
+        lines.push("Ports:", baseTable(rows));
+      }
+      if (!e.endpoints?.length) lines.push("Endpoints: <none>");
+      else {
+        lines.push("Endpoints:");
+        const opt = (v: string | undefined) => v ?? "<unset>";
+        for (const ep of e.endpoints) {
+          lines.push(`  - Addresses:  ${ep.addresses.join(", ") || "<none>"}`, "    Conditions:", `      Ready:  ${ep.conditions?.ready === undefined ? "<unset>" : String(ep.conditions.ready)}`);
+          const rest: [string, string][] = [["Hostname:", opt(ep.hostname)], ...(ep.targetRef ? ([["TargetRef:", `${ep.targetRef.kind}/${ep.targetRef.name}`]] as [string, string][]) : []), ["NodeName:", opt(ep.nodeName)], ["Zone:", opt(ep.zone)]];
+          const w = Math.max(...rest.map(([k]) => k.length)) + 2;
+          lines.push(...rest.map(([k, v]) => `    ${k.padEnd(w)}${v}`));
+        }
       }
       lines[0] = L("Name", e.metadata.name, 14);
       lines[1] = L("Namespace", ns, 14);

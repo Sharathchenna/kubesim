@@ -16,7 +16,8 @@ export class JsonPathError extends Error {}
 
 function parsePath(src: string): Seg[] {
   let s = src.trim();
-  if (s.startsWith("$")) s = s.slice(1);
+  // $ is the root and @ the current object; both are where evaluation starts anyway.
+  if (s.startsWith("$") || s.startsWith("@")) s = s.slice(1);
   const segs: Seg[] = [];
   let i = 0;
   const ident = () => {
@@ -223,4 +224,18 @@ export function jsonpath(root: Value, template: string): string {
       })
       .join("");
   return render(nodes, root);
+}
+
+/** The values a template's expressions select, for -o jsonpath-as-json. */
+export function jsonpathValues(root: Value, template: string): Value[] {
+  const nodes = parseTemplate(template);
+  const out: Value[] = [];
+  const walk = (ns: Node[], cur: Value) => {
+    for (const n of ns) {
+      if (n.t === "range") for (const item of evalPath(n.path.startsWith("$") ? root : cur, n.path)) walk(n.body, item);
+      else if (n.t === "expr") out.push(...evalPath(n.path.startsWith("$") ? root : cur, n.path));
+    }
+  };
+  walk(nodes, root);
+  return out;
 }
