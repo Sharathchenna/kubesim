@@ -87,9 +87,13 @@ export function containerFs(cluster: Cluster, pod: Pod, c: Container, crt: Conta
   const hostname = pod.spec?.hostname ?? pod.metadata.name;
   const subdomain = pod.spec?.subdomain;
   const fqdn = subdomain ? `${hostname}.${subdomain}.${ns}.svc.cluster.local` : undefined;
+  const aliases = ((pod.spec as { hostAliases?: { ip: string; hostnames?: string[] }[] } | undefined)?.hostAliases ?? [])
+    .map((a) => `${a.ip}\t${(a.hostnames ?? []).join("\t")}\n`)
+    .join("");
+  const rootRo = ((c as { securityContext?: { readOnlyRootFilesystem?: boolean } }).securityContext?.readOnlyRootFilesystem) === true;
   const system: Record<string, string> = {
     "/etc/hostname": hostname,
-    "/etc/hosts": `# Kubernetes-managed hosts file.\n127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\nfe00::0\tip6-localnet\nfe00::0\tip6-mcastprefix\nfe00::1\tip6-allnodes\nfe00::2\tip6-allrouters\n${pod.status?.podIP ?? ""}\t${fqdn ? `${fqdn}\t` : ""}${hostname}\n`,
+    "/etc/hosts": `# Kubernetes-managed hosts file.\n127.0.0.1\tlocalhost\n::1\tlocalhost ip6-localhost ip6-loopback\nfe00::0\tip6-localnet\nfe00::0\tip6-mcastprefix\nfe00::1\tip6-allnodes\nfe00::2\tip6-allrouters\n${pod.status?.podIP ?? ""}\t${fqdn ? `${fqdn}\t` : ""}${hostname}\n${aliases ? `\n# Entries added by HostAliases.\n${aliases}` : ""}`,
     "/etc/resolv.conf": `search ${ns}.svc.cluster.local svc.cluster.local cluster.local\nnameserver 10.96.0.10\noptions ndots:5`,
   };
   if (pod.spec?.automountServiceAccountToken !== false) {
@@ -147,7 +151,7 @@ export function containerFs(cluster: Cluster, pod: Pod, c: Container, crt: Conta
     write(raw, text, append) {
       const t = resolve(raw);
       const name = normalize(raw);
-      if (t.type === "projected" || t.type === "system" || (t.type === "store" && t.ro)) return `can't create ${name}: Read-only file system`;
+      if (t.type === "projected" || t.type === "system" || (t.type === "store" && t.ro) || (t.type === "layer" && rootRo)) return `can't create ${name}: Read-only file system`;
       if (t.type === "layer") {
         layer[t.path] = append ? (layer[t.path] ?? "") + text : text;
       } else {
@@ -160,7 +164,7 @@ export function containerFs(cluster: Cluster, pod: Pod, c: Container, crt: Conta
     remove(raw) {
       const t = resolve(raw);
       const name = normalize(raw);
-      if (t.type === "projected" || t.type === "system" || (t.type === "store" && t.ro)) return `can't remove '${name}': Read-only file system`;
+      if (t.type === "projected" || t.type === "system" || (t.type === "store" && t.ro) || (t.type === "layer" && rootRo)) return `can't remove '${name}': Read-only file system`;
       if (t.type === "layer") {
         if (!(t.path in layer)) return `can't remove '${name}': No such file or directory`;
         delete layer[t.path];

@@ -117,10 +117,16 @@ export function runArgv(ee: ExecEnv, argv: string[]): ExecResult {
       return ok();
     case "pwd":
       return ok(ee.cwd);
-    case "whoami":
-      return ok("root");
-    case "id":
-      return ok("uid=0(root) gid=0(root) groups=0(root)");
+    case "whoami": {
+      const { uid } = identity(ee);
+      if (uid === 0) return ok("root");
+      return fail(bb(ee) ? `whoami: unknown uid ${uid}` : `whoami: cannot find name for user ID ${uid}`);
+    }
+    case "id": {
+      const { uid, gid } = identity(ee);
+      const name = (n: number) => (n === 0 ? "(root)" : "");
+      return ok(`uid=${uid}${name(uid)} gid=${gid}${name(gid)} groups=${gid}${name(gid)}`);
+    }
     case "hostname":
       return ok(ee.pod.spec?.hostname ?? ee.pod.metadata.name);
     case "date":
@@ -129,7 +135,10 @@ export function runArgv(ee: ExecEnv, argv: string[]): ExecResult {
       return ok(args.includes("-a") ? `Linux ${ee.pod.metadata.name} 6.8.0-45-generic #45-Ubuntu SMP x86_64 GNU/Linux` : "Linux");
     case "seq": {
       const [a, b] = args.length > 1 ? [+args[0], +args[1]] : [1, +args[0]];
-      return ok(Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => String(a + i)).join("\n"));
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return fail(bb(ee) ? `seq: invalid number '${args.find((x) => !Number.isFinite(+x))}'` : `seq: invalid floating point argument: '${args.find((x) => !Number.isFinite(+x))}'`);
+      // The simulated terminal and logs keep a bounded tail anyway; don't build gigabytes of output.
+      const n = Math.max(0, Math.min(b - a + 1, MAX_SEQ));
+      return ok(Array.from({ length: n }, (_, i) => String(a + i)).join("\n"));
     }
     case "env":
     case "printenv": {
@@ -172,7 +181,10 @@ export function runArgv(ee: ExecEnv, argv: string[]): ExecResult {
       const [pat, f] = args.filter((a) => !a.startsWith("-"));
       const c = f ? fs.read(p(f)) : "";
       if (c === undefined) return fail(`grep: ${f}: No such file or directory`, 2);
-      const re = new RegExp(pat ?? "", flags.includes("-i") ? "i" : "");
+      const extended = flags.some((x) => /^-\w*E/.test(x)) || bin0 === "egrep";
+      const fixed = flags.some((x) => /^-\w*F/.test(x));
+      const re = grepRegex(pat ?? "", { extended, fixed, icase: flags.some((x) => /^-\w*i/.test(x)) });
+      if (typeof re === "string") return fail(bb(ee) ? `grep: bad regex '${pat}': ${re}` : `grep: ${re}`, 2);
       const hits = c.split("\n").filter((l) => re.test(l) !== flags.includes("-v"));
       return hits.length ? ok(hits.join("\n")) : fail("");
     }
@@ -267,6 +279,46 @@ export function runArgv(ee: ExecEnv, argv: string[]): ExecResult {
       return fail(bb(ee) ? "sh: can't kill pid 1: Operation not permitted" : "bash: kill: (1) - Operation not permitted");
     default:
       return fail(bb(ee) ? `sh: ${bin0}: not found` : `sh: 1: ${bin0}: not found`, 127);
+  }
+}
+
+/** Most lines `seq` prints. */
+const MAX_SEQ = 100_000;
+
+/** The user and group a container runs as (securityContext runAsUser/runAsGroup; container wins over Pod). */
+function identity(ee: ExecEnv): { uid: number; gid: number } {
+  const pod = (ee.pod.spec?.securityContext ?? {}) as { runAsUser?: number; runAsGroup?: number };
+  const ctr = ((ee.container as { securityContext?: Record<string, unknown> }).securityContext ?? {}) as { runAsUser?: number; runAsGroup?: number };
+  return { uid: ctr.runAsUser ?? pod.runAsUser ?? 0, gid: ctr.runAsGroup ?? pod.runAsGroup ?? 0 };
+}
+
+/**
+ * A grep pattern as a JS RegExp, or grep's error text if it doesn't compile. Basic regular
+ * expressions (the default) treat ( ) { } | + ? as literals unless escaped; -E makes them special.
+ */
+export function grepRegex(pat: string, o: { extended?: boolean; fixed?: boolean; icase?: boolean }): RegExp | string {
+  let src = pat;
+  if (o.fixed) src = pat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  else if (!o.extended) {
+    let out = "";
+    for (let i = 0; i < pat.length; i++) {
+      const ch = pat[i];
+      if (ch === "\\" && i + 1 < pat.length && "(){}|+?".includes(pat[i + 1])) {
+        out += pat[++i];
+      } else if ("(){}|+?".includes(ch)) out += "\\" + ch;
+      else if (ch === "\\" && i + 1 < pat.length) out += ch + pat[++i];
+      else out += ch;
+    }
+    src = out;
+  }
+  try {
+    return new RegExp(src, o.icase ? "i" : "");
+  } catch {
+    // GNU grep's wording for the common mistakes.
+    if (/\[[^\]]*$/.test(pat)) return "Unmatched [, [^, [:, [., or [=";
+    if (o.extended ? /\((?![^)]*\))/.test(pat) : /\\\((?!.*\\\))/.test(pat)) return "Unmatched ( or \\(";
+    if (o.extended ? /\)/.test(pat) : /\\\)/.test(pat)) return "Unmatched ) or \\)";
+    return "Invalid regular expression";
   }
 }
 

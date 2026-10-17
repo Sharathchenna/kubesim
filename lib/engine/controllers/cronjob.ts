@@ -216,46 +216,56 @@ export function runCronJobs(cluster: Cluster): void {
       timers[sigKey] = sig;
       timers[nextKey] = nextRun(cron, since, tz) ?? Number.MAX_SAFE_INTEGER;
     }
-    if (!cj.spec!.suspend && now >= timers[nextKey]) {
-      const { due, missed } = lastDue(cron, since, now, tz);
-      if (due !== undefined) timers[nextKey] = nextRun(cron, due, tz) ?? Number.MAX_SAFE_INTEGER;
-      if (missed > 100) cluster.record(cj, "Warning", "TooManyMissedTimes", "too many missed start times. Set or decrease .spec.startingDeadlineSeconds or check clock skew", "cronjob-controller");
+    // A run that Forbid held back (lastScheduleTime not advanced): the real controller starts it
+    // as soon as the active Job finishes, if it's still within startingDeadlineSeconds.
+    const pendKey = `cjpend/${cj.metadata.uid}`;
+    const fire = !cj.spec!.suspend && (now >= timers[nextKey] || (timers[pendKey] !== undefined && active.length === 0));
+    if (fire) {
+      let due: number | undefined;
+      if (now >= timers[nextKey]) {
+        const r = lastDue(cron, since, now, tz);
+        due = r.due;
+        if (due !== undefined) timers[nextKey] = nextRun(cron, due, tz) ?? Number.MAX_SAFE_INTEGER;
+        if (r.missed > 100) cluster.record(cj, "Warning", "TooManyMissedTimes", "too many missed start times. Set or decrease .spec.startingDeadlineSeconds or check clock skew", "cronjob-controller");
+      } else due = timers[pendKey];
+      delete timers[pendKey];
       const deadline = cj.spec!.startingDeadlineSeconds;
       if (due !== undefined && (deadline === undefined || now - due <= deadline * 1000)) {
         const policy = cj.spec!.concurrencyPolicy ?? "Allow";
         const name = `${cj.metadata.name}-${Math.floor((SIM_EPOCH + due) / 60_000)}`;
-        let skip = false;
         if (policy === "Forbid" && active.length) {
-          skip = true;
+          // Not started, and not counted as scheduled.
           cluster.record(cj, "Normal", "JobAlreadyActive", "Not starting job because prior execution is running and concurrency policy is Forbid", "cronjob-controller");
-        }
-        if (policy === "Replace") {
-          for (const j of active) {
-            cluster.deleteObject(j);
-            cluster.record(cj, "Normal", "SuccessfulDelete", `Deleted job ${j.metadata.name}`, "cronjob-controller");
+          timers[pendKey] = due;
+        } else {
+          if (policy === "Replace") {
+            for (const j of active) {
+              cluster.deleteObject(j);
+              cluster.record(cj, "Normal", "SuccessfulDelete", `Deleted job ${j.metadata.name}`, "cronjob-controller");
+            }
           }
-        }
-        if (!skip && !cluster.raw("Job", ns, name)) {
-          const tpl = clone(cj.spec!.jobTemplate);
-          try {
-            cluster.create<Job>({
-              apiVersion: "batch/v1",
-              kind: "Job",
-              metadata: {
-                name,
-                namespace: ns,
-                labels: tpl.metadata?.labels,
-                annotations: { ...(tpl.metadata?.annotations ?? {}), "batch.kubernetes.io/cronjob-scheduled-timestamp": scheduledStamp(due, tz) },
-                ownerReferences: [ownerRef(cj)],
-              },
-              spec: tpl.spec,
-            });
-            cluster.record(cj, "Normal", "SuccessfulCreate", `Created job ${name}`, "cronjob-controller");
-          } catch (e) {
-            cluster.record(cj, "Warning", "FailedCreate", `Error creating job: ${(e as Error).message}`, "cronjob-controller");
+          if (!cluster.raw("Job", ns, name)) {
+            const tpl = clone(cj.spec!.jobTemplate);
+            try {
+              cluster.create<Job>({
+                apiVersion: "batch/v1",
+                kind: "Job",
+                metadata: {
+                  name,
+                  namespace: ns,
+                  labels: tpl.metadata?.labels,
+                  annotations: { ...(tpl.metadata?.annotations ?? {}), "batch.kubernetes.io/cronjob-scheduled-timestamp": scheduledStamp(due, tz) },
+                  ownerReferences: [ownerRef(cj)],
+                },
+                spec: tpl.spec,
+              });
+              cluster.record(cj, "Normal", "SuccessfulCreate", `Created job ${name}`, "cronjob-controller");
+            } catch (e) {
+              cluster.record(cj, "Warning", "FailedCreate", `Error creating job: ${(e as Error).message}`, "cronjob-controller");
+            }
           }
+          lastSchedule = due;
         }
-        lastSchedule = due;
       } else if (due !== undefined) {
         // Missed its starting deadline: say so, and don't count it as scheduled.
         timers[`cjfrom/${cj.metadata.uid}`] = due;

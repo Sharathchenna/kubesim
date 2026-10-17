@@ -29,6 +29,8 @@ export const KIND_LIST: KindInfo[] = [
   k("Pod", "pods", "", "v1", true, ["po"]),
   k("Service", "services", "", "v1", true, ["svc"]),
   k("Endpoints", "endpoints", "", "v1", true, ["ep"]),
+  // No short name: `kubectl api-resources` lists endpointslices with an empty SHORTNAMES column.
+  k("EndpointSlice", "endpointslices", "discovery.k8s.io", "v1", true),
   k("ConfigMap", "configmaps", "", "v1", true, ["cm"]),
   k("Secret", "secrets", "", "v1", true),
   k("ServiceAccount", "serviceaccounts", "", "v1", true, ["sa"]),

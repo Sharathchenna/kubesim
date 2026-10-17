@@ -1,8 +1,9 @@
 // garbage-collector + namespace-controller + PodGC: deletes dependents whose
-// owner is gone (background propagation), empties terminating Namespaces, and
-// expires old Events.
+// owner is gone (background propagation) or is being deleted in the foreground
+// (foregroundDeletion finalizer), empties terminating Namespaces, and expires
+// old Events and the logs of Pods that are gone.
 
-import type { Cluster } from "../cluster";
+import { FOREGROUND, type Cluster } from "../cluster";
 import { NAMESPACED_KINDS, type KubeEvent, type Pod } from "../types";
 
 const EVENT_TTL_MS = 60 * 60 * 1000;
@@ -17,6 +18,25 @@ export function runGarbageCollector(cluster: Cluster): void {
     if (refs.some((r) => uids.has(r.uid))) continue;
     if (o.kind === "Pod" && o.metadata.deletionTimestamp !== undefined) continue;
     cluster.deleteObject(o);
+  }
+
+  // Foreground deletion: delete the dependents (foreground too, if they block their owner),
+  // and finish the owner once no blocking dependent is left.
+  for (const o of objects) {
+    if (o.metadata.deletionTimestamp === undefined || !o.metadata.finalizers?.includes(FOREGROUND)) continue;
+    if (!cluster.raw(o.kind, o.metadata.namespace, o.metadata.name)) continue;
+    const deps = cluster.dependentsOf(o.metadata.uid);
+    for (const d of deps) {
+      if (d.metadata.deletionTimestamp !== undefined) continue;
+      const blocks = d.metadata.ownerReferences?.some((r) => r.uid === o.metadata.uid && r.blockOwnerDeletion);
+      cluster.deleteObject(d, { propagationPolicy: blocks ? "Foreground" : "Background" });
+    }
+    const blocking = cluster.dependentsOf(o.metadata.uid).filter((d) => d.metadata.ownerReferences?.some((r) => r.uid === o.metadata.uid && r.blockOwnerDeletion));
+    if (blocking.length) continue;
+    const cur = cluster.raw(o.kind, o.metadata.namespace, o.metadata.name)!;
+    const rest = (cur.metadata.finalizers ?? []).filter((f) => f !== FOREGROUND);
+    if (rest.length) cluster.update(cur, (x) => void (x.metadata.finalizers = rest));
+    else cluster.remove(cur);
   }
 
   // Endpoints outlive nothing: drop them with their Service.
@@ -58,5 +78,7 @@ export function runGarbageCollector(cluster: Cluster): void {
       if (!live.has(uid)) delete cluster.state.timers[k];
     }
     for (const uid of Object.keys(cluster.state.hpa)) if (!live.has(uid)) delete cluster.state.hpa[uid];
+    // Container logs of Pods that are gone (snapshots from before logs were pruned on delete).
+    for (const k of Object.keys(cluster.state.logs)) if (!live.has(k.slice(0, k.indexOf("/")))) delete cluster.state.logs[k];
   }
 }

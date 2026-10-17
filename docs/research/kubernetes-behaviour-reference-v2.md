@@ -267,26 +267,36 @@ There is no `..data` layout and there are no permissions or UIDs.
 ### (b) Simulator
 
 - `lib/engine/quantity.ts`: `parseQuantity`, `milliCpu`, `bytes`, `canonicalQuantity`,
-  `qosClass`, `podRequests` (sum of containers), `nodeAllocatable` (default 4 CPU, 8141592Ki).
-- `lib/engine/controllers/scheduler.ts` `schedule()` filters in this order:
-  1. unschedulable
-  2. taints (NoSchedule and NoExecute)
-  3. nodeSelector and required node affinity
-  4. PV node affinity
-  5. required pod anti-affinity (hostname only)
-  6. pod count
-  7. cpu and memory requests against allocatable
+  `qosClass` (init containers included), `podRequests` (effective requests: the larger of app
+  containers plus sidecars and any one init container plus the sidecars before it),
+  `nodeAllocatable` (default 4 CPU, 8141592Ki).
+- `lib/engine/controllers/scheduler.ts` `filterNode()` runs the default plugin order:
+  1. NodeUnschedulable
+  2. TaintToleration (NoSchedule and NoExecute)
+  3. NodeAffinity (nodeSelector and required node affinity)
+  4. NodeResourcesFit (pod count, cpu, memory; every short resource is reported)
+  5. VolumeBinding (PV node affinity)
+  6. PodTopologySpread (`DoNotSchedule` constraints: maxSkew, minDomains, matchLabelKeys,
+     nodeAffinityPolicy, nodeTaintsPolicy; `(missing required label)` for Nodes without the key)
+  7. InterPodAffinity (required pod affinity, including the "first Pod of a self-affine group"
+     rule; required anti-affinity; existing Pods' anti-affinity), any topology key, `namespaces`
+     and `namespaceSelector`
 
   `volumePreFilter()` gives the PreFilter texts. Histogram and preemption tail as real.
-  Scoring: fewest siblings, then least allocated, plus preferred node affinity, then random.
-  Retries every 5 s (`RETRY_MS`), emitting `FailedScheduling` each time.
+  Scoring: fewest siblings, then least allocated, plus preferred node affinity, preferred pod
+  (anti-)affinity and `ScheduleAnyway` spread, then random. Pods with another `schedulerName`
+  stay Pending. When nothing fits, DefaultPreemption picks the Node whose lowest-priority
+  victims free enough room (fewest and lowest priority, with reprieve), marks them
+  `DisruptionTarget` (`PreemptionByScheduler`), records `Preempted` ("Preempted by pod <uid> on
+  node <n>"), deletes them and sets `status.nominatedNodeName`; the FailedScheduling message then
+  has no preemption part. Retries every 5 s (`RETRY_MS`), emitting `FailedScheduling` each time.
 - Test: `v2.test.ts` "requests that don't fit leave the Pod Pending with Insufficient cpu".
 
 ### (c) Deliberate simplifications
 
-No init containers, overhead, extended resources, ephemeral-storage, pod affinity,
-PodTopologySpread or non-hostname topology keys. Scoring is approximate. There is no real
-scheduling queue.
+No overhead, extended resources, ephemeral-storage or pod-level resources (warned). Preemption
+ignores PodDisruptionBudgets. Scoring is approximate (no default PodTopologySpread constraints:
+the sibling-spread score stands in for them). There is no real scheduling queue.
 
 ---
 
@@ -773,7 +783,9 @@ stabilization 5 min, CPU initialization period 5 min, initial readiness delay 30
        or `ReadyForNewScale` "recommended size matches current size"
      - the scale-up limit is **`max(2×current, 4)`**
    - **With behavior:** policies are evaluated over recorded scale events per `periodSeconds`.
-     `ScaleUpStabilized` / `ScaleDownStabilized`.
+     `ScaleUpStabilized` / `ScaleDownStabilized`. The simulator implements both paths
+     (`hpa.ts` `scaleLimit`): per-direction stabilization windows, Pods/Percent policies,
+     `selectPolicy` Max/Min/Disabled and `tolerance`.
    - **`ScalingLimited`:**
      - `DesiredWithinRange` "the desired count is within the acceptable range" (False)
      - `ScaleUpLimit` "the desired replica count is increasing faster than the maximum scale rate"
@@ -897,7 +909,8 @@ only a few annotations.
 
 ### (b) Simulator
 
-`controllers/network.ts` assigns `172.18.255.<200+n>` 2 s after creation, with
+`controllers/network.ts` assigns the next free address of the pool `172.18.255.200-250` (freed
+addresses are reused; when the pool is exhausted the Service stays `<pending>`) 2 s after creation, with
 `ipMode: VIP`, and emits `EnsuredLoadBalancer`. `traffic.ts` `resolveTarget` routes LB IPs.
 `printers.ts` `svcExternal`. Test: `v2.test.ts` "LoadBalancer Services get an external IP".
 
@@ -1036,15 +1049,19 @@ TCP and UDP port checks only. hostNetwork Pods are not modelled. Probes are alwa
 ### (b) Simulator
 
 `lib/engine/rbac.ts` has `ADMIN` (`kubernetes-admin`, `kubeadm:cluster-admins`), `userFor`,
-`ruleAllows`, `rulesFor`, `authorize`, `forbiddenMessage`, and flattened built-in roles
-(`BUILTIN_CLUSTER_ROLES`). `kubectl.ts` `can()` checks RBAC only when `--as` is given.
+`ruleAllows`, `rulesFor`, `authorize`, `forbiddenMessage`, the built-in roles
+(`BUILTIN_CLUSTER_ROLES`, about 27, with `admin`/`edit`/`view` filled in by
+`runClusterRoleAggregation`), and `checkEscalation` (ConfirmNoEscalation plus the `bind` and
+`escalate` verbs: `user "bob" (groups=[...]) is attempting to grant RBAC permissions not currently
+held:` followed by the uncovered rules in CompactString form), applied by `Cluster.create` /
+`replace` / `apply` when a `user` is passed. `kubectl.ts` `can()` checks RBAC only when `--as` is given.
 `cmdAuth()` implements can-i, `--list` and whoami. `validation.ts` "Role"/"RoleBinding". Tests:
 `v2.test.ts` "rbac".
 
 ### (c) Deliberate simplifications
 
-There is no authentication. The default user skips authorization. Few built-in roles, and no
-aggregation.
+There is no authentication. The default user skips authorization. About 27 of the ~70 built-in
+roles exist, with trimmed rule lists for the system component roles.
 
 ---
 
@@ -1238,7 +1255,7 @@ running it.
 | G13 ✓ | `scheduler.ts` `schedule` | `Too many pods` short-circuits; cpu and memory not also reported | `fitsRequest` returns all insufficient resources together | src |
 | G14 ✓ | `scheduler.ts` `schedule` | filter order: volume node affinity and anti-affinity before resources | NodeResourcesFit runs before VolumeBinding and InterPodAffinity; a node reports its first failing plugin | unv (order) |
 | G15 ✓ | `scheduler.ts` `schedule` | anti-affinity failures count as "Preemption is not helpful" | InterPodAffinity returns `Unschedulable`, so "No preemption victims found for incoming pod" | src |
-| G16 | `scheduler.ts` `antiAffinityOk` | only required anti-affinity, only `kubernetes.io/hostname`; no pod affinity | full inter-pod affinity | (simplification) |
+| G16 ✓ | `scheduler.ts` `interPodAffinity` | only required anti-affinity, only `kubernetes.io/hostname`; no pod affinity | full inter-pod affinity | (simplification) |
 | G17 | `scheduler.ts` scoring | ad-hoc score, BestEffort counts as 0 | plugin weights; 100m/200Mi non-zero defaults; PodTopologySpread defaults | src (v1 ref §5) |
 | G18 | `scheduler.ts` `RETRY_MS` | retry and `FailedScheduling` every 5 s | back-off 1 s→10 s, event-driven requeue, flush after 5 min | unv |
 | G19 | v1 reference §5 (doc, not code) | lists `Insufficient pods` | source says `Too many pods` (the simulator is right) | src |
@@ -1292,7 +1309,7 @@ running it.
 | # | Where | Simulator | Real v1.37 | Conf. |
 |---|---|---|---|---|
 | G49 (partly) | `admission.ts` StatefulSet; `statefulset.ts` | no `rollingUpdate.maxUnavailable` default; one Pod at a time | defaults to 1 (gate beta-on in 1.37); rolling may replace up to maxUnavailable | src |
-| G50 | `statefulset.ts` `ensureClaims` | `whenScaled: Delete` ignored | condemned Pods' claims get an ownerRef to the Pod and are GC'd | unv |
+| G50 ✓ | `statefulset.ts` `reconcileClaimOwners` | `whenScaled: Delete` ignored | condemned Pods' claims get an ownerRef to the Pod and are GC'd | unv |
 | G51 ✓ | `statefulset.ts` `ensureRevision` | ControllerRevision label `controller-revision-hash: <hash>` | `controller.kubernetes.io/hash` | unv |
 | G52 | `statefulset.ts` status | `availableReplicas` = ready, omitted when 0; `minReadySeconds` ignored | honours `minReadySeconds`; `availableReplicas` always present | unv |
 | G53 | `statefulset.ts` | recreates a Failed Pod with plain delete and create events | real controller also emits a recreate-failed-pod Warning | unv |
@@ -1352,7 +1369,7 @@ running it.
 | G88 ✓ | `validation.ts` RoleBinding | `roleRef: Invalid value: ...: cannot change roleRef` | `... field is immutable` | src |
 | G89 ✓ | `validation.ts` subjects | supported values `"Group", "ServiceAccount", "User"` | `"ServiceAccount", "User", "Group"` | src |
 | G90 ✓ | `rbac.ts` `forbiddenMessage` | never appends a reason | appends `: RBAC: role.rbac.authorization.k8s.io "x" not found` when a binding's role is missing | src |
-| G91 | `rbac.ts` `BUILTIN_CLUSTER_ROLES` | 7 flattened roles; no `aggregationRule`; abbreviated rule lists | about 70 roles; admin, edit and view aggregated | unv (count) |
+| G91 (partly) | `rbac.ts` `BUILTIN_CLUSTER_ROLES` | about 27 roles; `admin`/`edit`/`view` aggregated by the clusterrole-aggregation controller; system role rule lists abbreviated | about 70 roles | unv (count) |
 | G92 | `kubectl.ts` `cmdAuth` | unknown resource: warning, then always `no`; `--list` rows not merged or sorted | warning, then the server is asked (admin gets `yes`); `--list` from SelfSubjectRulesReview, compacted | src (can-i), unv (list) |
 | G93 ✓ | `kubectl.ts` `emit`, `applyYaml` | `created (client dry run)` (pinned by `kubectl.v2.test.ts:57`) | `created (dry run)`; server `(server dry run)` | src |
 | G94 ✓ | `kubectl.ts` `cmdWait` | `--for=delete` prints `<ref> deleted`; no timeout (waits forever); no `--for=create` | always `<ref> condition met`; default 30 s, then `error: timed out waiting for the condition on <res>/<name>`; `--for=create` | src + run |
@@ -1363,6 +1380,41 @@ running it.
 | G99 ✓ | `validation.ts` Service | headless NodePort: `... for LoadBalancer services` | `... for NodePort services` | src |
 | G100 | `validation.ts` `checkResources` | bad quantity: 422 `The Pod "x" is invalid: ... quantities must match ...` | fails at decode with BadRequest: `... cannot be handled as a Pod: quantities must match ...` | unv |
 | G101 | `validation.ts` Secret | base64 error ends with `(key "k")` | unsure whether the key is included | unv |
+
+### Engine review fixes (2026-10)
+
+Pinned by `lib/engine/review.test.ts`. Each was wrong in the simulator, not a deliberate simplification.
+
+| # | Where | Was | Now |
+|---|---|---|---|
+| R1 | `cluster.ts` `create`/`replace` | update validated before defaulting and admission: re-applying a Pod image, a StatefulSet template, a PVC resize or even an identical Job failed with bogus immutability errors; LimitRange defaults were never validated (requests > limits stored) | defaulting and mutating admission, then validation, then ResourceQuota, as the apiserver orders them |
+| R2 | `cluster.ts` `apply`, `apply.ts` | two-way replace: `kubectl label` and `rollout restart` were undone by a re-apply (a new rollout), controller annotations dropped | kubectl's client-side three-way merge over `last-applied-configuration`, strategic-merge keys for lists, `retainKeys` for Deployment `spec.strategy` and volume sources; missing-annotation warning |
+| R3 | `admission.ts` Service | NodePort → ClusterIP through apply failed (`nodePort` carried over) | the allocated nodePort is dropped on a type change (`dropTypeDependentFields`); a user-written one is still rejected |
+| R4 | `images.ts` `compileScript` | `for` loops stopped after the first iteration (CrashLoopBackOff); `while <cond>` never checked its condition; `$(seq 1 N)` unrolled N copies | runtime loop ops (`forinit`/`fornext`/`jumpif`), nested loops, `until`; no unrolling |
+| R5 | `exec.ts` `grep`, `seq` | a bad pattern threw out of `Cluster.step()` and stopped the cluster; `seq 1e9` built gigabytes | BRE/ERE/fixed translation with grep's error text and exit 2; `seq` capped at 100 000 lines; a throwing container program now crashes only that container |
+| R6 | `daemonset.ts` | daemon Pods deleted from unreachable Nodes | `shouldContinueRunning` honours NoExecute only, like NodeShouldRunDaemonPod |
+| R7 | `kubelet.ts` `allocPodIp`, `network.ts` `allocLbIp` | Pod IPs counted up forever (10.244.1.256); LB IPs too | host-local style round-robin with reuse inside the /24; LB pool 172.18.255.200-250 with reuse |
+| R8 | `cluster.ts` `log`/`remove`, `gc.ts` | logs of deleted Pods and old restarts kept forever | current and previous container's logs only; dropped with the Pod |
+| R9 | `admission.ts`, `netpol.ts` | `egress: []` defaulted `policyTypes` to Ingress+Egress | Egress only with at least one egress rule |
+| R10 | `rbac.ts` `checkEscalation` | any user who could create bindings could grant cluster-admin | ConfirmNoEscalation with `bind`/`escalate` |
+| R11 | `policy.ts` | PDB `selector: {}` matched nothing; `disruptedPods` stamped 1970 | empty selector matches all; sim-clock RFC3339 |
+| R12 | `scheduler.ts` | no preemption, pod affinity, topology spread or non-hostname anti-affinity; other `schedulerName`s scheduled anyway | implemented (see §5 (b)) |
+| R13 | `kubelet.ts` | init containers ignored | sequential init containers, sidecars (`restartPolicy: Always`), `Initialized`, `initContainerStatuses`, `PodInitializing`, Init:x/y via `podstatus.ts`; reruns after a Node reboot |
+| R14 | `cluster.ts` `deleteObject`, `gc.ts` | `--cascade=foreground` behaved like background | `foregroundDeletion` finalizer; the owner stays until blocking dependents are gone |
+| R15 | `validation.ts` | Recreate plus `rollingUpdate` silently accepted | `spec.strategy.rollingUpdate: Forbidden: may not be specified when strategy \`type\` is 'Recreate'` |
+| R16 | `admission.ts` | ServiceAccount `automountServiceAccountToken: false` ignored | honoured unless the Pod sets it |
+| R17 | `hpa.ts` | `behavior` policies, scale-up window, selectPolicy and tolerance ignored | normalizeDesiredReplicasWithBehaviors |
+| R18 | `statefulset.ts` | `whenScaled: Delete` ignored | condemned claims owned by their Pod |
+| R19 | `cronjob.ts` | Forbid marked a skipped run as scheduled, so it was lost | held and started when the active Job finishes (within startingDeadlineSeconds) |
+| R20 | `job.ts` | `parallelism` without `completions` treated as `completions: 1` | work queue; `startTime` reset on resume |
+| R21 | `node-lifecycle.ts`, `admission.ts` Node | eviction counted from `timeAdded` (0 when unset) | from when the Pod met the taint; NoExecute taints get `timeAdded`; shortest tolerationSeconds wins |
+| R22 | `endpoints.ts` | terminating Pods listed in `notReadyAddresses` | left out unless `publishNotReadyAddresses` |
+| R23 | `kubelet.ts` | `activeDeadlineSeconds`, `readinessGates`, `runAsNonRoot`, `runAsUser`, `readOnlyRootFilesystem`, `hostAliases` ignored | implemented |
+| R24 | `scheduler.ts`, `cluster.ts` | per-Pod full Pod-list sorts and per-event full Event scans: 0.7-0.85 s per simulated second while scaling to 1000 replicas | a per-pass scheduler snapshot, cached sorted lists and an Event index: under 0.08 s |
+| R25 | `traffic.ts` | load-balancing picks used the cluster RNG, so curl traffic changed later generated names | separate `trafficRng` |
+
+Fields the API accepts but the simulator does not act on now come back as API warnings
+(`warnings.ts`, `Cluster.drainWarnings()`), printed by kubectl as `Warning: ...`.
 
 (G48 and G85 were dropped while writing: they turned out to match the real behaviour.)
 

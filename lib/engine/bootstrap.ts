@@ -1,16 +1,17 @@
-// Builds a fresh cluster the way kind does: built-in namespaces, Nodes, the
-// `kubernetes` and `kube-dns` Services, default RBAC, and (optionally) the
-// kube-system Pods. Like the usual kind add-ons it also runs the local-path
-// provisioner (default StorageClass "standard"), ingress-nginx (IngressClass
-// "nginx", not the default, but it also serves Ingresses with no class) and metrics-server, so storage, Ingress, `kubectl top` and the HPA
-// work out of the box.
+// Builds a fresh cluster like `kind create cluster` would (built-in namespaces, Nodes, the
+// `kubernetes` and `kube-dns` Services, the default RBAC roles and bindings, and optionally the
+// kube-system Pods, plus kind's local-path provisioner as the default StorageClass "standard"),
+// PLUS add-ons a plain kind cluster does NOT ship: ingress-nginx pre-installed (IngressClass
+// "nginx", not the default, but it also serves Ingresses with no class) and metrics-server.
+// So Ingress, `kubectl top` and the HPA work out of the box here, whereas on a real fresh kind
+// cluster you'd install an Ingress controller and metrics-server first.
 
 import type { Cluster } from "./cluster";
 import { addNode } from "./nodes";
 import { parseImage } from "./images";
-import { BUILTIN_CLUSTER_ROLES, BUILTIN_CLUSTER_ROLE_BINDINGS } from "./rbac";
+import { BUILTIN_CLUSTER_ROLES, BUILTIN_CLUSTER_ROLE_BINDINGS, runClusterRoleAggregation } from "./rbac";
 import { SYSTEM_PRIORITY_CLASSES } from "./policy";
-import type { DaemonSet, Deployment, Endpoints, Pod, Service } from "./types";
+import type { DaemonSet, Deployment, Endpoints, EndpointSlice, Pod, Service } from "./types";
 
 const SYSTEM_IMAGES = {
   etcd: "registry.k8s.io/etcd:3.6.4-0",
@@ -38,7 +39,12 @@ export function bootstrap(cluster: Cluster): void {
   const cp = cluster.state.config.nodes.find((n) => n.role === "control-plane")?.name ?? cluster.state.config.nodes[0]?.name;
 
   for (const r of BUILTIN_CLUSTER_ROLES) {
-    cluster.create({ apiVersion: "rbac.authorization.k8s.io/v1", kind: "ClusterRole", metadata: { name: r.name, labels: { "kubernetes.io/bootstrapping": "rbac-defaults", ...(r.labels ?? {}) }, annotations: { "rbac.authorization.kubernetes.io/autoupdate": "true" } }, rules: r.rules } as never);
+    cluster.create({
+      apiVersion: "rbac.authorization.k8s.io/v1",
+      kind: "ClusterRole",
+      metadata: { name: r.name, labels: { "kubernetes.io/bootstrapping": "rbac-defaults", ...(r.labels ?? {}) }, annotations: { "rbac.authorization.kubernetes.io/autoupdate": "true" } },
+      ...(r.aggregationRule ? { aggregationRule: r.aggregationRule, rules: [] } : { rules: r.rules }),
+    } as never);
   }
   for (const b of BUILTIN_CLUSTER_ROLE_BINDINGS) {
     cluster.create({
@@ -46,9 +52,11 @@ export function bootstrap(cluster: Cluster): void {
       kind: "ClusterRoleBinding",
       metadata: { name: b.name, labels: { "kubernetes.io/bootstrapping": "rbac-defaults" }, annotations: { "rbac.authorization.kubernetes.io/autoupdate": "true" } },
       roleRef: { apiGroup: "rbac.authorization.k8s.io", kind: "ClusterRole", name: b.role },
-      subjects: [{ apiGroup: "rbac.authorization.k8s.io", kind: "Group", name: b.group }],
+      ...(b.subjects ? { subjects: b.subjects } : {}),
     } as never);
   }
+  // The clusterrole-aggregation controller fills admin/edit/view before anyone can use them.
+  runClusterRoleAggregation(cluster, 5);
 
   cluster.create<Service>({
     apiVersion: "v1",
@@ -61,6 +69,16 @@ export function bootstrap(cluster: Cluster): void {
     kind: "Endpoints",
     metadata: { name: "kubernetes", namespace: "default", uid: cluster.uid(), resourceVersion: "", creationTimestamp: cluster.now, labels: { "endpointslice.kubernetes.io/skip-mirror": "true" } },
     subsets: [{ addresses: [{ ip: "172.18.0.2" }], ports: [{ name: "https", port: 6443, protocol: "TCP" }] }],
+  });
+  // The apiserver's endpoint reconciler writes this slice itself: fixed name, no managed-by label.
+  const apiSvc = cluster.raw("Service", "default", "kubernetes")!;
+  cluster.put<EndpointSlice>({
+    apiVersion: "discovery.k8s.io/v1",
+    kind: "EndpointSlice",
+    metadata: { name: "kubernetes", namespace: "default", uid: `${apiSvc.metadata.uid.slice(0, 24)}5e1ce0000001`, resourceVersion: "", creationTimestamp: cluster.now, generation: 1, labels: { "kubernetes.io/service-name": "kubernetes" } },
+    addressType: "IPv4",
+    endpoints: [{ addresses: ["172.18.0.2"], conditions: { ready: true } }],
+    ports: [{ name: "https", port: 6443, protocol: "TCP" }],
   });
 
   if (!sys) return;
@@ -193,6 +211,14 @@ export function bootstrap(cluster: Cluster): void {
     metadata: { name: "metrics-server", namespace: "kube-system", labels: { "k8s-app": "metrics-server" } },
     spec: { selector: { "k8s-app": "metrics-server" }, ports: [{ name: "https", port: 443, protocol: "TCP", targetPort: "https" }] },
   });
+  // From metrics-server's components.yaml: lets view/edit/admin read metrics.k8s.io (kubectl top).
+  cluster.create({
+    apiVersion: "rbac.authorization.k8s.io/v1",
+    kind: "ClusterRole",
+    metadata: { name: "system:aggregated-metrics-reader", labels: { "k8s-app": "metrics-server", "rbac.authorization.k8s.io/aggregate-to-admin": "true", "rbac.authorization.k8s.io/aggregate-to-edit": "true", "rbac.authorization.k8s.io/aggregate-to-view": "true" } },
+    rules: [{ apiGroups: ["metrics.k8s.io"], resources: ["pods", "nodes"], verbs: ["get", "list", "watch"] }],
+  } as never);
+  runClusterRoleAggregation(cluster, 5);
 
   deploy("local-path-storage", "local-path-provisioner", { app: "local-path-provisioner" }, {
     tolerations: [{ key: "node-role.kubernetes.io/control-plane", operator: "Exists", effect: "NoSchedule" }],

@@ -72,14 +72,22 @@ export function runNodeLifecycle(cluster: Cluster): void {
   }
 }
 
-/** When a Pod must leave because of a NoExecute taint (Infinity = tolerated forever). */
+/**
+ * When a Pod must leave because of a NoExecute taint (Infinity = tolerated forever). The
+ * taint-eviction controller starts the clock when it first sees the Pod on the tainted Node:
+ * the later of the taint's timeAdded and the Pod's binding. With several matching
+ * tolerations the shortest tolerationSeconds wins (getMinTolerationTime).
+ */
 function evictAt(p: Pod, t: Taint): number {
-  const tol = (p.spec?.tolerations ?? []).find((x) => {
+  const tols = (p.spec?.tolerations ?? []).filter((x) => {
     if (x.effect && x.effect !== "NoExecute") return false;
     if (x.operator === "Exists") return !x.key || x.key === t.key;
     return x.key === t.key && (x.value ?? "") === (t.value ?? "");
   });
-  if (!tol) return t.timeAdded ?? 0;
-  if (tol.tolerationSeconds === undefined) return Infinity;
-  return (t.timeAdded ?? 0) + tol.tolerationSeconds * 1000;
+  const bound = p.status?.conditions?.find((c) => c.type === "PodScheduled" && c.status === "True")?.lastTransitionTime ?? p.metadata.creationTimestamp;
+  const start = Math.max(t.timeAdded ?? 0, bound);
+  if (!tols.length) return start;
+  const secs = tols.map((x) => x.tolerationSeconds).filter((x): x is number => x !== undefined);
+  if (!secs.length) return Infinity;
+  return start + Math.max(0, Math.min(...secs)) * 1000;
 }

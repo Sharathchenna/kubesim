@@ -61,7 +61,10 @@ export function runStorage(cluster: Cluster): void {
       }
       continue;
     }
-    if (pvc.status?.phase === "Bound") continue;
+    if (pvc.status?.phase === "Bound") {
+      expand(cluster, pvc);
+      continue;
+    }
     const cls = pvc.spec?.storageClassName ?? "";
     // Pre-bound to a named volume.
     if (pvc.spec?.volumeName) {
@@ -159,6 +162,26 @@ function provision(cluster: Cluster, pvc: PersistentVolumeClaim, sc: StorageClas
   } as unknown as PersistentVolume);
   cluster.record(pvc, "Normal", "ProvisioningSucceeded", `Successfully provisioned volume ${name}`, `${sc.provisioner}_local-path-provisioner-7577fdbbfb-5gqxl_6c3b1e0e-0f5b-4c6e-9a55-1d2c9a3b7e10`);
   bind(cluster, cluster.get<PersistentVolumeClaim>("PersistentVolumeClaim", ns, pvc.metadata.name), pv, true);
+}
+
+/** Volume expansion (StorageClass allowVolumeExpansion): the volume and claim grow to the new request. */
+function expand(cluster: Cluster, pvc: PersistentVolumeClaim): void {
+  const want = pvc.spec?.resources?.requests?.storage;
+  const have = pvc.status?.capacity?.storage;
+  if (!want || !have || bytes(want) <= bytes(have)) return;
+  const key = `resize/${pvc.metadata.uid}`;
+  const timers = cluster.state.timers;
+  if (timers[key] === undefined) {
+    timers[key] = cluster.now + PROVISION_MS;
+    cluster.record(pvc, "Normal", "ExternalExpanding", "waiting for an external controller to expand this PVC", "volume_expand");
+    return;
+  }
+  if (cluster.now < timers[key]) return;
+  delete timers[key];
+  const pv = pvc.spec?.volumeName ? (cluster.raw("PersistentVolume", undefined, pvc.spec.volumeName) as unknown as PersistentVolume | undefined) : undefined;
+  if (pv) cluster.update(pv, (x) => void (x.spec!.capacity = { ...(x.spec!.capacity ?? {}), storage: want }));
+  cluster.updateStatus(pvc, (x) => void (x.status = { ...x.status!, capacity: { ...(x.status?.capacity ?? {}), storage: want } }));
+  cluster.record(pvc, "Normal", "VolumeResizeSuccessful", "resize volume succeeded", "volume_expand");
 }
 
 /** The claim is gone: apply the volume's reclaim policy. */

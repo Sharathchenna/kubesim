@@ -109,6 +109,9 @@ export interface Container {
   startupProbe?: Probe;
   terminationMessagePath?: string;
   terminationMessagePolicy?: string;
+  /** Only on init containers: "Always" makes it a sidecar (restartable init container). */
+  restartPolicy?: "Always";
+  lifecycle?: { postStart?: unknown; preStop?: unknown };
 }
 
 export interface KeyToPath {
@@ -138,15 +141,36 @@ export interface NodeSelectorTerm {
   matchFields?: NodeSelectorRequirement[];
 }
 
+export interface PodAffinityTerm {
+  labelSelector?: LabelSelector;
+  topologyKey: string;
+  namespaces?: string[];
+  namespaceSelector?: LabelSelector;
+}
+
+export interface PodAffinityRules {
+  requiredDuringSchedulingIgnoredDuringExecution?: PodAffinityTerm[];
+  preferredDuringSchedulingIgnoredDuringExecution?: { weight: number; podAffinityTerm: PodAffinityTerm }[];
+}
+
 export interface Affinity {
   nodeAffinity?: {
     requiredDuringSchedulingIgnoredDuringExecution?: { nodeSelectorTerms: NodeSelectorTerm[] };
     preferredDuringSchedulingIgnoredDuringExecution?: { weight: number; preference: NodeSelectorTerm }[];
   };
-  podAntiAffinity?: {
-    requiredDuringSchedulingIgnoredDuringExecution?: { labelSelector?: LabelSelector; topologyKey: string }[];
-    preferredDuringSchedulingIgnoredDuringExecution?: { weight: number; podAffinityTerm: { labelSelector?: LabelSelector; topologyKey: string } }[];
-  };
+  podAffinity?: PodAffinityRules;
+  podAntiAffinity?: PodAffinityRules;
+}
+
+export interface TopologySpreadConstraint {
+  maxSkew: number;
+  topologyKey: string;
+  whenUnsatisfiable: "DoNotSchedule" | "ScheduleAnyway";
+  labelSelector?: LabelSelector;
+  minDomains?: number;
+  matchLabelKeys?: string[];
+  nodeAffinityPolicy?: "Honor" | "Ignore";
+  nodeTaintsPolicy?: "Honor" | "Ignore";
 }
 
 export interface Toleration {
@@ -183,6 +207,10 @@ export interface PodSpec {
   hostNetwork?: boolean;
   hostname?: string;
   subdomain?: string;
+  topologySpreadConstraints?: TopologySpreadConstraint[];
+  readinessGates?: { conditionType: string }[];
+  /** Pod-level resources (PodLevelResources): accepted, not simulated. */
+  resources?: ResourceRequirements;
 }
 
 export interface ContainerStateWaiting {
@@ -238,6 +266,8 @@ export interface PodStatus {
   podIPs?: { ip: string }[];
   startTime?: number;
   containerStatuses?: ContainerStatus[];
+  initContainerStatuses?: ContainerStatus[];
+  nominatedNodeName?: string;
   qosClass?: string;
   reason?: string;
   message?: string;
@@ -429,6 +459,8 @@ export interface MetricSpec {
 export interface HPAScalingRules {
   stabilizationWindowSeconds?: number;
   selectPolicy?: "Max" | "Min" | "Disabled";
+  /** HPAConfigurableTolerance (GA in 1.37): fraction, default 0.1. */
+  tolerance?: number | string;
   policies?: { type: "Pods" | "Percent"; value: number; periodSeconds: number }[];
 }
 
@@ -570,6 +602,30 @@ export interface EndpointSubset {
 
 export interface Endpoints extends KubeObject<"Endpoints", never, never> {
   subsets?: EndpointSubset[];
+}
+
+/** discovery.k8s.io/v1 EndpointSlice: one endpoint per Pod, with ready/serving/terminating conditions. */
+export interface EndpointSliceEndpoint {
+  addresses: string[];
+  conditions: { ready?: boolean; serving?: boolean; terminating?: boolean };
+  hostname?: string;
+  nodeName?: string;
+  zone?: string;
+  targetRef?: { kind: string; name: string; namespace: string; uid: string };
+}
+
+export interface EndpointSlicePort {
+  name?: string;
+  port?: number;
+  protocol?: string;
+  appProtocol?: string;
+}
+
+export interface EndpointSlice extends KubeObject<"EndpointSlice", never, never> {
+  addressType: "IPv4" | "IPv6" | "FQDN";
+  /** null on the placeholder slice of a Service with no Pods, as the API returns it. */
+  endpoints: EndpointSliceEndpoint[] | null;
+  ports: EndpointSlicePort[] | null;
 }
 
 export interface IngressBackend {

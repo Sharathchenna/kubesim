@@ -122,6 +122,16 @@ export function matchesSelector(labels: Labels | undefined, selector: LabelSelec
   return true;
 }
 
+/**
+ * metav1.LabelSelectorAsSelector semantics: a nil selector matches nothing, an empty one
+ * (`selector: {}`) matches everything. (policy/v1 PodDisruptionBudget, NetworkPolicy.)
+ */
+export function matchesLabelSelector(labels: Labels | undefined, selector: LabelSelector | undefined): boolean {
+  if (!selector) return false;
+  if (Object.keys(selector.matchLabels ?? {}).length === 0 && (selector.matchExpressions ?? []).length === 0) return true;
+  return matchesSelector(labels, selector);
+}
+
 /** Parses a kubectl-style label selector string, e.g. "app=web,tier!=db,env". */
 export function parseSelectorString(s: string): LabelSelector {
   const sel: LabelSelector = { matchLabels: {}, matchExpressions: [] };

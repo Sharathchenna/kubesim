@@ -29,10 +29,19 @@ export function dsTargetNode(p: Pod): string | undefined {
   return undefined;
 }
 
-function eligible(ds: DaemonSet, node: Node): boolean {
+/**
+ * NodeShouldRunDaemonPod: whether a new daemon Pod should be placed on the Node (`run`),
+ * and whether an existing one may stay (`keep`). Only untolerated NoExecute taints evict:
+ * a Node that went unreachable gets `unreachable:NoSchedule`, which stops new daemon Pods
+ * but leaves the running one in place.
+ */
+function shouldRun(ds: DaemonSet, node: Node): { run: boolean; keep: boolean } {
   const probe = { spec: { ...ds.spec!.template.spec, tolerations: [...(ds.spec!.template.spec.tolerations ?? []), ...DS_TOLERATIONS] } } as Pod;
-  if (!nodeAffinityOk(probe, node)) return false;
-  return !(node.spec?.taints ?? []).some((t) => (t.effect === "NoSchedule" || t.effect === "NoExecute") && !tolerates(probe.spec!.tolerations, t));
+  if (!nodeAffinityOk(probe, node)) return { run: false, keep: false };
+  const taints = node.spec?.taints ?? [];
+  const fits = !taints.some((t) => (t.effect === "NoSchedule" || t.effect === "NoExecute") && !tolerates(probe.spec!.tolerations, t));
+  if (fits) return { run: true, keep: true };
+  return { run: false, keep: !taints.some((t) => t.effect === "NoExecute" && !tolerates(probe.spec!.tolerations, t)) };
 }
 
 export function runDaemonSets(cluster: Cluster): void {
@@ -49,12 +58,13 @@ export function runDaemonSets(cluster: Cluster): void {
       const n = dsTargetNode(p) ?? "";
       (byNode.get(n) ?? byNode.set(n, []).get(n)!).push(p);
     }
-    const want = nodes.filter((n) => eligible(ds, n));
+    const verdict = new Map(nodes.map((n) => [n.metadata.name, shouldRun(ds, n)]));
+    const want = nodes.filter((n) => verdict.get(n.metadata.name)!.run);
     const wantNames = new Set(want.map((n) => n.metadata.name));
 
     // Remove Pods on Nodes that no longer qualify (or no longer exist).
     for (const [n, ps] of byNode) {
-      if (wantNames.has(n)) continue;
+      if (verdict.get(n)?.keep) continue;
       for (const p of ps) {
         if (p.metadata.deletionTimestamp !== undefined) continue;
         cluster.deleteObject(p);

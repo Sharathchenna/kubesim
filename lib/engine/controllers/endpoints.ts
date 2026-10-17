@@ -1,5 +1,6 @@
 // endpoints-controller: keeps one Endpoints object per selector Service,
-// listing ready and not-ready Pod addresses (behaviour reference §7.2).
+// listing ready and not-ready Pod addresses; terminating Pods are left out
+// unless publishNotReadyAddresses is set (behaviour reference §7.2).
 
 import { isPodReady, isPodTerminal, type Cluster } from "../cluster";
 import type { EndpointAddress, EndpointSubset, Endpoints, Pod, Service, ServicePort } from "../types";
@@ -19,7 +20,8 @@ export function runEndpoints(cluster: Cluster): void {
     const ns = svc.metadata.namespace!;
     const pods = cluster
       .list<Pod>("Pod", ns)
-      .filter((p) => p.status?.podIP && !isPodTerminal(p) && Object.entries(sel).every(([k, v]) => p.metadata.labels?.[k] === v));
+      // ShouldPodBeInEndpoints(pod, includeTerminating = publishNotReadyAddresses): terminating Pods drop out.
+      .filter((p) => p.status?.podIP && !isPodTerminal(p) && (svc.spec?.publishNotReadyAddresses || p.metadata.deletionTimestamp === undefined) && Object.entries(sel).every(([k, v]) => p.metadata.labels?.[k] === v));
 
     // Group by resolved port set (named targetPorts can differ per Pod).
     const groups = new Map<string, { ports: { name?: string; port: number; protocol: string }[]; ready: EndpointAddress[]; notReady: EndpointAddress[] }>();
@@ -29,7 +31,8 @@ export function runEndpoints(cluster: Cluster): void {
         const port = resolveTargetPort(p, sp);
         if (port !== undefined) ports.push({ ...(sp.name ? { name: sp.name } : {}), port, protocol: sp.protocol ?? "TCP" });
       }
-      if (ports.length === 0) continue;
+      // A headless Service with no ports still lists its Pods (addEndpointSubset with no port).
+      if (ports.length === 0 && !((svc.spec?.ports ?? []).length === 0 && svc.spec?.clusterIP === "None")) continue;
       const key = JSON.stringify(ports);
       const g = groups.get(key) ?? { ports, ready: [], notReady: [] };
       groups.set(key, g);
@@ -40,7 +43,7 @@ export function runEndpoints(cluster: Cluster): void {
         nodeName: p.spec?.nodeName,
         targetRef: { kind: "Pod", name: p.metadata.name, namespace: ns, uid: p.metadata.uid },
       };
-      if ((isPodReady(p) || svc.spec?.publishNotReadyAddresses) && p.metadata.deletionTimestamp === undefined) g.ready.push(addr);
+      if (svc.spec?.publishNotReadyAddresses || (isPodReady(p) && p.metadata.deletionTimestamp === undefined)) g.ready.push(addr);
       else g.notReady.push(addr);
     }
     const ipNum = (ip: string) => ip.split(".").reduce((n, o) => n * 256 + Number(o), 0);
@@ -48,7 +51,7 @@ export function runEndpoints(cluster: Cluster): void {
     const subsets: EndpointSubset[] = [...groups.values()].map((g) => ({
       ...(g.ready.length ? { addresses: g.ready.sort(byIp) } : {}),
       ...(g.notReady.length ? { notReadyAddresses: g.notReady.sort(byIp) } : {}),
-      ports: g.ports,
+      ...(g.ports.length ? { ports: g.ports } : {}),
     }));
 
     const existing = cluster.raw("Endpoints", ns, svc.metadata.name) as unknown as Endpoints | undefined;

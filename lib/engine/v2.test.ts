@@ -1,7 +1,7 @@
 // Behaviour pins for the v2 object set: probes, resources, config, storage,
 // batch, autoscaling, ingress, network policy and RBAC.
 import { describe, expect, test } from "bun:test";
-import { Cluster, addNode, isPodReady, request, type Endpoints, type Job, type KubeEvent, type Node, type PersistentVolumeClaim, type Pod, type Deployment } from "./index";
+import { Cluster, addNode, authorize, userFor, isPodReady, request, type Role, type RoleBinding, type Endpoints, type Job, type KubeEvent, type Node, type PersistentVolumeClaim, type Pod, type Deployment } from "./index";
 import { runKubectl, applyYaml } from "@/lib/kubectl/kubectl";
 
 const k = (c: Cluster, line: string, ns = "default") => runKubectl({ cluster: c, namespace: ns, files: {} }, line);
@@ -552,7 +552,8 @@ kind: Service
 metadata: {name: php-apache, labels: {run: php-apache}}
 spec: {ports: [{port: 80}], selector: {run: php-apache}}`,
     );
-    expect(k(c, "kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10").out).toBe("horizontalpodautoscaler.autoscaling/php-apache autoscaled");
+    // kubectl also prints the --cpu-percent deprecation notice first.
+    expect(k(c, "kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10").out).toEndWith("horizontalpodautoscaler.autoscaling/php-apache autoscaled");
     c.advance(60_000);
     expect(k(c, "kubectl get hpa").out).toMatch(/php-apache\s+Deployment\/php-apache\s+cpu: 0%\/50%\s+1\s+10\s+1\s+/);
     k(c, `kubectl run load-generator --image=busybox:1.28 --restart=Never -- /bin/sh -c "while sleep 0.01; do wget -q -O- http://php-apache; done"`);
@@ -695,7 +696,7 @@ describe("rbac", () => {
     expect(k(c, "kubectl get rolebinding robot-view -o wide").out).toMatch(/robot-view\s+ClusterRole\/view\s+\S+\s+default\/robot/);
     expect(k(c, "kubectl run bad --image=nginx --overrides='{}'").ok).toBe(true);
     const bad = applyYaml({ cluster: c, namespace: "default" }, `apiVersion: v1\nkind: Pod\nmetadata: {name: p}\nspec: {serviceAccountName: nobody, containers: [{name: p, image: nginx}]}`);
-    expect(bad.out).toBe('Error from server (Forbidden): pods "p" is forbidden: error looking up service account default/nobody: serviceaccount "nobody" not found');
+    expect(bad.out).toBe('Error from server (Forbidden): error when creating "manifest.yaml": pods "p" is forbidden: error looking up service account default/nobody: serviceaccount "nobody" not found');
   });
 });
 
@@ -712,5 +713,139 @@ describe("snapshots stay JSON", () => {
     c.advance(5_000);
     expect(Object.keys(d.state.objects).sort()).toEqual(Object.keys(c.state.objects).sort());
     expect(d.list<Node>("Node").length).toBe(3);
+  });
+});
+
+describe("update validation (fidelity)", () => {
+  const scheduledPod = () => {
+    const c = new Cluster({ systemPods: false });
+    apply(c, `apiVersion: v1\nkind: Pod\nmetadata: {name: p}\nspec:\n  tolerations: [{key: gpu, operator: Exists, effect: NoSchedule}]\n  containers: [{name: p, image: nginx}]`);
+    until(c, () => !!c.get<Pod>("Pod", "default", "p").spec?.nodeName);
+    return c;
+  };
+  const tryReplace = (c: Cluster, fn: (p: Pod) => void) => {
+    const p = structuredClone(c.get<Pod>("Pod", "default", "p"));
+    fn(p);
+    try {
+      c.replace(p);
+      return "ok";
+    } catch (e) {
+      return (e as Error).message;
+    }
+  };
+
+  test("the scheduler still binds Pods, but a Pod update can't change spec.nodeName", () => {
+    const c = scheduledPod();
+    const node = c.get<Pod>("Pod", "default", "p").spec!.nodeName!;
+    const other = c.list<Node>("Node").find((n) => n.metadata.name !== node)!.metadata.name;
+    expect(tryReplace(c, (p) => (p.spec!.nodeName = other))).toContain("pod updates may not change fields other than");
+    expect(tryReplace(c, (p) => delete p.spec!.nodeName)).toContain("pod updates may not change fields other than");
+  });
+
+  test("tolerations: additions and tolerationSeconds changes only", () => {
+    const c = scheduledPod();
+    expect(tryReplace(c, (p) => (p.spec!.tolerations = p.spec!.tolerations!.filter((t) => t.key !== "gpu")))).toBe(
+      'The Pod "p" is invalid: spec.tolerations: Forbidden: existing toleration can not be modified except its tolerationSeconds',
+    );
+    expect(tryReplace(c, (p) => (p.spec!.tolerations!.find((t) => t.key === "gpu")!.effect = "NoExecute"))).toContain("existing toleration can not be modified");
+    expect(tryReplace(c, (p) => p.spec!.tolerations!.push({ key: "dedicated", operator: "Equal", value: "db", effect: "NoSchedule" }))).toBe("ok");
+    expect(tryReplace(c, (p) => (p.spec!.tolerations!.find((t) => t.key === "node.kubernetes.io/not-ready")!.tolerationSeconds = 30))).toBe("ok");
+    // The default not-ready/unreachable tolerations are re-added by admission, so leaving them out isn't a removal.
+    expect(tryReplace(c, (p) => (p.spec!.tolerations = p.spec!.tolerations!.filter((t) => !t.key?.startsWith("node.kubernetes.io/"))))).toBe("ok");
+    expect(tryReplace(c, (p) => (p.spec!.containers[0].image = "nginx:1.27"))).toBe("ok");
+  });
+
+  test("PVC spec.volumeName can be set once, then never changed", () => {
+    const c = new Cluster({ systemPods: false });
+    apply(c, `apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata: {name: data}\nspec:\n  storageClassName: none\n  accessModes: [ReadWriteOnce]\n  resources: {requests: {storage: 1Gi}}`);
+    const set = (name: string) => {
+      const pvc = structuredClone(c.get<PersistentVolumeClaim>("PersistentVolumeClaim", "default", "data"));
+      pvc.spec!.volumeName = name;
+      try {
+        c.replace(pvc);
+        return "ok";
+      } catch (e) {
+        return (e as Error).message;
+      }
+    };
+    expect(set("pv-a")).toBe("ok");
+    expect(set("pv-b")).toContain("spec: Forbidden: spec is immutable after creation except resources.requests and volumeAttributesClassName for bound claims");
+  });
+});
+
+describe("ClusterRole aggregation and default roles", () => {
+  const can = (c: Cluster, as: string, verb: string, res: string, ns = "default") => k(c, `kubectl auth can-i ${verb} ${res} --as=${as} -n ${ns}`).out;
+
+  test("admin/edit/view are aggregated from the system:aggregate-to-* roles", () => {
+    const c = new Cluster({ systemPods: false });
+    const view = c.get<Role>("ClusterRole", undefined, "view");
+    const edit = c.get<Role>("ClusterRole", undefined, "edit");
+    const admin = c.get<Role>("ClusterRole", undefined, "admin");
+    expect(view.aggregationRule).toEqual({ clusterRoleSelectors: [{ matchLabels: { "rbac.authorization.k8s.io/aggregate-to-view": "true" } }] });
+    expect(view.rules).toEqual(c.get<Role>("ClusterRole", undefined, "system:aggregate-to-view").rules);
+    // edit = view's rules + edit's own; admin = edit's + admin's own.
+    for (const r of view.rules!) expect(edit.rules).toContainEqual(r);
+    for (const r of edit.rules!) expect(admin.rules).toContainEqual(r);
+    expect(k(c, "kubectl get clusterrole view -o yaml").out).toContain("aggregationRule:");
+    k(c, "kubectl create rolebinding jane-admin --clusterrole=admin --user=jane");
+    expect(can(c, "jane", "create", "rolebindings")).toBe("yes");
+    expect(can(c, "jane", "list", "deployments")).toBe("yes");
+  });
+
+  test("a user ClusterRole labelled aggregate-to-view is picked up by view, edit and admin", () => {
+    const c = new Cluster({ systemPods: false });
+    k(c, "kubectl create rolebinding bob-view --clusterrole=view --user=bob");
+    expect(can(c, "bob", "list", "secrets")).toBe("no");
+    apply(c, `apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: secrets-view\n  labels: {rbac.authorization.k8s.io/aggregate-to-view: "true"}\nrules:\n- apiGroups: [""]\n  resources: [secrets]\n  verbs: [get, list]`);
+    c.advance(500);
+    expect(can(c, "bob", "list", "secrets")).toBe("yes");
+    expect(c.get<Role>("ClusterRole", undefined, "admin").rules).toContainEqual({ apiGroups: [""], resources: ["secrets"], verbs: ["get", "list"] });
+    // Hand-written rules on an aggregated role are overwritten by the controller.
+    const view = structuredClone(c.get<Role>("ClusterRole", undefined, "view"));
+    view.rules = [{ apiGroups: ["*"], resources: ["*"], verbs: ["*"] }];
+    c.replace(view);
+    c.advance(500);
+    expect(can(c, "bob", "delete", "pods")).toBe("no");
+    // Removing the label drops the rules again.
+    k(c, "kubectl label clusterrole secrets-view rbac.authorization.k8s.io/aggregate-to-view-");
+    c.advance(500);
+    expect(can(c, "bob", "list", "secrets")).toBe("no");
+  });
+
+  test("a custom aggregated ClusterRole with matchExpressions", () => {
+    const c = new Cluster({ systemPods: false });
+    apply(c, `apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata: {name: monitoring}\naggregationRule:\n  clusterRoleSelectors:\n  - matchExpressions: [{key: example.com/aggregate-to-monitoring, operator: In, values: ["true"]}]\nrules: []`);
+    apply(c, `apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata:\n  name: monitoring-endpoints\n  labels: {example.com/aggregate-to-monitoring: "true"}\nrules:\n- apiGroups: [""]\n  resources: [services, endpoints, pods]\n  verbs: [get, list, watch]`);
+    c.advance(200);
+    expect(c.get<Role>("ClusterRole", undefined, "monitoring").rules).toEqual([{ apiGroups: [""], resources: ["services", "endpoints", "pods"], verbs: ["get", "list", "watch"] }]);
+    // Re-applying the aggregated role without rules is a no-op: the controller owns them.
+    const agg = `apiVersion: rbac.authorization.k8s.io/v1\nkind: ClusterRole\nmetadata: {name: monitoring}\naggregationRule:\n  clusterRoleSelectors:\n  - matchExpressions: [{key: example.com/aggregate-to-monitoring, operator: In, values: ["true"]}]`;
+    apply(c, agg);
+    c.advance(200);
+    expect(apply(c, agg).out).toBe("clusterrole.rbac.authorization.k8s.io/monitoring unchanged");
+    expect(c.get<Role>("ClusterRole", undefined, "monitoring").rules).toHaveLength(1);
+  });
+
+  test("the default system: ClusterRoles and ClusterRoleBindings exist", () => {
+    const c = new Cluster({ systemPods: false });
+    for (const name of ["system:node", "system:node-proxier", "system:kube-scheduler", "system:kube-controller-manager", "system:monitoring", "system:auth-delegator", "system:volume-scheduler", "system:service-account-issuer-discovery", "system:aggregate-to-admin", "system:aggregate-to-edit", "system:aggregate-to-view", "system:basic-user", "system:kube-dns", "system:heapster"]) {
+      expect(c.raw("ClusterRole", undefined, name)).toBeDefined();
+    }
+    const crb = (n: string) => c.get<RoleBinding>("ClusterRoleBinding", undefined, n);
+    expect(crb("system:kube-scheduler").subjects).toEqual([{ apiGroup: "rbac.authorization.k8s.io", kind: "User", name: "system:kube-scheduler" }]);
+    expect(crb("system:node").subjects).toBeUndefined();
+    expect(crb("system:kube-dns").subjects).toEqual([{ kind: "ServiceAccount", name: "kube-dns", namespace: "kube-system" }]);
+    expect(authorize(c, userFor("system:kube-scheduler"), { verb: "create", group: "", resource: "pods", subresource: "binding", namespace: "default" })).toBe(true);
+    expect(can(c, "system:kube-scheduler", "create", "deployments")).toBe("no");
+    expect(can(c, "system:kube-proxy", "list", "services")).toBe("yes");
+    expect(authorize(c, userFor("system:serviceaccount:default:default"), { verb: "get", group: "", resource: "", nonResourceURL: "/openid/v1/jwks" })).toBe(true);
+    expect(authorize(c, userFor("jane"), { verb: "get", group: "", resource: "", nonResourceURL: "/openid/v1/jwks" })).toBe(false);
+  });
+
+  test("metrics-server's aggregated reader lets view read metrics", () => {
+    const c = new Cluster();
+    k(c, "kubectl create rolebinding bob-view --clusterrole=view --user=bob");
+    expect(authorize(c, userFor("bob"), { verb: "list", group: "metrics.k8s.io", resource: "pods", namespace: "default" })).toBe(true);
+    expect(authorize(c, userFor("bob"), { verb: "list", group: "metrics.k8s.io", resource: "pods", namespace: "other" })).toBe(false);
   });
 });

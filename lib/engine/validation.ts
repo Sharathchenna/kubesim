@@ -3,7 +3,7 @@
 // and, for several errors, a "\n* " bullet list.
 
 import { ApiError, type Cluster } from "./cluster";
-import { usedNodePorts } from "./admission";
+import { podTolerations, usedNodePorts } from "./admission";
 import { parseCron, validTimeZone } from "./controllers/cronjob";
 import { isQuantity, parseQuantity } from "./quantity";
 import type {
@@ -108,11 +108,20 @@ function checkResources(e: Errs, path: string, c: Container) {
   }
 }
 
-function checkContainers(e: Errs, path: string, containers: Container[] | undefined, volumes: Set<string>) {
+function checkContainers(e: Errs, path: string, containers: Container[] | undefined, volumes: Set<string>, init?: Container[]) {
   if (!containers || containers.length === 0) return e.required(`${path}.containers`);
   const seen = new Set<string>();
-  containers.forEach((c, i) => {
-    const p = `${path}.containers[${i}]`;
+  const both = [...(init ?? []).map((c, i) => ({ c, i, init: true })), ...containers.map((c, i) => ({ c, i, init: false }))];
+  both.forEach(({ c, i, init: isInit }) => {
+    const p = `${path}.${isInit ? "initContainers" : "containers"}[${i}]`;
+    const sidecar = isInit && c.restartPolicy === "Always";
+    if (c.restartPolicy !== undefined) {
+      if (!isInit) e.forbidden(`${p}.restartPolicy`, "may not be set for non-init containers");
+      else if (c.restartPolicy !== "Always") e.unsupported(`${p}.restartPolicy`, c.restartPolicy, ["Always"]);
+    }
+    if (isInit && !sidecar) {
+      for (const k of ["livenessProbe", "readinessProbe", "startupProbe", "lifecycle"] as const) if (c[k]) e.forbidden(`${p}.${k}`, "may not be set for init containers without restartPolicy=Always");
+    }
     if (!c.name) e.required(`${p}.name`);
     else if (!isDns1123Label(c.name)) e.invalid(`${p}.name`, c.name, LABEL_MSG);
     else if (seen.has(c.name)) e.list.push(`${p}.name: Duplicate value: ${fmt(c.name)}`);
@@ -131,11 +140,34 @@ function checkContainers(e: Errs, path: string, containers: Container[] | undefi
       if (!v.name) e.required(`${p}.env[${j}].name`);
       if (v.value !== undefined && v.valueFrom) e.invalid(`${p}.env[${j}].valueFrom`, "", "may not be specified when `value` is not empty");
     });
-    checkProbe(e, `${p}.livenessProbe`, c.livenessProbe, "liveness");
-    checkProbe(e, `${p}.readinessProbe`, c.readinessProbe, "readiness");
-    checkProbe(e, `${p}.startupProbe`, c.startupProbe, "startup");
+    if (!isInit || sidecar) {
+      checkProbe(e, `${p}.livenessProbe`, c.livenessProbe, "liveness");
+      checkProbe(e, `${p}.readinessProbe`, c.readinessProbe, "readiness");
+      checkProbe(e, `${p}.startupProbe`, c.startupProbe, "startup");
+    }
     checkResources(e, p, c);
   });
+}
+
+function checkScheduling(e: Errs, path: string, spec: PodSpec | undefined) {
+  (spec?.topologySpreadConstraints ?? []).forEach((t, i) => {
+    const p = `${path}.topologySpreadConstraints[${i}]`;
+    if (!(Number.isInteger(t.maxSkew) && t.maxSkew > 0)) e.invalid(`${p}.maxSkew`, t.maxSkew, "must be greater than zero");
+    if (!t.topologyKey) e.required(`${p}.topologyKey`, "can not be empty");
+    if (!["DoNotSchedule", "ScheduleAnyway"].includes(t.whenUnsatisfiable)) e.unsupported(`${p}.whenUnsatisfiable`, t.whenUnsatisfiable, ["DoNotSchedule", "ScheduleAnyway"]);
+    if (t.minDomains !== undefined && t.whenUnsatisfiable !== "DoNotSchedule") e.invalid(`${p}.minDomains`, t.minDomains, "can only use minDomains if whenUnsatisfiable=DoNotSchedule, not ScheduleAnyway");
+  });
+  for (const kind of ["podAffinity", "podAntiAffinity"] as const) {
+    const rules = spec?.affinity?.[kind];
+    (rules?.requiredDuringSchedulingIgnoredDuringExecution ?? []).forEach((t, i) => {
+      if (!t.topologyKey) e.required(`${path}.affinity.${kind}.requiredDuringSchedulingIgnoredDuringExecution[${i}].topologyKey`, "can not be empty");
+    });
+    (rules?.preferredDuringSchedulingIgnoredDuringExecution ?? []).forEach((t, i) => {
+      const p = `${path}.affinity.${kind}.preferredDuringSchedulingIgnoredDuringExecution[${i}]`;
+      if (!t.podAffinityTerm?.topologyKey) e.required(`${p}.podAffinityTerm.topologyKey`, "can not be empty");
+      if (!(t.weight >= 1 && t.weight <= 100)) e.invalid(`${p}.weight`, t.weight, "must be in the range 1-100");
+    });
+  }
 }
 
 function checkPodSpec(e: Errs, path: string, spec: PodSpec | undefined, claimTemplates: string[] = []) {
@@ -150,7 +182,8 @@ function checkPodSpec(e: Errs, path: string, spec: PodSpec | undefined, claimTem
     if (v.configMap && !v.configMap.name) e.required(`${path}.volumes[${i}].configMap.name`);
     if (v.secret && !v.secret.secretName) e.required(`${path}.volumes[${i}].secret.secretName`);
   });
-  checkContainers(e, path, spec?.containers, vols);
+  checkContainers(e, path, spec?.containers, vols, spec?.initContainers);
+  checkScheduling(e, path, spec);
   const rp = spec?.restartPolicy;
   if (rp && !["Always", "OnFailure", "Never"].includes(rp)) e.unsupported(`${path}.restartPolicy`, rp, ["Always", "OnFailure", "Never"]);
 }
@@ -195,11 +228,25 @@ export function validate(cluster: Cluster, obj: AnyObject, prev: AnyObject | und
       checkPodSpec(e, "spec", pod.spec);
       if (prev) {
         // Pods are mostly immutable: only images (and a few fields we don't model) may change.
+        // spec.nodeName is NOT exempt: the scheduler binds through the binding subresource
+        // (here: an engine-internal write that skips validation), never through a Pod update.
         const a = structuredClone((prev as unknown as Pod).spec!);
         const b = structuredClone(pod.spec!);
+        // The DefaultTolerationSeconds admission plugin runs before validation on update too.
+        podTolerations(cluster, b);
+        // Tolerations may only be added; an existing one may change nothing but tolerationSeconds
+        // (ValidatePodUpdate -> validateOnlyAddedTolerations).
+        const newTols = b.tolerations ?? [];
+        for (const old of a.tolerations ?? []) {
+          const found = newTols.some((t) => deepEqual({ ...old, tolerationSeconds: t.tolerationSeconds }, t));
+          if (!found) {
+            e.forbidden("spec.tolerations", "existing toleration can not be modified except its tolerationSeconds");
+            break;
+          }
+        }
         for (const s of [a, b]) {
           s.containers = s.containers.map((c) => ({ ...c, image: "" }));
-          delete s.nodeName;
+          if (s.initContainers) s.initContainers = s.initContainers.map((c) => ({ ...c, image: "" }));
           delete s.tolerations;
           delete s.activeDeadlineSeconds;
         }
@@ -219,6 +266,7 @@ export function validate(cluster: Cluster, obj: AnyObject, prev: AnyObject | und
       if (obj.kind === "Deployment") {
         const st = (w.spec as Deployment["spec"])?.strategy;
         if (st?.type !== undefined && !["RollingUpdate", "Recreate"].includes(st.type)) e.unsupported("spec.strategy.type", st.type, ["Recreate", "RollingUpdate"]);
+        if (st?.type === "Recreate" && st.rollingUpdate) e.forbidden("spec.strategy.rollingUpdate", "may not be specified when strategy `type` is 'Recreate'");
       }
       break;
     }
@@ -371,13 +419,20 @@ export function validate(cluster: Cluster, obj: AnyObject, prev: AnyObject | und
       if (!st) e.required("spec.resources[storage]");
       else if (!isQuantity(st)) e.invalid("spec.resources.requests[storage]", st, QUANTITY_MSG);
       if (prev) {
-        const a = structuredClone((prev as unknown as PersistentVolumeClaim).spec!);
+        const old = prev as unknown as PersistentVolumeClaim;
+        const a = structuredClone(old.spec!);
         const b = structuredClone(pvc.spec!);
+        // The binder fills spec.volumeName on an unbound claim ("volumeName changes are allowed
+        // once"); once set it can't change.
+        if (!a.volumeName) delete b.volumeName;
+        // Only a bound claim may change its storage request (expansion).
+        const bound = old.status?.phase === "Bound";
         for (const s of [a, b]) {
-          delete s.resources;
-          delete s.volumeName;
+          if (bound && s.resources?.requests) s.resources = { ...s.resources, requests: { ...s.resources.requests, storage: "" } };
         }
         if (!deepEqual(a, b)) e.forbidden("spec", "spec is immutable after creation except resources.requests and volumeAttributesClassName for bound claims");
+        const cap = old.status?.capacity?.storage;
+        if (bound && st && isQuantity(st) && cap && parseQuantity(st) < parseQuantity(cap)) e.forbidden("spec.resources.requests.storage", "field can not be less than status.capacity");
       }
       break;
     }

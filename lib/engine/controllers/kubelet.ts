@@ -5,7 +5,7 @@
 // Timings follow the behaviour reference §2 and v2 §1.
 
 import { isPodTerminal, type Cluster, type ContainerRuntime, type PodRuntime, type ProbeState } from "../cluster";
-import { containerProgram, imageDigest, listenPorts, lookupImage, pullError, type ImageInfo } from "../images";
+import { containerProgram, imageDigest, listenPorts, lookupImage, pullError, type ImageInfo, type Program } from "../images";
 import { execEnv, runArgv, runRedirected } from "../exec";
 import { projectVolume } from "../fs";
 import { containerLimits, qosClass, milliCpu, bytes } from "../quantity";
@@ -75,6 +75,46 @@ function handlesSigterm(c: Container, info: ImageInfo | undefined, crt: Containe
 
 const newContainer = (image: string): ContainerRuntime => ({ phase: "pulling", until: 0, image, backoffMs: 0, pc: 0, wakeAt: 0, restarts: 0 });
 
+type RestartPolicy = "Always" | "OnFailure" | "Never";
+
+const isSidecar = (c: Container) => c.restartPolicy === "Always";
+
+/** Every container the kubelet runs for a Pod: init containers (in order), then the app containers. */
+function allContainers(pod: Pod): Container[] {
+  return [...(pod.spec?.initContainers ?? []), ...(pod.spec?.containers ?? [])];
+}
+
+/** Lowest free host address in the Node's /24 at or after the cursor (host-local IPAM: round-robin, freed IPs reused). */
+function allocPodIp(cluster: Cluster, nodeName: string): string | undefined {
+  const nrt = cluster.state.nodes[nodeName];
+  const prefix = `10.244.${nrt.index}.`;
+  const used = new Set<number>();
+  for (const p of cluster.list<Pod>("Pod")) {
+    const ip = p.status?.podIP;
+    if (p.spec?.nodeName === nodeName && ip?.startsWith(prefix)) used.add(parseInt(ip.slice(prefix.length), 10));
+  }
+  const start = nrt.nextPodIp >= 2 && nrt.nextPodIp <= 254 ? nrt.nextPodIp : 2;
+  for (let i = 0; i < 253; i++) {
+    const n = 2 + ((start - 2 + i) % 253);
+    if (used.has(n)) continue;
+    nrt.nextPodIp = n === 254 ? 2 : n + 1;
+    return prefix + n;
+  }
+  return undefined;
+}
+
+/** A container whose program threw (a bug, or input we can't model): it fails like a crashed process, without stopping the cluster. */
+function crashContainer(cluster: Cluster, crt: ContainerRuntime, e: unknown): void {
+  crt.exitCode = 1;
+  crt.exitReason = "Error";
+  crt.exitMessage = `kubesim: ${(e as Error)?.message ?? String(e)}`;
+  crt.phase = "exited";
+  crt.until = cluster.now + EXITED_VISIBLE_MS;
+  crt.startedAt ??= cluster.now;
+  crt.lastRunStart ??= cluster.now;
+  cluster.markChanged();
+}
+
 function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
   const now = cluster.now;
   const uid = pod.metadata.uid;
@@ -89,7 +129,7 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
     }
     if (prt.stoppingUntil === undefined) {
       let slow = false;
-      for (const c of pod.spec!.containers) {
+      for (const c of allContainers(pod)) {
         const crt = prt.containers[c.name];
         if (!crt || (crt.phase !== "running" && crt.phase !== "stopping")) continue;
         const { info } = lookupImage(c.image);
@@ -118,7 +158,7 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
     if (missing) {
       if (!prt) {
         prt = cluster.state.pods[uid] = { containers: {}, sandboxAt: Infinity };
-        for (const c of pod.spec!.containers) prt.containers[c.name] = newContainer(c.image);
+        for (const c of allContainers(pod)) prt.containers[c.name] = newContainer(c.image);
       }
       if (missing.event && now >= (prt.mountRetryAt ?? 0)) {
         cluster.record(pod, "Warning", "FailedMount", missing.event, "kubelet", nodeName);
@@ -129,7 +169,7 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
     }
     if (!prt) {
       prt = cluster.state.pods[uid] = { containers: {}, sandboxAt: now + SANDBOX_MS };
-      for (const c of pod.spec!.containers) prt.containers[c.name] = newContainer(c.image);
+      for (const c of allContainers(pod)) prt.containers[c.name] = newContainer(c.image);
     }
     if (prt.sandboxAt === Infinity) prt.sandboxAt = now + SANDBOX_MS;
     prt.mountedAt = now;
@@ -143,7 +183,16 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
   if (!pod.status?.podIP) {
     const hostIp = `172.18.0.${nrt.index + 2}`;
     const hostNet = pod.spec?.hostNetwork || pod.metadata.annotations?.["kubernetes.io/config.source"] === "file";
-    const ip = hostNet ? hostIp : `10.244.${nrt.index}.${nrt.nextPodIp++}`;
+    const ip = hostNet ? hostIp : allocPodIp(cluster, nodeName);
+    if (!ip) {
+      // No free address in the Node's Pod CIDR: the sandbox can't be set up yet.
+      if (now >= (prt.mountRetryAt ?? 0)) {
+        cluster.record(pod, "Warning", "FailedCreatePodSandBox", `Failed to create pod sandbox: rpc error: code = Unknown desc = failed to setup network for sandbox: plugin type="ptp" failed (add): failed to allocate for range 0: no IP addresses available in range set: 10.244.${nrt.index}.1-10.244.${nrt.index}.254`, "kubelet", nodeName);
+        prt.mountRetryAt = now + MOUNT_RETRY_MS;
+      }
+      writeStatus(cluster, pod, prt, nodeName);
+      return;
+    }
     cluster.update(pod, (p) => {
       p.status = { ...(p.status as PodStatus), podIP: ip, podIPs: [{ ip }], hostIP: hostIp, startTime: now };
     });
@@ -152,6 +201,62 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
 
   // ConfigMap/Secret volumes catch up with edits on the kubelet's periodic sync.
   if (now - (prt.projectedAt ?? 0) >= VOLUME_RESYNC_MS) projectAll(cluster, pod, prt, true);
+
+  // activeDeadlineSeconds: the kubelet kills the whole Pod and fails it.
+  const ads = pod.spec?.activeDeadlineSeconds;
+  if (ads !== undefined && pod.status?.startTime !== undefined && now - pod.status.startTime >= ads * 1000 && !isPodTerminal(pod)) {
+    for (const c of allContainers(pod)) {
+      const crt = prt.containers[c.name];
+      if (!crt) continue;
+      if (crt.phase === "running" || crt.phase === "stopping") {
+        crt.exitCode = 137;
+        crt.exitReason = "Error";
+        crt.until = now;
+      }
+      crt.phase = "done";
+    }
+    prt.failedReason = { reason: "DeadlineExceeded", message: `Pod was active on the node longer than the specified deadline` };
+    cluster.record(pod, "Normal", "DeadlineExceeded", "Pod was active on the node longer than the specified deadline", "kubelet", nodeName);
+    cluster.markChanged();
+    writeStatus(cluster, pod, prt, nodeName);
+    return;
+  }
+
+  const podPolicy: RestartPolicy = pod.spec?.restartPolicy ?? "Always";
+  const step = (c: Container, crt: ContainerRuntime, policy: RestartPolicy) => {
+    try {
+      stepContainer(cluster, pod, c, crt, nodeName, policy);
+    } catch (e) {
+      crashContainer(cluster, crt, e);
+    }
+  };
+
+  // Init containers run one at a time, in order; each must exit 0 before the next starts.
+  // Sidecars (restartPolicy: Always) only need to have started, and then keep running.
+  let initialized = true;
+  for (const c of pod.spec?.initContainers ?? []) {
+    const crt = (prt.containers[c.name] ??= newContainer(c.image));
+    if (isSidecar(c)) {
+      step(c, crt, "Always");
+      // Once the Pod is initialized, a sidecar restarting doesn't hold the app containers back.
+      if (!(crt.phase === "running" && crt.started) && !prt.initialized) {
+        initialized = false;
+        break;
+      }
+      continue;
+    }
+    if (crt.phase === "done" && (crt.exitCode ?? 0) === 0) continue;
+    step(c, crt, podPolicy === "Never" ? "Never" : "OnFailure");
+    if (!(crt.phase === "done" && (crt.exitCode ?? 0) === 0)) {
+      initialized = false;
+      break;
+    }
+  }
+  prt.initialized = initialized;
+  if (!initialized) {
+    writeStatus(cluster, pod, prt, nodeName);
+    return;
+  }
 
   for (const c of pod.spec!.containers) {
     let crt = prt.containers[c.name];
@@ -169,7 +274,19 @@ function syncPod(cluster: Cluster, pod: Pod, nodeName: string): void {
       crt.backoffMs = 0;
       cluster.markChanged();
     }
-    stepContainer(cluster, pod, c, crt, nodeName);
+    step(c, crt, podPolicy);
+  }
+  // When every app container has finished for good, the kubelet stops the sidecars too.
+  if (pod.spec!.containers.every((c) => prt!.containers[c.name]?.phase === "done")) {
+    for (const c of (pod.spec?.initContainers ?? []).filter(isSidecar)) {
+      const crt = prt.containers[c.name];
+      if (!crt || crt.phase === "done") continue;
+      crt.exitCode = 0;
+      crt.exitReason = "Completed";
+      crt.until = now;
+      crt.phase = "done";
+      cluster.markChanged();
+    }
   }
   writeStatus(cluster, pod, prt, nodeName);
 }
@@ -350,7 +467,7 @@ function fieldValue(pod: Pod, path: string): string {
 
 // ---------- containers ----------
 
-function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRuntime, nodeName: string): void {
+function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRuntime, nodeName: string, policy: RestartPolicy): void {
   const now = cluster.now;
   const nrt = cluster.state.nodes[nodeName];
   const fp = `spec.containers{${c.name}}`;
@@ -428,6 +545,14 @@ function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerR
         set("configError", now + CONFIG_RETRY_MS);
         return;
       }
+      const sc = { ...(pod.spec?.securityContext ?? {}), ...((c as { securityContext?: Record<string, unknown> }).securityContext ?? {}) } as { runAsNonRoot?: boolean; runAsUser?: number };
+      if (sc.runAsNonRoot && !sc.runAsUser) {
+        const why = sc.runAsUser === 0 ? `container's runAsUser breaks non-root policy (pod: "${pod.metadata.name}_${pod.metadata.namespace}(${pod.metadata.uid})", container: ${c.name})` : "container has runAsNonRoot and image will run as root " + `(pod: "${pod.metadata.name}_${pod.metadata.namespace}(${pod.metadata.uid})", container: ${c.name})`;
+        crt.exitMessage = why;
+        ev("Warning", "Failed", `Error: ${why}`);
+        set("configError", now + CONFIG_RETRY_MS);
+        return;
+      }
       crt.env = envr.env;
       const hostname = pod.spec?.hostname ?? pod.metadata.name;
       // The kubelet expands $(VAR) in command and args from the container's env ($$ escapes).
@@ -447,6 +572,8 @@ function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerR
       ev("Normal", "Started", "Container started");
       crt.program = res.program;
       crt.pc = 0;
+      crt.loopVars = undefined;
+      crt.loopIdx = undefined;
       crt.wakeAt = 0;
       crt.startedAt = now;
       crt.lastRunStart = now;
@@ -484,7 +611,6 @@ function stepContainer(cluster: Cluster, pod: Pod, c: Container, crt: ContainerR
     }
     case "exited": {
       if (now < crt.until) return;
-      const policy = pod.spec?.restartPolicy ?? "Always";
       const restart = policy === "Always" || (policy === "OnFailure" && crt.exitCode !== 0);
       if (!restart) {
         set("done");
@@ -525,6 +651,8 @@ function runProgram(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRunt
     for (const line of text.split("\n")) cluster.log(pod.metadata.uid, c.name, crt.restarts, now, line);
     cluster.markChanged();
   };
+  // `for` variables are placeholders in the compiled program; fill in the current items.
+  const vars = (w: string) => (w.includes("\u0001") ? w.replace(/\u0001(\w+)\u0001/g, (_, n) => crt.loopVars?.[n] ?? "") : w);
   for (let guard = 0; guard < 200; guard++) {
     const op = prog[crt.pc];
     if (!op) {
@@ -541,8 +669,8 @@ function runProgram(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRunt
         if (op.when === "ok" && (crt.lastCode ?? 0) !== 0) break;
         if (op.when === "fail" && (crt.lastCode ?? 0) === 0) break;
         const ee = execEnv(cluster, pod, c, crt.env ?? {});
-        const argv = op.argv.map((a) => a.replace(/\u0000DATE\u0000/g, unixDate(now)));
-        const r = op.redirect ? runRedirected(ee, argv, op.redirect) : runArgv(ee, argv);
+        const argv = op.argv.map((a) => vars(a).replace(/\u0000DATE\u0000/g, unixDate(now)));
+        const r = op.redirect ? runRedirected(ee, argv, { ...op.redirect, path: vars(op.redirect.path) }) : runArgv(ee, argv);
         if (r.out) log(r.out);
         crt.lastCode = r.code;
         if (crt.phase !== "running") return;
@@ -550,8 +678,34 @@ function runProgram(cluster: Cluster, pod: Pod, c: Container, crt: ContainerRunt
       }
       case "sleep":
         crt.wakeAt = now + op.ms;
+        crt.lastCode = 0;
         crt.pc++;
         return;
+      case "forinit": {
+        const n = op.items ? op.items.length : Math.max(0, (op.to ?? 0) - (op.from ?? 1) + 1);
+        if (n === 0) {
+          crt.pc = op.end;
+          break;
+        }
+        (crt.loopIdx ??= {})[crt.pc] = 0;
+        (crt.loopVars ??= {})[op.var] = op.items ? op.items[0] : String(op.from ?? 1);
+        crt.pc++;
+        break;
+      }
+      case "fornext": {
+        const init = prog[op.init] as Extract<Program[number], { op: "forinit" }>;
+        const n = init.items ? init.items.length : Math.max(0, (init.to ?? 0) - (init.from ?? 1) + 1);
+        const i = ((crt.loopIdx ??= {})[op.init] ?? 0) + 1;
+        if (i < n) {
+          crt.loopIdx[op.init] = i;
+          (crt.loopVars ??= {})[op.var] = init.items ? init.items[i] : String((init.from ?? 1) + i);
+          crt.pc = op.to;
+        } else crt.pc++;
+        break;
+      }
+      case "jumpif":
+        crt.pc = (op.when === "ok") === ((crt.lastCode ?? 0) === 0) ? op.to : crt.pc + 1;
+        break;
       case "exit":
         exit(cluster, crt, op.code < 0 ? (crt.lastCode ?? 0) : op.code);
         return;
@@ -612,7 +766,7 @@ export function runProbe(cluster: Cluster, pod: Pod, c: Container, p: Probe): { 
   const port = resolvePort((p.httpGet ?? p.tcpSocket ?? p.grpc)?.port ?? NaN);
   const prt = cluster.state.pods[pod.metadata.uid];
   // Any container in the Pod listening on the port answers (they share the network namespace).
-  const listener = (pod.spec?.containers ?? []).find((x) => {
+  const listener = [...(pod.spec?.initContainers ?? []).filter(isSidecar), ...(pod.spec?.containers ?? [])].find((x) => {
     const r = prt?.containers[x.name];
     if (!r || (r.phase !== "running" && r.phase !== "stopping") || r.program?.[r.pc]?.op !== "serve" || r.wakeAt > cluster.now) return false;
     return listenPorts(lookupImage(r.image).info, x).includes(port);
@@ -779,38 +933,63 @@ function termOf(t: NonNullable<ContainerRuntime["lastTerm"]>) {
 function writeStatus(cluster: Cluster, pod: Pod, prt: PodRuntime, nodeName: string): void {
   const now = cluster.now;
   void nodeName;
+  const inits = pod.spec?.initContainers ?? [];
+  const hasInit = inits.length > 0;
+  const initDone = (c: Container) => {
+    const crt = prt.containers[c.name];
+    if (!crt) return false;
+    return isSidecar(c) ? crt.started === true && crt.phase !== "pulling" && crt.startedAt !== undefined : crt.phase === "done" && (crt.exitCode ?? 0) === 0;
+  };
+  const initialized = !hasInit || prt.initialized === true || inits.every(initDone);
+  const statusOf = (c: Container): ContainerStatus | undefined => {
+    const crt = prt.containers[c.name];
+    if (!crt) return undefined;
+    const st = containerState(pod, c, crt);
+    let state = st.state;
+    // With init containers, a container the runtime hasn't created yet waits as PodInitializing.
+    if (hasInit && state.waiting?.reason === "ContainerCreating") state = { waiting: { reason: "PodInitializing" } };
+    const { ref } = lookupImage(crt.image);
+    const hasRun = crt.startedAt !== undefined || crt.restarts > 0;
+    return {
+      name: c.name,
+      image: ref.full,
+      imageID: hasRun ? imageDigest(ref) : "",
+      ...(hasRun ? { containerID: `containerd://${cluster_hash(pod.metadata.uid + c.name + crt.restarts)}` } : {}),
+      ready: st.ready,
+      started: st.started,
+      restartCount: crt.restarts,
+      state,
+      lastState: crt.lastTerm ? { terminated: termOf(crt.lastTerm) } : {},
+    };
+  };
   const statuses: ContainerStatus[] = [];
   let anyNeverStarted = false;
   let allDone = true;
   let anyFailed = false;
   for (const c of pod.spec!.containers) {
+    const s = statusOf(c);
+    if (!s) continue;
     const crt = prt.containers[c.name];
-    if (!crt) continue;
-    const { state, ready, started } = containerState(pod, c, crt);
-    const { ref } = lookupImage(crt.image);
     const hasRun = crt.startedAt !== undefined || crt.restarts > 0;
-    if (state.waiting && !hasRun) anyNeverStarted = true;
+    if (s.state.waiting && !hasRun) anyNeverStarted = true;
     if (crt.phase !== "done") allDone = false;
     if (crt.phase === "done" && (crt.exitCode ?? 0) !== 0) anyFailed = true;
-    statuses.push({
-      name: c.name,
-      image: ref.full,
-      imageID: hasRun ? imageDigest(ref) : "",
-      ...(hasRun ? { containerID: `containerd://${cluster_hash(pod.metadata.uid + c.name + crt.restarts)}` } : {}),
-      ready,
-      started,
-      restartCount: crt.restarts,
-      state,
-      lastState: crt.lastTerm ? { terminated: termOf(crt.lastTerm) } : {},
-    });
+    statuses.push(s);
   }
+  const initStatuses = inits.map(statusOf).filter((s): s is ContainerStatus => !!s);
+  // A regular init container that failed for good (restartPolicy Never) fails the Pod.
+  const initFailed = inits.some((c) => !isSidecar(c) && prt.containers[c.name]?.phase === "done" && (prt.containers[c.name]?.exitCode ?? 0) !== 0);
   let phase: PodPhase;
-  if (allDone && statuses.length) phase = anyFailed ? "Failed" : "Succeeded";
-  else if (anyNeverStarted || now < prt.sandboxAt) phase = "Pending";
+  if (prt.failedReason || initFailed) phase = "Failed";
+  else if (allDone && statuses.length) phase = anyFailed ? "Failed" : "Succeeded";
+  else if (!initialized || anyNeverStarted || now < prt.sandboxAt) phase = "Pending";
   else phase = "Running";
 
-  const allReady = statuses.length > 0 && statuses.every((s) => s.ready) && pod.metadata.deletionTimestamp === undefined;
-  const unready = statuses.filter((s) => !s.ready).map((s) => s.name);
+  // Started sidecars count toward readiness like app containers.
+  const sidecarStatuses = initStatuses.filter((s) => isSidecar(inits.find((c) => c.name === s.name)!) && s.started);
+  const readyPool = [...statuses, ...sidecarStatuses];
+  const allReady = statuses.length > 0 && readyPool.every((s) => s.ready) && pod.metadata.deletionTimestamp === undefined;
+  const unready = readyPool.filter((s) => !s.ready).map((s) => s.name);
   const prev = pod.status?.conditions ?? [];
   const cond = (type: string, ok: boolean, reason?: string, message?: string): Condition => {
     const old = prev.find((c) => c.type === type);
@@ -823,15 +1002,40 @@ function writeStatus(cluster: Cluster, pod: Pod, prt: PodRuntime, nodeName: stri
       ...(ok ? {} : reason ? { reason, message } : {}),
     };
   };
+  // readinessGates: the Pod is Ready only when each gate's condition (set by some other controller) is True.
+  const gates = ((pod.spec as { readinessGates?: { conditionType: string }[] } | undefined)?.readinessGates ?? []).map((g) => g.conditionType);
+  const gateProblem = gates
+    .map((g) => {
+      const c = prev.find((x) => x.type === g);
+      if (!c) return `corresponding condition of pod readiness gate "${g}" does not exist.`;
+      return c.status === "True" ? "" : `the status of pod readiness gate "${g}" is not "True", but ${c.status}`;
+    })
+    .filter(Boolean);
   const completed = phase === "Succeeded" || phase === "Failed";
+  const notInit = inits.filter((c) => !initDone(c)).map((c) => c.name);
+  const readyCond = completed
+    ? { ...cond("Ready", false), reason: "PodCompleted" }
+    : !allReady
+      ? cond("Ready", false, "ContainersNotReady", `containers with unready status: [${unready.join(" ")}]`)
+      : gateProblem.length
+        ? cond("Ready", false, "ReadinessGatesNotReady", gateProblem.join(", "))
+        : cond("Ready", true);
   const conditions: Condition[] = [
     cond("PodReadyToStartContainers", now >= prt.sandboxAt && !completed),
-    cond("Initialized", true),
-    completed ? { ...cond("Ready", false), reason: "PodCompleted" } : cond("Ready", allReady, "ContainersNotReady", `containers with unready status: [${unready.join(" ")}]`),
+    initialized ? cond("Initialized", true) : cond("Initialized", false, "ContainersNotInitialized", `containers with incomplete status: [${notInit.join(" ")}]`),
+    readyCond,
     completed ? { ...cond("ContainersReady", false), reason: "PodCompleted" } : cond("ContainersReady", allReady, "ContainersNotReady", `containers with unready status: [${unready.join(" ")}]`),
-    ...prev.filter((c) => c.type === "PodScheduled" || c.type === "DisruptionTarget"),
+    ...prev.filter((c) => c.type === "PodScheduled" || c.type === "DisruptionTarget" || gates.includes(c.type)),
   ];
-  const next: PodStatus = { ...(pod.status as PodStatus), phase, conditions, containerStatuses: statuses, qosClass: qosClass(pod.spec) };
+  const next: PodStatus = {
+    ...(pod.status as PodStatus),
+    phase,
+    conditions,
+    ...(hasInit ? { initContainerStatuses: initStatuses } : {}),
+    containerStatuses: statuses,
+    qosClass: qosClass(pod.spec),
+    ...(prt.failedReason ? prt.failedReason : {}),
+  };
   if (deepEqual(next, pod.status)) return; // most steps change nothing: skip the clone + store write
   cluster.put({ ...pod, status: next });
 }

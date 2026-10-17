@@ -34,7 +34,8 @@ export function runJobs(cluster: Cluster): void {
     const succeededPods = pods.filter((p) => p.status?.phase === "Succeeded");
     const failedPods = pods.filter((p) => p.status?.phase === "Failed");
     const indexed = s.completionMode === "Indexed";
-    const completions = s.completions === null ? undefined : (s.completions ?? 1);
+    // No completions (only parallelism): a work queue. Done once any Pod succeeded and none are left running.
+    const completions = s.completions ?? undefined;
     const parallelism = s.parallelism ?? 1;
     const backoffLimit = s.backoffLimit ?? 6;
     // With restartPolicy OnFailure, container restarts count as failures.
@@ -100,6 +101,8 @@ export function runJobs(cluster: Cluster): void {
         const old = (x.status?.conditions ?? []).find((c) => c.type === "Suspended" && c.status === "True");
         x.status = { ...(x.status ?? {}), active: undefined, ready: 0, conditions: [...conds, old ?? cond("Suspended", "JobSuspended", "Job suspended", now)] };
         delete x.status.active;
+        // Resuming starts the clock (and activeDeadlineSeconds) again.
+        delete x.status.startTime;
       });
       continue;
     }
@@ -117,7 +120,8 @@ export function runJobs(cluster: Cluster): void {
     const consecutive = failedPods.filter((p) => finishTime(p) > lastSuccess).length;
     const delay = consecutive ? Math.min(BACKOFF_BASE * 2 ** (consecutive - 1), BACKOFF_MAX) : 0;
     const canCreate = now >= lastFail + delay;
-    const remaining = completions !== undefined ? completions - succeeded : parallelism;
+    // A work queue starts no new Pods once one has succeeded.
+    const remaining = completions !== undefined ? completions - succeeded : succeededPods.length > 0 ? 0 : parallelism;
     const wantActive = Math.min(parallelism, Math.max(0, remaining));
     if (canCreate && active.length < wantActive) {
       const busyIdx = new Set(active.map((p) => p.metadata.annotations?.["batch.kubernetes.io/job-completion-index"]));

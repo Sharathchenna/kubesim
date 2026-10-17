@@ -3,7 +3,7 @@
 
 import { ApiError, type Cluster } from "./cluster";
 import { parseImage } from "./images";
-import { canonicalQuantity, qosClass } from "./quantity";
+import { bytes, canonicalQuantity, qosClass } from "./quantity";
 import type {
   AnyObject,
   Container,
@@ -78,10 +78,11 @@ export function defaultContainer(c: Container, pod = false): void {
 
 export function defaultPodSpec(s: PodSpec, pod = false): void {
   s.containers ??= [];
+  for (const c of s.initContainers ?? []) defaultContainer(c, pod);
   for (const c of s.containers) defaultContainer(c, pod);
   s.restartPolicy ??= "Always";
   s.terminationGracePeriodSeconds ??= 30;
-  s.dnsPolicy ??= s.hostNetwork ? "ClusterFirst" : "ClusterFirst";
+  s.dnsPolicy ??= "ClusterFirst";
   s.schedulerName ??= "default-scheduler";
   s.securityContext ??= {};
   s.enableServiceLinks ??= true;
@@ -101,7 +102,8 @@ function defaultTemplate(t: PodTemplateSpec | undefined): void {
   if (t.spec) defaultPodSpec(t.spec);
 }
 
-function podTolerations(cluster: Cluster, spec: PodSpec): void {
+/** DefaultTolerationSeconds admission: not-ready/unreachable NoExecute tolerations (runs on create and update). */
+export function podTolerations(cluster: Cluster, spec: PodSpec): void {
   const secs = cluster.state.config.defaultTolerationSeconds;
   const tol = (spec.tolerations ??= []);
   for (const key of ["node.kubernetes.io/not-ready", "node.kubernetes.io/unreachable"]) {
@@ -113,7 +115,9 @@ function podTolerations(cluster: Cluster, spec: PodSpec): void {
 /** The ServiceAccount admission plugin mounts a projected token volume into every container. */
 function serviceAccountVolume(cluster: Cluster, pod: Pod): void {
   const spec = pod.spec!;
-  if (spec.automountServiceAccountToken === false) return;
+  // The Pod's own setting wins; otherwise the ServiceAccount's (automountServiceAccountToken: false opts out).
+  const sa = cluster.raw("ServiceAccount", pod.metadata.namespace ?? "default", spec.serviceAccountName ?? "default") as { automountServiceAccountToken?: boolean } | undefined;
+  if ((spec.automountServiceAccountToken ?? sa?.automountServiceAccountToken) === false) return;
   if ((spec.volumes ?? []).some((v) => v.name.startsWith("kube-api-access-"))) return;
   const name = `kube-api-access-${randSuffix(cluster.rng)}`;
   spec.volumes = [
@@ -130,7 +134,7 @@ function serviceAccountVolume(cluster: Cluster, pod: Pod): void {
       },
     },
   ];
-  for (const c of spec.containers) {
+  for (const c of [...(spec.initContainers ?? []), ...spec.containers]) {
     if ((c.volumeMounts ?? []).some((m) => m.mountPath === SA_DIR)) continue;
     c.volumeMounts = [...(c.volumeMounts ?? []), { name, mountPath: SA_DIR, readOnly: true }];
   }
@@ -194,7 +198,7 @@ export function admit(cluster: Cluster, obj: AnyObject, prev: AnyObject | undefi
         const pv = (prev as unknown as Pod).spec?.volumes?.find((v) => v.name.startsWith("kube-api-access-"));
         if (pv && !(pod.spec.volumes ?? []).some((v) => v.name === pv.name)) {
           pod.spec.volumes = [...(pod.spec.volumes ?? []), pv];
-          for (const c of pod.spec.containers) if (!(c.volumeMounts ?? []).some((m) => m.mountPath === SA_DIR)) c.volumeMounts = [...(c.volumeMounts ?? []), { name: pv.name, mountPath: SA_DIR, readOnly: true }];
+          for (const c of [...(pod.spec.initContainers ?? []), ...pod.spec.containers]) if (!(c.volumeMounts ?? []).some((m) => m.mountPath === SA_DIR)) c.volumeMounts = [...(c.volumeMounts ?? []), { name: pv.name, mountPath: SA_DIR, readOnly: true }];
         }
       }
       break;
@@ -216,9 +220,10 @@ export function admit(cluster: Cluster, obj: AnyObject, prev: AnyObject | undefi
       const s = d.spec!;
       s.replicas ??= 1;
       s.strategy = { ...(s.strategy ?? {}), type: s.strategy?.type ?? "RollingUpdate" };
+      // With Recreate, a rollingUpdate block is left for validation to reject.
       if (s.strategy.type === "RollingUpdate") {
         s.strategy.rollingUpdate = { maxSurge: "25%", maxUnavailable: "25%", ...(s.strategy.rollingUpdate ?? {}) };
-      } else delete s.strategy.rollingUpdate;
+      }
       s.revisionHistoryLimit ??= 10;
       s.progressDeadlineSeconds ??= 600;
       defaultTemplate(s.template);
@@ -339,12 +344,15 @@ export function admit(cluster: Cluster, obj: AnyObject, prev: AnyObject | undefi
       for (const p of s.ports ?? []) {
         p.protocol ??= "TCP";
         p.targetPort ??= p.port;
+        const prevNodePort = prevSpec?.ports?.find((q) => q.port === p.port && (q.protocol ?? "TCP") === p.protocol)?.nodePort;
         if (s.type === "NodePort" || (s.type === "LoadBalancer" && s.allocateLoadBalancerNodePorts !== false)) {
-          if (!p.nodePort) {
-            p.nodePort = prevSpec?.ports?.find((q) => q.port === p.port)?.nodePort ?? randomNodePort(cluster, used);
-          }
+          if (!p.nodePort) p.nodePort = prevNodePort ?? randomNodePort(cluster, used);
           used.add(p.nodePort);
-        } else delete p.nodePort;
+        } else if (p.nodePort !== undefined && p.nodePort === prevNodePort) {
+          // dropTypeDependentFields: a type change away from NodePort releases the
+          // allocated port. A nodePort the user sets on a ClusterIP Service is left for validation to reject.
+          delete p.nodePort;
+        }
       }
       if (s.type === "LoadBalancer") s.allocateLoadBalancerNodePorts ??= true;
       if (s.type === "NodePort" || s.type === "LoadBalancer") s.externalTrafficPolicy ??= "Cluster";
@@ -382,6 +390,17 @@ export function admit(cluster: Cluster, obj: AnyObject, prev: AnyObject | undefi
         if (def) pvc.spec.storageClassName = def.metadata.name;
       }
       pvc.spec.volumeMode ??= "Filesystem";
+      if (prev) {
+        // PersistentVolumeClaimResize admission: growing a bound claim needs a StorageClass that allows expansion.
+        const old = prev as unknown as PersistentVolumeClaim;
+        const grow = bytes(pvc.spec.resources?.requests?.storage) > bytes(old.spec?.resources?.requests?.storage);
+        if (grow && old.status?.phase === "Bound") {
+          const sc = old.spec?.storageClassName ? (cluster.raw("StorageClass", undefined, old.spec.storageClassName) as unknown as StorageClass | undefined) : undefined;
+          if (!sc?.allowVolumeExpansion) {
+            throw new ApiError(`Error from server (Forbidden): persistentvolumeclaims "${pvc.metadata.name}" is forbidden: only dynamically provisioned pvc can be resized and the storageclass that provisions the pvc must support resize`, "Forbidden");
+          }
+        }
+      }
       if (!prev) {
         checkLimitRanges(cluster, pvc);
         pvc.metadata.finalizers = [...new Set([...(pvc.metadata.finalizers ?? []), PVC_PROTECTION])];
@@ -422,7 +441,8 @@ export function admit(cluster: Cluster, obj: AnyObject, prev: AnyObject | undefi
       const np = obj as unknown as NetworkPolicy;
       np.spec ??= { podSelector: {} };
       np.spec.podSelector ??= {};
-      if (!np.spec.policyTypes || np.spec.policyTypes.length === 0) np.spec.policyTypes = np.spec.egress ? ["Ingress", "Egress"] : ["Ingress"];
+      // SetDefaults_NetworkPolicy: Egress only when there is at least one egress rule (`egress: []` doesn't count).
+      if (!np.spec.policyTypes || np.spec.policyTypes.length === 0) np.spec.policyTypes = np.spec.egress?.length ? ["Ingress", "Egress"] : ["Ingress"];
       for (const r of [...(np.spec.ingress ?? []), ...(np.spec.egress ?? [])]) for (const p of r.ports ?? []) p.protocol ??= "TCP";
       firstGeneration(obj, prev);
       break;
@@ -431,6 +451,12 @@ export function admit(cluster: Cluster, obj: AnyObject, prev: AnyObject | undefi
       const n = obj as unknown as Node;
       n.spec ??= {};
       if (!prev) n.spec.taints = [...(n.spec.taints ?? []), { key: "node.kubernetes.io/not-ready", effect: "NoSchedule" }];
+      // NoExecute taints carry the time they were added (kept across updates), which taint-based eviction counts from.
+      const before = (prev as unknown as Node | undefined)?.spec?.taints ?? [];
+      for (const t of n.spec.taints ?? []) {
+        if (t.effect !== "NoExecute" || t.timeAdded !== undefined) continue;
+        t.timeAdded = before.find((b) => b.key === t.key && b.effect === t.effect && (b.value ?? "") === (t.value ?? ""))?.timeAdded ?? cluster.now;
+      }
       break;
     }
     case "Namespace": {

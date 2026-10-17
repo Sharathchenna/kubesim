@@ -7,9 +7,8 @@ import { ApiError, isPodReady, isPodTerminal, type Cluster } from "./cluster";
 import { bytes, milliCpu } from "./quantity";
 import type { Container, KubeObject, LimitRange, Service, LimitRangeItem, PersistentVolumeClaim, Pod, PodDisruptionBudget, PriorityClass, ResourceQuota } from "./types";
 import { KINDS } from "./kinds";
-import { intOrPercent, matchesSelector } from "./util";
+import { intOrPercent, matchesLabelSelector, rfc3339 } from "./util";
 
-type Amount = { kind: "cpu" | "bytes" | "count"; v: number };
 
 const CPU = new Set(["cpu", "requests.cpu", "limits.cpu"]);
 const isCpu = (res: string) => CPU.has(res);
@@ -243,9 +242,11 @@ type Scalable = KubeObject<string, { replicas?: number }>;
 /** The workload scale behind a set of Pods (for percentages and maxUnavailable). */
 function expectedScale(cluster: Cluster, pods: Pod[]): number {
   const seen = new Map<string, number>();
+  const looked = new Set<string>();
   for (const p of pods) {
     const ref = p.metadata.ownerReferences?.find((r) => r.controller);
-    if (!ref) continue;
+    if (!ref || looked.has(ref.uid)) continue;
+    looked.add(ref.uid);
     let owner = cluster.list<Scalable>(ref.kind, p.metadata.namespace).find((o) => o.metadata.uid === ref.uid);
     // A ReplicaSet owned by a Deployment: the Deployment's scale is what counts.
     const up = owner?.metadata.ownerReferences?.find((r) => r.controller && r.kind === "Deployment");
@@ -259,7 +260,7 @@ function expectedScale(cluster: Cluster, pods: Pod[]): number {
 export function runDisruptionController(cluster: Cluster): void {
   for (const pdb of cluster.list<PodDisruptionBudget>("PodDisruptionBudget")) {
     const ns = pdb.metadata.namespace!;
-    const pods = cluster.list<Pod>("Pod", ns).filter((p) => !isPodTerminal(p) && matchesSelector(p.metadata.labels, pdb.spec?.selector));
+    const pods = cluster.list<Pod>("Pod", ns).filter((p) => !isPodTerminal(p) && matchesLabelSelector(p.metadata.labels, pdb.spec?.selector));
     const healthy = pods.filter((p) => p.metadata.deletionTimestamp === undefined && isPodReady(p)).length;
     const min = pdb.spec?.minAvailable;
     const max = pdb.spec?.maxUnavailable;
@@ -284,14 +285,14 @@ export function runDisruptionController(cluster: Cluster): void {
 /** The Eviction API (what kubectl drain calls): refuse if a PodDisruptionBudget has no disruptions left. */
 export function evictPod(cluster: Cluster, pod: Pod): { ok: true } | { ok: false; message: string } {
   const ns = pod.metadata.namespace ?? "default";
-  const pdbs = cluster.list<PodDisruptionBudget>("PodDisruptionBudget", ns).filter((b) => matchesSelector(pod.metadata.labels, b.spec?.selector));
+  const pdbs = cluster.list<PodDisruptionBudget>("PodDisruptionBudget", ns).filter((b) => matchesLabelSelector(pod.metadata.labels, b.spec?.selector));
   if (pdbs.length > 1) return { ok: false, message: "This pod has more than one PodDisruptionBudget, which the eviction subresource does not support." };
   const pdb = pdbs[0];
   // Pods that aren't Ready don't count toward the budget, so evicting them is always allowed (IfHealthyBudget).
   if (pdb && isPodReady(pod) && pod.metadata.deletionTimestamp === undefined) {
     if ((pdb.status?.disruptionsAllowed ?? 0) <= 0) return { ok: false, message: "Cannot evict pod as it would violate the pod's disruption budget." };
     cluster.updateStatus(pdb, (x) => {
-      x.status = { ...x.status!, disruptionsAllowed: x.status!.disruptionsAllowed - 1, disruptedPods: { ...x.status?.disruptedPods, [pod.metadata.name]: new Date(cluster.now).toISOString() } };
+      x.status = { ...x.status!, disruptionsAllowed: x.status!.disruptionsAllowed - 1, disruptedPods: { ...x.status?.disruptedPods, [pod.metadata.name]: rfc3339(cluster.now) } };
     });
   }
   cluster.deleteObject(pod);

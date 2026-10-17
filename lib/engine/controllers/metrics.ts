@@ -66,7 +66,7 @@ export function runMetrics(cluster: Cluster): void {
     let cpu = 0;
     let memory = 0;
     let running = false;
-    for (const c of p.spec?.containers ?? []) {
+    for (const c of [...(p.spec?.initContainers ?? []), ...(p.spec?.containers ?? [])]) {
       const crt = prt.containers[c.name];
       if (!crt || (crt.phase !== "running" && crt.phase !== "stopping")) continue;
       running = true;

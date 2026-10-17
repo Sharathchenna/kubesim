@@ -1,14 +1,15 @@
 // horizontal-pod-autoscaler (autoscaling/v2), resource metrics only. Every
 // 15s: desired = ceil(current × usage/target) over the target's Pods, skipped
-// within 10% tolerance; missing metrics count as 0% when scaling up and as
-// 100% when scaling down; scale-up is limited to max(4 Pods, 100%) per 15s;
-// scale-down uses the highest recommendation of the last 5 minutes (or
-// behavior.scaleDown.stabilizationWindowSeconds).
-// Behaviour reference v2 §6.
+// within the tolerance (10%, or behavior.*.tolerance); missing metrics count as
+// 0% when scaling up and as 100% when scaling down. Without `behavior`: scale-up
+// limited to max(2 × current, 4) per sync, scale-down to the highest
+// recommendation of the last 5 minutes. With `behavior`: per-direction
+// stabilization windows, then the Pods/Percent policies over periodSeconds with
+// selectPolicy Max/Min/Disabled. Behaviour reference v2 §6.
 
 import { isPodReady, isPodTerminal, type Cluster } from "../cluster";
-import { containerRequests } from "../quantity";
-import type { Condition, Deployment, HorizontalPodAutoscaler, Pod } from "../types";
+import { containerRequests, parseQuantity } from "../quantity";
+import type { Condition, Deployment, HPAScalingRules, HorizontalPodAutoscaler, Pod } from "../types";
 import { matchesSelectorString } from "../util";
 import { metricsAvailable } from "./metrics";
 
@@ -104,31 +105,73 @@ export function runHPAs(cluster: Cluster): void {
     const util = Math.floor((sumUse * 100) / sumReq);
     let ratio = util / targetUtil;
     let desired = current;
-    if (Math.abs(ratio - 1) > TOLERANCE) {
+    // behavior.scaleUp/scaleDown.tolerance (HPAConfigurableTolerance), else the controller's 10%.
+    const behavior = hpa.spec!.behavior;
+    const tol = (r: number) => {
+      const t = r > 1 ? behavior?.scaleUp?.tolerance : behavior?.scaleDown?.tolerance;
+      const v = t === undefined ? NaN : typeof t === "number" ? t : parseQuantity(t);
+      return Number.isFinite(v) ? v : TOLERANCE;
+    };
+    const outside = (r: number) => Math.abs(r - 1) > tol(r);
+    if (outside(ratio)) {
       // Rebalance with the missing Pods assumed at 0% (scale up) or 100% (scale down).
       if (missing.length) {
         const assumed = ratio > 1 ? 0 : 1;
         const u2 = (sumUse + missing.reduce((a, p) => a + assumed * req(p), 0)) / (sumReq + missing.reduce((a, p) => a + req(p), 0));
         const r2 = (u2 * 100) / targetUtil;
-        if (Math.abs(r2 - 1) <= TOLERANCE || (ratio > 1) !== (r2 > 1)) ratio = 1;
+        if (!outside(r2) || (ratio > 1) !== (r2 > 1)) ratio = 1;
         else ratio = r2;
       }
       desired = ratio === 1 ? current : Math.ceil(ratio * (withMetrics.length + missing.length));
     }
 
-    // Scale-down stabilization: act on the highest recommendation of the window
-    // (behavior.scaleDown.stabilizationWindowSeconds, 5 minutes by default).
-    const downWindowMs = (hpa.spec!.behavior?.scaleDown?.stabilizationWindowSeconds ?? DOWN_WINDOW_MS / 1000) * 1000;
-    const recs = ((cluster.state.hpa[hpa.metadata.uid] ??= { recs: [] }).recs = [...(cluster.state.hpa[hpa.metadata.uid]?.recs ?? []), { t: now, n: desired }].filter((r) => now - r.t <= downWindowMs));
+    const st = (cluster.state.hpa[hpa.metadata.uid] ??= { recs: [] });
+    st.events ??= [];
     let next = desired;
-    if (desired < current) next = Math.min(current, Math.max(...recs.map((r) => r.n)));
-    const stabilized = desired < current && next > desired;
-    // Scale-up rate: without behavior, max(2× current, 4); with the default behavior policies, max(+4 Pods, +100%) per 15s.
+    let stabilized: "up" | "down" | undefined;
     let limited: string | undefined;
-    const cap = hpa.spec!.behavior ? Math.max(current + 4, current * 2) : Math.max(current * 2, 4);
-    if (next > cap) {
-      next = cap;
-      limited = "ScaleUpLimit";
+    if (!behavior) {
+      // normalizeDesiredReplicas: act on the highest recommendation of the last 5 minutes when
+      // scaling down; scale up at most to max(2 × current, 4) per sync.
+      st.recs = [...st.recs, { t: now, n: desired }].filter((r) => now - r.t <= DOWN_WINDOW_MS);
+      if (desired < current) next = Math.min(current, Math.max(...st.recs.map((r) => r.n)));
+      if (desired < current && next > desired) stabilized = "down";
+      const cap = Math.max(current * 2, 4);
+      if (next > cap) {
+        next = cap;
+        limited = "ScaleUpLimit";
+      }
+    } else {
+      // normalizeDesiredReplicasWithBehaviors: stabilization windows per direction, then the rate policies.
+      const upW = (behavior.scaleUp?.stabilizationWindowSeconds ?? 0) * 1000;
+      const downW = (behavior.scaleDown?.stabilizationWindowSeconds ?? DOWN_WINDOW_MS / 1000) * 1000;
+      st.recs = [...st.recs, { t: now, n: desired }].filter((r) => now - r.t <= Math.max(upW, downW));
+      let up = desired;
+      let down = desired;
+      for (const r of st.recs) {
+        if (now - r.t <= upW) up = Math.min(up, r.n);
+        if (now - r.t <= downW) down = Math.max(down, r.n);
+      }
+      next = current;
+      if (next < up) next = up;
+      if (next > down) next = down;
+      if (desired > current && next < desired) stabilized = "up";
+      else if (desired < current && next > desired) stabilized = "down";
+      if (next > current) {
+        const limit = Math.max(current, scaleLimit(current, st.events, behavior.scaleUp, now, "up"));
+        const allowed = Math.min(max, limit);
+        if (next > allowed) {
+          next = allowed;
+          limited = allowed === max && limit >= max ? "TooManyReplicas" : "ScaleUpLimit";
+        }
+      } else if (next < current) {
+        const limit = Math.min(current, scaleLimit(current, st.events, behavior.scaleDown, now, "down"));
+        const allowed = Math.max(min, limit);
+        if (next < allowed) {
+          next = allowed;
+          limited = allowed === min && limit <= min ? "TooFewReplicas" : "ScaleDownLimit";
+        }
+      }
     }
     if (next > max) {
       next = max;
@@ -141,7 +184,7 @@ export function runHPAs(cluster: Cluster): void {
     conds = setCond(
       conds,
       limited
-        ? { type: "ScalingLimited", status: "True", reason: limited, message: limited === "ScaleUpLimit" ? "the desired replica count is increasing faster than the maximum scale rate" : `the desired replica count is ${limited === "TooManyReplicas" ? "more than the maximum" : "less than the minimum"} replica count` }
+        ? { type: "ScalingLimited", status: "True", reason: limited, message: limited === "ScaleUpLimit" ? "the desired replica count is increasing faster than the maximum scale rate" : limited === "ScaleDownLimit" ? "the desired replica count is decreasing faster than the maximum scale rate" : `the desired replica count is ${limited === "TooManyReplicas" ? "more than the maximum" : "less than the minimum"} replica count` }
         : { type: "ScalingLimited", status: "False", reason: "DesiredWithinRange", message: "the desired count is within the acceptable range" },
       now,
     );
@@ -149,9 +192,13 @@ export function runHPAs(cluster: Cluster): void {
     if (next !== current) {
       rescale(next, next > current ? `${resName} resource utilization (percentage of request) above target` : "All metrics below target");
       lastScale = now;
+      // Scale events feed the behavior rate policies (periodSeconds windows).
+      st.events = [...st.events.filter((e) => now - e.t <= 3_600_000), { t: now, delta: next - current }];
       conds = setCond(conds, { type: "AbleToScale", status: "True", reason: "SucceededRescale", message: `the HPA controller was able to update the target scale to ${next}` }, now);
-    } else if (stabilized) {
+    } else if (stabilized === "down") {
       conds = setCond(conds, { type: "AbleToScale", status: "True", reason: "ScaleDownStabilized", message: "recent recommendations were higher than current one, applying the highest recent recommendation" }, now);
+    } else if (stabilized === "up") {
+      conds = setCond(conds, { type: "AbleToScale", status: "True", reason: "ScaleUpStabilized", message: "recent recommendations were lower than current one, applying the lowest recent recommendation" }, now);
     } else {
       conds = setCond(conds, { type: "AbleToScale", status: "True", reason: "ReadyForNewScale", message: "recommended size matches current size" }, now);
     }
@@ -162,4 +209,29 @@ export function runHPAs(cluster: Cluster): void {
       currentMetrics: [{ type: "Resource", resource: { name: resName, current: { averageUtilization: util, averageValue: resName === "cpu" ? `${Math.round(sumUse / withMetrics.length)}m` : `${Math.round(sumUse / withMetrics.length)}` } } }],
     });
   }
+}
+
+/**
+ * calculateScaleUpLimitWithScalingRules / calculateScaleDownLimitWithBehaviors: the most (or,
+ * with selectPolicy Min, the least) each policy allows, counting the replicas already added or
+ * removed within its periodSeconds.
+ */
+function scaleLimit(current: number, events: { t: number; delta: number }[], rules: HPAScalingRules | undefined, now: number, dir: "up" | "down"): number {
+  if (rules?.selectPolicy === "Disabled") return current;
+  const policies = rules?.policies ?? (dir === "up" ? [{ type: "Pods" as const, value: 4, periodSeconds: 15 }, { type: "Percent" as const, value: 100, periodSeconds: 15 }] : [{ type: "Percent" as const, value: 100, periodSeconds: 15 }]);
+  const pickMin = rules?.selectPolicy === "Min";
+  let result = dir === "up" ? (pickMin ? Infinity : -Infinity) : pickMin ? -Infinity : Infinity;
+  for (const p of policies) {
+    const inPeriod = events.filter((e) => now - e.t <= p.periodSeconds * 1000);
+    if (dir === "up") {
+      const start = current - inPeriod.reduce((a, e) => a + Math.max(0, e.delta), 0);
+      const proposed = p.type === "Pods" ? start + p.value : Math.ceil(start * (1 + p.value / 100));
+      result = pickMin ? Math.min(result, proposed) : Math.max(result, proposed);
+    } else {
+      const start = current + inPeriod.reduce((a, e) => a + Math.max(0, -e.delta), 0);
+      const proposed = p.type === "Pods" ? start - p.value : Math.trunc(start * (1 - p.value / 100));
+      result = pickMin ? Math.max(result, proposed) : Math.min(result, proposed);
+    }
+  }
+  return result;
 }

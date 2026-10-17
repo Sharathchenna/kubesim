@@ -15,7 +15,7 @@ export interface Endpoint {
 export function policyTypes(np: NetworkPolicy): ("Ingress" | "Egress")[] {
   const t = np.spec?.policyTypes;
   if (t && t.length) return t;
-  return np.spec?.egress ? ["Ingress", "Egress"] : ["Ingress"];
+  return np.spec?.egress?.length ? ["Ingress", "Egress"] : ["Ingress"];
 }
 
 /** Policies in a Pod's namespace that select it for a direction. */

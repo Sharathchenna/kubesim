@@ -29,6 +29,24 @@ export function ensureNamespaceDefaults(cluster: Cluster, ns: string): void {
   }
 }
 
+/** The local LoadBalancer pool, like a MetalLB range on the kind network: 172.18.255.200-250. */
+const LB_FIRST = 200;
+const LB_SIZE = 51;
+
+/** Next free pool address after the last one handed out (freed addresses are reused, wrapping around). */
+function allocLbIp(cluster: Cluster): string | undefined {
+  const used = new Set<string>();
+  for (const s of cluster.list<Service>("Service")) for (const i of s.status?.loadBalancer?.ingress ?? []) if (i.ip) used.add(i.ip);
+  for (let k = 0; k < LB_SIZE; k++) {
+    const n = (cluster.state.lbNext + k) % LB_SIZE;
+    const ip = `172.18.255.${LB_FIRST + n}`;
+    if (used.has(ip)) continue;
+    cluster.state.lbNext = (n + 1) % LB_SIZE;
+    return ip;
+  }
+  return undefined;
+}
+
 export function runNetworkControllers(cluster: Cluster): void {
   const now = cluster.now;
   const timers = cluster.state.timers;
@@ -42,8 +60,9 @@ export function runNetworkControllers(cluster: Cluster): void {
     const key = `lb/${svc.metadata.uid}`;
     timers[key] ??= now + LB_DELAY_MS;
     if (now < timers[key]) continue;
+    const ip = allocLbIp(cluster);
+    if (!ip) continue; // pool exhausted: stays <pending> until an address frees up
     delete timers[key];
-    const ip = `172.18.255.${200 + cluster.state.lbNext++}`;
     cluster.update(svc, (x) => void (x.status = { loadBalancer: { ingress: [{ ip, ipMode: "VIP" }] } }));
     cluster.record(svc, "Normal", "EnsuringLoadBalancer", "Ensuring load balancer", "service-controller");
     cluster.record(svc, "Normal", "EnsuredLoadBalancer", "Ensured load balancer", "service-controller");

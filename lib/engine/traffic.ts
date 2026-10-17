@@ -8,7 +8,8 @@ import type { Cluster } from "./cluster";
 import { containerFs } from "./fs";
 import { listenPorts, lookupImage, NGINX_404, NGINX_503, type HttpResponse } from "./images";
 import { connectionAllowed, dnsAllowed } from "./netpol";
-import type { Endpoints, Ingress, IngressBackend, Node, Pod, Service } from "./types";
+import type { Ingress, IngressBackend, Node, Pod, Service } from "./types";
+import { slicesFor } from "./controllers/endpointslices";
 import { unixDate } from "./util";
 
 export interface TrafficResult {
@@ -45,13 +46,29 @@ export function parseUrl(url: string): { host: string; port?: number; path: stri
 const isIp = (h: string) => /^\d+\.\d+\.\d+\.\d+$/.test(h);
 const INGRESS_NS = "ingress-nginx";
 
-/** Ready (or all, for publishNotReadyAddresses) endpoint addresses of a Service. */
+/**
+ * Ready endpoint addresses of a Service, read from its EndpointSlices the way
+ * kube-proxy and CoreDNS do (publishNotReadyAddresses makes every endpoint ready).
+ * A nil `ready` condition counts as ready, per the API's guidance to consumers.
+ */
 function endpointAddrs(cluster: Cluster, svc: Service): { ip: string; hostname?: string; uid?: string; ports: { name?: string; port: number }[] }[] {
-  const ep = cluster.raw("Endpoints", svc.metadata.namespace, svc.metadata.name) as unknown as Endpoints | undefined;
-  return (ep?.subsets ?? []).flatMap((s) =>
-    [...(s.addresses ?? []), ...(svc.spec?.publishNotReadyAddresses ? (s.notReadyAddresses ?? []) : [])].map((a) => ({ ip: a.ip, hostname: a.hostname, uid: a.targetRef?.uid, ports: s.ports ?? [] })),
-  );
+  const seen = new Set<string>();
+  const out: { ip: string; hostname?: string; uid?: string; ports: { name?: string; port: number }[] }[] = [];
+  for (const sl of slicesFor(cluster, svc)) {
+    if (sl.addressType !== "IPv4") continue;
+    const ports = (sl.ports ?? []).filter((p) => p.port !== undefined).map((p) => ({ ...(p.name ? { name: p.name } : {}), port: p.port! }));
+    for (const e of sl.endpoints ?? []) {
+      if (e.conditions?.ready === false) continue;
+      const ip = e.addresses[0];
+      if (!ip || seen.has(ip)) continue;
+      seen.add(ip);
+      out.push({ ip, hostname: e.hostname, uid: e.targetRef?.uid, ports });
+    }
+  }
+  return out.sort((a, b) => ipNum(a.ip) - ipNum(b.ip));
 }
+
+const ipNum = (ip: string) => ip.split(".").reduce((n, o) => n * 256 + Number(o), 0);
 
 export interface Resolution {
   ips: string[];
@@ -144,7 +161,7 @@ function resolveTarget(cluster: Cluster, host: string, port: number, from: Pod |
     const r = resolveName(cluster, host, from);
     if (r.svc?.spec?.type === "ExternalName") return { kind: "none", error: `curl: (6) Could not resolve host: ${r.svc.spec.externalName}`, exitCode: 6 };
     if (!r.ips.length) return { kind: "none", error: `curl: (6) Could not resolve host: ${host}`, exitCode: 6 };
-    ip = r.ips[r.ips.length > 1 ? cluster.rng.int(r.ips.length) : 0];
+    ip = r.ips[r.ips.length > 1 ? cluster.trafficRng.int(r.ips.length) : 0];
   }
   const svcs = cluster.list<Service>("Service");
   const byIp = svcs.find((s) => s.spec?.clusterIP === ip && ip !== "None");
@@ -192,7 +209,7 @@ function viaService(
   if (!sp) return { ok: false, error: timeoutMsg(shownHost, port), exitCode: 28 };
   const ready = endpointAddrs(cluster, svc).map((a) => ({ a, port: a.ports.find((p) => p.name === sp.name || (!p.name && !sp.name))?.port ?? a.ports[0]?.port ?? port }));
   if (ready.length === 0) return { ok: false, error: refusedMsg(shownHost, port), exitCode: 7, serviceName: svc.metadata.name };
-  const pick = ready[cluster.rng.int(ready.length)];
+  const pick = ready[cluster.trafficRng.int(ready.length)];
   const pod = cluster.byUid(pick.a.uid ?? "") as unknown as Pod | undefined;
   if (!pod) return { ok: false, error: refusedMsg(shownHost, port), exitCode: 7 };
   const r = toPod(cluster, pod, pick.port, path, shownHost, src, opts, { serviceUid: svc.metadata.uid, via, ...extra });
@@ -223,7 +240,8 @@ function toPod(
     return { ok: false, error: timeoutMsg(shownHost, podPort), exitCode: 28, podName: pod.metadata.name, blocked: true };
   }
   const prt = cluster.state.pods[pod.metadata.uid];
-  for (const c of pod.spec?.containers ?? []) {
+  // App containers and running sidecars share the Pod's network namespace.
+  for (const c of [...(pod.spec?.containers ?? []), ...(pod.spec?.initContainers ?? []).filter((x) => x.restartPolicy === "Always")]) {
     const crt = prt?.containers[c.name];
     if (!crt || (crt.phase !== "running" && crt.phase !== "stopping")) continue;
     const serving = crt.program?.[crt.pc]?.op === "serve" && crt.wakeAt <= cluster.now;

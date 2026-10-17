@@ -1679,7 +1679,7 @@ The Simulated Cluster never needs that message.
    `Ready` when heartbeats resume.
 10. **Timestamps in `describe` use RFC1123Z in the Learner's local zone.** Ages use the virtual
     clock. Future deletion timestamps render `<invalid>` exactly as real kubectl does.
-11. **Out of scope but adjacent:** probes (`Unhealthy` events), init containers (`Init:x/y`
+11. **Out of scope but adjacent (since implemented, see the v2 reference §22 R13):** probes (`Unhealthy` events), init containers (`Init:x/y`
     statuses are already covered by `printPod`), resource quotas, DaemonSets and drain. The
     printer logic above already supports init containers if they are added later.
 

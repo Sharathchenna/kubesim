@@ -18,7 +18,13 @@ export type Op =
   /** Hold memory (stress --vm). */
   | { op: "alloc"; bytes: number }
   /** Burn CPU (stress --cpu), in millicores. */
-  | { op: "burn"; millicores: number };
+  | { op: "burn"; millicores: number }
+  /** Start a `for` loop: set `var` to the first item (a word list, or `seq from to`), or skip to `end` if there are none. */
+  | { op: "forinit"; var: string; items?: string[]; from?: number; to?: number; end: number }
+  /** End of a `for` body: next item and jump back to `to`, else fall through. `init` is the forinit's index. */
+  | { op: "fornext"; var: string; init: number; to: number }
+  /** Jump if the last command succeeded (`ok`) or failed (`fail`): a while/until condition. */
+  | { op: "jumpif"; when: "ok" | "fail"; to: number };
 
 export type Program = Op[];
 
@@ -738,16 +744,36 @@ export function expandWord(word: string, env: Record<string, string>, hostname: 
     .replace(/\$\{?(\w+)\}?/g, (_, n) => env[n] ?? "");
 }
 
-const seq = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => String(a + i));
+/** The placeholder a `for` variable expands to at compile time; the kubelet substitutes the current item. */
+export const loopVar = (name: string) => `\u0001${name}\u0001`;
+/** Most items a literal `for` list may have (a `$(seq a b)` range is counted, not expanded). */
+const MAX_FOR_ITEMS = 10_000;
 
-/** Compiles a shell script to a Program. Loops (while/for), &&, ||, redirects and $VARs are supported. */
+const LOOP_START = /^(while|until|for)\b/;
+
+/** Index of the `done` that closes the loop opened at `stmts[i]`, or -1. */
+function matchingDone(stmts: Statement[], i: number): number {
+  let depth = 0;
+  for (let j = i; j < stmts.length; j++) {
+    const t = stmts[j].text.replace(/^do\s+/, "");
+    if (LOOP_START.test(t)) depth++;
+    if (/^done\b/.test(stmts[j].text)) {
+      depth--;
+      if (depth === 0) return j;
+    }
+  }
+  return -1;
+}
+
+/** Compiles a shell script to a Program. Loops (while/until/for), &&, ||, redirects and $VARs are supported. */
 export function compileScript(script: string, env: Record<string, string>, hostname: string): Program {
-  const stmts = splitStatements(script);
   const prog: Program = [];
-  // Stack of open loops: where they start, and a for-loop's remaining body text.
-  type Frame = { kind: "while"; start: number } | { kind: "for"; varName: string; items: string[]; body: Statement[] };
-  const frames: Frame[] = [];
+  compileInto(prog, splitStatements(script), env, hostname);
+  if (!prog.some((o) => o.op === "exit" || o.op === "serve" || o.op === "jump")) prog.push({ op: "exit", code: -1 });
+  return prog;
+}
 
+function compileInto(prog: Program, stmts: Statement[], env: Record<string, string>, hostname: string): void {
   const emit = (st: Statement) => {
     let s = st.text;
     if (s.startsWith("do ")) s = s.slice(3).trim();
@@ -781,45 +807,45 @@ export function compileScript(script: string, env: Record<string, string>, hostn
   for (let i = 0; i < stmts.length; i++) {
     const st = stmts[i];
     const s = st.text;
-    const w = s.match(/^while\s+(.+?)(?:\s*;?\s*do(?:\s+(.*))?)?$/);
-    if (w && !frames.some((f) => f.kind === "for")) {
-      frames.push({ kind: "while", start: prog.length });
-      const cond = w[1].trim();
-      if (cond !== "true" && cond !== ":") emit({ text: cond, join: ";" });
-      if (w[2]) emit({ text: w[2], join: ";" });
+    const loop = LOOP_START.test(s) ? matchingDone(stmts, i) : -1;
+    if (loop < 0) {
+      if (/^done\b/.test(s)) continue; // a stray `done`
+      emit(st);
       continue;
     }
+    // The body: statements up to the matching `done`; `do` may share a line with the header.
+    const w = s.match(/^(while|until)\s+(.+?)(?:\s*;?\s*do(?:\s+(.*))?)?$/);
     const f = s.match(/^for\s+(\w+)\s+in\s+(.+?)(?:\s*;?\s*do(?:\s+(.*))?)?$/);
-    if (f) {
+    const inline = (w ? w[3] : f?.[3]) ?? "";
+    const body = [...(inline ? [{ text: inline, join: ";" as const }] : []), ...stmts.slice(i + 1, loop)].map((b) => ({ ...b, text: b.text.replace(/^do(\s+|$)/, "") })).filter((b) => b.text);
+    if (w) {
+      const start = prog.length;
+      const cond = w[2].trim();
+      let jif = -1;
+      if (!(w[1] === "while" && (cond === "true" || cond === ":"))) {
+        emit({ text: cond, join: ";" });
+        jif = prog.push({ op: "jumpif", when: w[1] === "while" ? "fail" : "ok", to: -1 }) - 1;
+      }
+      compileInto(prog, body, env, hostname);
+      // Guard against tight loops with no sleep: make them tick at 1s.
+      if (!prog.slice(start).some((o) => o.op === "sleep")) prog.push({ op: "sleep", ms: 1000 });
+      prog.push({ op: "jump", to: start });
+      if (jif >= 0) (prog[jif] as { to: number }).to = prog.length;
+    } else if (f) {
       const list = f[2].trim();
       const sm = list.match(/^\$\(seq\s+(\d+)(?:\s+(\d+))?\)$/);
-      const items = sm ? (sm[2] ? seq(+sm[1], +sm[2]) : seq(1, +sm[1])) : shellWords(list);
-      frames.push({ kind: "for", varName: f[1], items, body: f[3] ? [{ text: f[3], join: ";" }] : [] });
-      continue;
+      const init = prog.push(
+        sm
+          ? { op: "forinit", var: f[1], from: sm[2] ? +sm[1] : 1, to: sm[2] ? +sm[2] : +sm[1], end: -1 }
+          : { op: "forinit", var: f[1], items: shellWords(list).map((x) => expandWord(x, env, hostname)).slice(0, MAX_FOR_ITEMS), end: -1 },
+      ) - 1;
+      const bodyStart = prog.length;
+      compileInto(prog, body, { ...env, [f[1]]: loopVar(f[1]) }, hostname);
+      prog.push({ op: "fornext", var: f[1], init, to: bodyStart });
+      (prog[init] as { end: number }).end = prog.length;
     }
-    if (s === "done" || s.startsWith("done")) {
-      const fr = frames.pop();
-      if (fr?.kind === "while") {
-        // Guard against tight loops with no sleep: make them tick at 1s.
-        if (!prog.slice(fr.start).some((o) => o.op === "sleep")) prog.push({ op: "sleep", ms: 1000 });
-        prog.push({ op: "jump", to: fr.start });
-      } else if (fr?.kind === "for") {
-        for (const item of fr.items) {
-          const sub = fr.body.map((b) => b.text.replace(new RegExp(`\\$\\{?${fr.varName}\\}?`, "g"), item)).join("; ");
-          prog.push(...compileScript(sub, env, hostname).filter((o) => !(o.op === "exit" && o.code === 0)));
-        }
-      }
-      continue;
-    }
-    const top = frames[frames.length - 1];
-    if (top?.kind === "for") {
-      top.body.push(st);
-      continue;
-    }
-    emit(st);
+    i = loop;
   }
-  if (!prog.some((o) => o.op === "exit" || o.op === "serve" || o.op === "jump")) prog.push({ op: "exit", code: -1 });
-  return prog;
 }
 
 export function parseDuration(s: string): number {

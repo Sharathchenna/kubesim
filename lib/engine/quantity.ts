@@ -66,25 +66,36 @@ const containerReq = (c: Container, key: "requests" | "limits"): Resources => ({
   memory: bytes(c.resources?.[key]?.memory),
 });
 
-/** A Pod's effective requests: the sum over its containers (the scheduler's view). */
-export function podRequests(spec: PodSpec | undefined): Resources {
-  const out = { cpu: 0, memory: 0 };
-  for (const c of spec?.containers ?? []) {
-    const r = containerReq(c, "requests");
-    out.cpu += r.cpu;
-    out.memory += r.memory;
+/**
+ * A Pod's effective requests or limits (the scheduler's view, resourcehelper.PodRequests):
+ * the larger of the app containers plus sidecars, and any one init container plus the
+ * sidecars started before it. Init containers run one at a time, so they don't add up.
+ */
+function effective(spec: PodSpec | undefined, key: "requests" | "limits"): Resources {
+  const sum = { cpu: 0, memory: 0 };
+  const sidecars = { cpu: 0, memory: 0 };
+  let peak = { cpu: 0, memory: 0 };
+  for (const c of spec?.initContainers ?? []) {
+    const r = containerReq(c, key);
+    if (c.restartPolicy === "Always") {
+      sidecars.cpu += r.cpu;
+      sidecars.memory += r.memory;
+    } else peak = { cpu: Math.max(peak.cpu, r.cpu + sidecars.cpu), memory: Math.max(peak.memory, r.memory + sidecars.memory) };
   }
-  return out;
+  for (const c of spec?.containers ?? []) {
+    const r = containerReq(c, key);
+    sum.cpu += r.cpu;
+    sum.memory += r.memory;
+  }
+  return { cpu: Math.max(sum.cpu + sidecars.cpu, peak.cpu), memory: Math.max(sum.memory + sidecars.memory, peak.memory) };
+}
+
+export function podRequests(spec: PodSpec | undefined): Resources {
+  return effective(spec, "requests");
 }
 
 export function podLimits(spec: PodSpec | undefined): Resources {
-  const out = { cpu: 0, memory: 0 };
-  for (const c of spec?.containers ?? []) {
-    const r = containerReq(c, "limits");
-    out.cpu += r.cpu;
-    out.memory += r.memory;
-  }
-  return out;
+  return effective(spec, "limits");
 }
 
 export function containerLimits(c: Container): Resources {
@@ -97,7 +108,7 @@ export function containerRequests(c: Container): Resources {
 
 /** QoS class (pkg/apis/core/helper/qos): Guaranteed, Burstable or BestEffort. */
 export function qosClass(spec: PodSpec | undefined): "Guaranteed" | "Burstable" | "BestEffort" {
-  const cs = spec?.containers ?? [];
+  const cs = [...(spec?.initContainers ?? []), ...(spec?.containers ?? [])];
   let any = false;
   let guaranteed = cs.length > 0;
   for (const c of cs) {

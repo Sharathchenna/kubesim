@@ -103,13 +103,26 @@ export function recoverNode(cluster: Cluster, name: string): void {
     }
     const prt = cluster.state.pods[p.metadata.uid];
     if (!prt) continue;
+    // A new sandbox runs the init containers again, in order, before the app containers.
+    const inits = p.spec?.initContainers ?? [];
+    if (inits.length) {
+      prt.initialized = false;
+      for (const ic of inits) {
+        const c = prt.containers[ic.name];
+        if (!c || ic.restartPolicy === "Always" || c.phase !== "done") continue;
+        c.lastTerm = { exitCode: c.exitCode ?? 0, reason: c.exitReason ?? "Completed", startedAt: c.startedAt, finishedAt: c.until || cluster.now };
+        c.restarts++;
+        c.phase = "creating";
+        c.until = cluster.now + 1000;
+        c.program = undefined;
+      }
+    }
     for (const c of Object.values(prt.containers)) {
       if (c.phase !== "dead") continue;
       c.lastTerm = { exitCode: 255, reason: "Unknown", startedAt: c.startedAt, finishedAt: cluster.now };
       c.restarts++;
       c.phase = "creating";
       c.until = cluster.now + 1000;
-      c.announced = false;
       c.program = undefined;
     }
   }

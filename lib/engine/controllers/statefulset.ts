@@ -95,6 +95,40 @@ function ensureRevision(cluster: Cluster, sts: StatefulSet, name: string): numbe
   return max + 1;
 }
 
+/**
+ * persistentVolumeClaimRetentionPolicy (StatefulSetAutoDeletePVC, GA): whenDeleted Delete gives every
+ * claim an ownerReference to the StatefulSet; whenScaled Delete gives a condemned ordinal's claim an
+ * ownerReference to its Pod, so the garbage collector removes the claim once the Pod is gone.
+ */
+function reconcileClaimOwners(cluster: Cluster, sts: StatefulSet, want: number, pods: Map<number, Pod>): void {
+  const ns = sts.metadata.namespace!;
+  const policy = sts.spec!.persistentVolumeClaimRetentionPolicy ?? {};
+  const templates = (sts.spec!.volumeClaimTemplates ?? []).map((v) => `${v.metadata.name}-${sts.metadata.name}-`);
+  if (!templates.length) return;
+  for (const pvc of cluster.list<PersistentVolumeClaim>("PersistentVolumeClaim", ns)) {
+    const tpl = templates.find((t) => pvc.metadata.name.startsWith(t));
+    if (!tpl || pvc.metadata.deletionTimestamp !== undefined) continue;
+    const i = Number(pvc.metadata.name.slice(tpl.length));
+    if (!Number.isInteger(i) || i < 0) continue;
+    const pod = pods.get(i);
+    const condemned = i >= want;
+    if (condemned && policy.whenScaled === "Delete" && !pod) {
+      cluster.deleteObject(pvc);
+      continue;
+    }
+    const refs = (pvc.metadata.ownerReferences ?? []).filter((r) => r.uid !== sts.metadata.uid && r.kind !== "Pod");
+    // A condemned claim belongs to its Pod alone, so it goes with the Pod.
+    if (condemned && policy.whenScaled === "Delete" && pod) refs.push({ apiVersion: "v1", kind: "Pod", name: pod.metadata.name, uid: pod.metadata.uid, controller: false, blockOwnerDeletion: true });
+    else if (policy.whenDeleted === "Delete") refs.push(ownerRef(sts));
+    const before = JSON.stringify(pvc.metadata.ownerReferences ?? []);
+    if (before === JSON.stringify(refs)) continue;
+    cluster.update(pvc, (x) => {
+      if (refs.length) x.metadata.ownerReferences = refs;
+      else delete x.metadata.ownerReferences;
+    });
+  }
+}
+
 export function runStatefulSets(cluster: Cluster): void {
   for (const sts of cluster.list<StatefulSet>("StatefulSet")) {
     if (sts.metadata.deletionTimestamp !== undefined) continue;
@@ -158,6 +192,8 @@ export function runStatefulSets(cluster: Cluster): void {
         if (!parallel) break;
       }
     }
+
+    reconcileClaimOwners(cluster, sts, want, byOrd);
 
     // Scale down from the highest ordinal, one at a time (all at once with Parallel).
     const extra = owned.filter((p) => ordinalOf(sts, p) >= want || ordinalOf(sts, p) < 0).sort((a, b) => ordinalOf(sts, b) - ordinalOf(sts, a));
