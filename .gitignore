@@ -46,3 +46,7 @@ next-env.d.ts
 # local agent files
 /.claude/
 .vercel
+
+# local tool output
+/.archify/
+/.shoot.mjs
