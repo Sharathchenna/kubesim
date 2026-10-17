@@ -80,7 +80,7 @@ const apply: Scene = {
     { title: "3. The Deployment controller reacts", text: "It sees a Deployment with no matching ReplicaSet, so it creates one, named after a hash of the Pod template.", on: ["api", "dc", "dc-w", "dc-c"], flow: ["dc-w", "dc-c"] },
     { title: "4. The ReplicaSet controller reacts", text: "It sees a ReplicaSet that wants 3 Pods and has 0, so it creates 3 Pod objects. They have no Node yet: they're Pending.", on: ["api", "rc", "rc-w", "rc-c"], flow: ["rc-w", "rc-c"] },
     { title: "5. The scheduler places each Pod", text: "For every Pending Pod it filters out Nodes that can't take it (taints, cordon, selectors), scores the rest, and binds the Pod to the best one.", on: ["api", "sc", "sc-w", "sc-c"], flow: ["sc-w", "sc-c"] },
-    { title: "6. The kubelet starts it", text: "The kubelet on that Node sees a Pod assigned to it, pulls the image, starts the container, and reports Running back to the API server. Every arrow here is a watch on the API: no component calls another directly.", on: ["api", "kl", "pod", "kl-w", "kl-c", "run"], flow: ["kl-w", "run", "kl-c"] },
+    { title: "6. The kubelet starts it", text: "The kubelet on that Node sees a Pod assigned to it, pulls the image, starts the container, and reports Running back to the API server. The controllers, the scheduler and the kubelet never call each other: each one watches the API server and writes its changes back there.", on: ["api", "kl", "pod", "kl-w", "kl-c", "run"], flow: ["kl-w", "run", "kl-c"] },
   ],
 };
 
@@ -93,7 +93,7 @@ const service: Scene = {
     { id: "client", x: 16, y: 150, w: 118, h: 56, label: "client Pod", sub: "curl http://web" },
     { id: "dns", x: 186, y: 22, w: 140, h: 54, label: "CoreDNS", sub: "cluster DNS", tone: "violet" },
     { id: "svc", x: 186, y: 150, w: 140, h: 56, label: "Service web", sub: "10.96.14.7:80", tone: "blue" },
-    { id: "ep", x: 376, y: 22, w: 150, h: 54, label: "Endpoints", sub: "ready Pod IPs", tone: "blue" },
+    { id: "ep", x: 376, y: 22, w: 150, h: 54, label: "EndpointSlice", sub: "ready Pod IPs", tone: "blue" },
     { id: "kp", x: 376, y: 150, w: 150, h: 56, label: "kube-proxy", sub: "on the client's Node", tone: "blue" },
     { id: "pa", x: 576, y: 44, w: 128, h: 54, label: "web-a", sub: "10.244.1.4 · Ready", tone: "green" },
     { id: "pb", x: 576, y: 150, w: 128, h: 54, label: "web-b", sub: "10.244.2.7 · Ready", tone: "green" },
@@ -112,10 +112,10 @@ const service: Scene = {
   steps: [
     { title: "Pods move; names don't", text: "Pods are replaced all the time and get new IPs. Clients need one stable name to call. That's a Service.", on: ["client", "pa", "pb", "pc"] },
     { title: "DNS gives a stable name", text: "The client asks cluster DNS for web. It answers with the Service's ClusterIP, a virtual IP that stays the same for the Service's whole life.", on: ["client", "dns", "lookup"], flow: ["lookup"] },
-    { title: "The selector finds the Pods", text: "The Service has a label selector (app=web). Kubernetes keeps an Endpoints list of every matching Pod that is Ready. web-c is still starting, so it's left out.", on: ["svc", "ep", "sel", "pa", "pb", "pc"], off: ["pc"], flow: ["sel"] },
-    { title: "kube-proxy knows where to send it", text: "kube-proxy on every Node watches Endpoints and turns them into routing rules for the ClusterIP. There's no Service 'process' to fail: it's rules on every Node.", on: ["ep", "kp", "rules", "svc", "impl"], flow: ["rules"] },
-    { title: "Load-balanced to a ready Pod", text: "A request to 10.96.14.7:80 is rewritten to one of the ready Pod IPs, picked at random. The next request may land on the other Pod.", on: ["client", "svc", "kp", "send", "impl", "to-a", "to-b", "pa", "pb"], off: ["pc"], flow: ["send", "to-a", "to-b"] },
-    { title: "Readiness changes the list", text: "Once web-c passes its readiness check it's added to Endpoints and starts getting traffic. When a Pod starts terminating it's removed first, so users never hit it.", on: ["ep", "kp", "to-a", "to-b", "to-c", "pa", "pb", "pc"], flow: ["to-a", "to-b", "to-c"] },
+    { title: "The selector finds the Pods", text: "The Service has a label selector (app=web). Kubernetes keeps an EndpointSlice: a list of every matching Pod that is Ready (the older Endpoints API, deprecated since v1.33, holds the same list). web-c is still starting, so it's left out.", on: ["svc", "ep", "sel", "pa", "pb", "pc"], off: ["pc"], flow: ["sel"] },
+    { title: "kube-proxy knows where to send it", text: "kube-proxy on every Node watches EndpointSlices and turns them into routing rules for the ClusterIP. There's no Service 'process' to fail: it's rules on every Node.", on: ["ep", "kp", "rules", "svc", "impl"], flow: ["rules"] },
+    { title: "Load-balanced to a ready Pod", text: "A request to 10.96.14.7:80 is rewritten to one of the ready Pod IPs. kube-proxy spreads requests across them (at random in the default iptables mode; IPVS mode uses round-robin), so the next request may land on the other Pod.", on: ["client", "svc", "kp", "send", "impl", "to-a", "to-b", "pa", "pb"], off: ["pc"], flow: ["send", "to-a", "to-b"] },
+    { title: "Readiness changes the list", text: "Once web-c passes its readiness check it's added to the EndpointSlice and starts getting traffic. When a Pod starts terminating it's taken out of rotation; that change takes a moment to reach every Node, so apps often pause briefly (a preStop hook) before they stop accepting connections.", on: ["ep", "kp", "to-a", "to-b", "to-c", "pa", "pb", "pc"], flow: ["to-a", "to-b", "to-c"] },
   ],
 };
 
@@ -141,7 +141,7 @@ const probes: Scene = {
     { id: "ready-ep", from: "ready", to: "ep", label: "in or out" },
   ],
   steps: [
-    { title: "The kubelet asks", text: "The kubelet on the Pod's Node runs each probe on a timer (periodSeconds). A probe is an HTTP GET (2xx or 3xx passes), a TCP connection, or a command run inside the container (exit code 0 passes).", on: ["kubelet", "pod", "startup", "live", "ready", "k-start", "k-live", "k-ready"], flow: ["k-start", "k-live", "k-ready"] },
+    { title: "The kubelet asks", text: "The kubelet on the Pod's Node runs each probe on a timer (periodSeconds). A probe is an HTTP GET (2xx or 3xx passes), a TCP connection, a gRPC health check, or a command run inside the container (exit code 0 passes).", on: ["kubelet", "pod", "startup", "live", "ready", "k-start", "k-live", "k-ready"], flow: ["k-start", "k-live", "k-ready"] },
     { title: "Startup comes first", text: "If there is a startup probe, the other two wait until it has passed once. Give a slow app a generous startup probe instead of a long liveness delay.", on: ["kubelet", "startup", "k-start"], flow: ["k-start"] },
     { title: "Readiness: in or out of the Service", text: "When readiness fails failureThreshold times in a row (3 by default), the Pod is marked not Ready and removed from Service endpoints. Nothing restarts. When it passes again, the Pod is added back.", on: ["kubelet", "ready", "ep", "k-ready", "ready-ep"], flow: ["k-ready", "ready-ep"] },
     { title: "Liveness: restart when stuck", text: "When liveness fails 3 times in a row, the kubelet kills the container and starts a new one from the image. The RESTARTS counter goes up; a container that keeps failing ends up in CrashLoopBackOff.", on: ["kubelet", "live", "restart", "k-live", "live-restart"], flow: ["k-live", "live-restart"] },
@@ -175,7 +175,7 @@ const ingress: Scene = {
   ],
   steps: [
     { title: "One entrance for many apps", text: "A LoadBalancer Service per app means one public IP each. An Ingress puts a single HTTP entrance in front of many Services, and picks one by the request's hostname and path.", on: ["client", "ctrl", "api", "web", "req"], flow: ["req"] },
-    { title: "Rules are only data", text: "The Ingress object holds the rules and does nothing by itself. An Ingress controller, here ingress-nginx, watches every Ingress and turns the rules into its proxy configuration.", on: ["rules", "ctrl", "watch"], flow: ["watch"] },
+    { title: "Rules are only data", text: "The Ingress object holds the rules and does nothing by itself. An Ingress controller, here ingress-nginx, watches every Ingress and turns the rules into its proxy configuration. (ingress-nginx was retired in March 2026; other controllers read the same Ingress rules, and the Gateway API is the newer way to do this.)", on: ["rules", "ctrl", "watch"], flow: ["watch"] },
     { title: "Match the host, then the path", text: "A request for shop.example.com/api matches the host, then the longest matching path: /api beats /. ingress-nginx reads that Service's endpoints and proxies straight to one of its ready Pods.", on: ["client", "ctrl", "api", "pa", "req", "to-api", "api-a"], flow: ["req", "to-api", "api-a"] },
     { title: "Everything else", text: "Any other path on that host falls through to the / rule and the web Service, spread across its Pods.", on: ["client", "ctrl", "web", "pw1", "pw2", "req", "to-web", "web-1", "web-2"], flow: ["req", "to-web", "web-1", "web-2"] },
     { title: "404 and 503", text: "If no rule matches, ingress-nginx answers 404 itself. If a rule matches but its Service has no ready Pods, it answers 503. Either way the error comes from the proxy, not from your app.", on: ["ctrl", "api", "to-api", "pa"], off: ["pa"] },
@@ -202,7 +202,7 @@ const networkPolicy: Scene = {
     { id: "dbg-db", from: "dbg", to: "db" },
     { id: "fe-db", from: "fe", to: "db", bend: -120 },
     { id: "sel", from: "pol", to: "db", label: "selects" },
-    { id: "be-dns", from: "be", to: "dns", bend: 130, label: "53/UDP" },
+    { id: "be-dns", from: "be", to: "dns", bend: 130, label: "DNS :53" },
   ],
   steps: [
     { title: "Open by default", text: "Without policies, every Pod can reach every other Pod, in any namespace. A compromised debug Pod could talk straight to the database.", on: ["ns", "fe", "be", "db", "dbg", "fe-be", "be-db", "dbg-db", "fe-db"], flow: ["fe-be", "be-db", "dbg-db", "fe-db"] },
@@ -242,7 +242,7 @@ const pvPvc: Scene = {
     { title: "The StorageClass says how", text: "The claim names a StorageClass, or gets the default one. kind's standard class uses the local-path provisioner with WaitForFirstConsumer: nothing is created yet, and the claim stays Pending.", on: ["pvc", "sc", "class"], flow: ["class"] },
     { title: "Wait for the first Pod", text: "When a Pod using the claim is scheduled, the scheduler records its Node on the claim, so the volume can be made where the Pod will run.", on: ["sched", "pod", "place", "pvc"], flow: ["place"] },
     { title: "Provisioned and bound", text: "The provisioner creates a PersistentVolume on that Node and the claim is bound to it, one to one. Both show Bound, and the kubelet mounts the directory into the container.", on: ["sc", "prov", "pv", "pvc", "ask", "make", "bind", "node", "disk", "store"], flow: ["ask", "make", "bind"] },
-    { title: "Data outlives the Pod", text: "Delete the Pod and the claim, the PV and the files all stay. A new Pod using the claim sees the same data. Deleting the claim deletes the PV too when the reclaim policy is Delete.", on: ["pvc", "pv", "disk", "bind", "store", "node"], off: ["pod"] },
+    { title: "Data outlives the Pod", text: "Delete the Pod, and the claim, the PV and the files all stay. A new Pod using the claim sees the same data. Deleting the claim deletes the PV too when the reclaim policy is Delete.", on: ["pvc", "pv", "disk", "bind", "store", "node"], off: ["pod"] },
   ],
 };
 

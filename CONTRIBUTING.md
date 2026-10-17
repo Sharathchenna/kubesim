@@ -28,7 +28,7 @@ Lessons live in [`lib/lessons/lessons.ts`](lib/lessons/lessons.ts). A Lesson is 
 ```ts
 {
   slug: "my-lesson",            // URL: /learn/my-lesson
-  title: "…", summary: "…", minutes: 6, concepts: ["Pod"],
+  title: "…", short: "…", summary: "…", minutes: 6, concepts: ["Pod"],  // short: 1–2 words for the home page
   setup: (c) => deployment(c, "web", "nginx:1.27", 3),  // optional starting cluster
   warmupMs: 10_000,             // let it settle before the Learner arrives
   steps: [
@@ -43,13 +43,15 @@ Lessons live in [`lib/lessons/lessons.ts`](lib/lessons/lessons.ts). A Lesson is 
 }
 ```
 
-- **Checks test cluster state**, not what was typed, wherever possible. Many commands can reach the same state, and all of them should pass. Use `x.history` (the command lines run) only when the point of a Step is to *look* at something, like `kubectl get pods`.
+- **Checks test cluster state**, not what was typed, wherever possible. Many commands can reach the same state, and all of them should pass. Use `x.history` (the command lines run) only when the point of a Step is to *look* at something, like `kubectl get pods`. History regexes must accept the spellings people really type: flags in any order (`kubectl logs -f web`), long and short forms (`-n team-a`, `--namespace=team-a`), and resource aliases (`deploy`, `deployments.apps`). Add the alternatives and the shortcuts that must not pass to `lib/lessons/lessons.checks.test.ts`.
 - A Check is re-evaluated every frame against the live cluster, so keep it cheap.
 - **Every Step needs a working `solution`.** It powers the "Show me" button. `lib/lessons/lessons.test.ts` replays every solution and fails if any Check doesn't pass. If the solution depends on generated names, make `commands` a function of the cluster.
 - Body text: `bash` fences get a Run button per line (lines containing `<placeholder>` don't). `yaml` fences get "Open in editor". ` ```illustration <id>``` ` embeds a Concept Illustration.
 - Write for someone who knows Docker but not Kubernetes. Short sentences, one idea per Step, and point at what to watch on the canvas.
 
-Every Lesson has a `track` (see `TRACKS`); the curriculum map on `/learn` groups Lessons by it.
+Index pages (`/learn`, `/challenges`, `/exams`, `/progress`, `/explainers`) read a lightweight copy of titles, summaries, tracks and Step titles from `lib/lessons/meta.ts`, so they don't load the engine. After adding or renaming a Lesson, Challenge, exam task, Explainer or Step, run `bun lib/lessons/gen-meta.ts`; `lib/lessons/meta.test.ts` fails until you do. `TRACKS` lives in `meta.ts`.
+
+Every Lesson has a `track` (see `TRACKS`); the curriculum map on `/learn` groups Lessons by it, and the curriculum order is the tracks in order, then Lessons in the order they appear in `LESSONS`. Don't use a concept before the Lesson that introduces it.
 
 ## Add a Challenge
 

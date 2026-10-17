@@ -19,7 +19,7 @@ export interface ExamTask extends Step {
 export interface Exam {
   slug: string;
   title: string;
-  /** "CKAD-style" or "CKA-style". */
+  /** Eyebrow shown above the title, e.g. "Unofficial practice". */
   style: string;
   summary: string;
   /** Time limit. */
@@ -49,6 +49,8 @@ const envOf = (c: Cluster, p: Pod | undefined) => (p ? c.state.pods[p.metadata.u
 const sameCpu = (a: string | undefined, b: string) => a !== undefined && milliCpu(a) === milliCpu(b);
 const sameMem = (a: string | undefined, b: string) => a !== undefined && bytes(a) === bytes(b);
 /** Pods on a Node that a drain must evict: everything but DaemonSet and mirror Pods. */
+/** The container's command and args as one line, e.g. "sh -c echo hello". */
+const cmdline = (ct?: Container) => [...(ct?.command ?? []), ...(ct?.args ?? [])].join(" ");
 const evictable = (c: Cluster, nodeName: string) =>
   c.list<Pod>("Pod").filter((p) => p.spec?.nodeName === nodeName && !p.metadata.deletionTimestamp && !p.metadata.ownerReferences?.some((o) => o.kind === "DaemonSet") && !p.metadata.annotations?.["kubernetes.io/config.source"]);
 
@@ -283,11 +285,13 @@ spec:
 
 // ---------------------------------------------------------------- exams
 
+export { EXAM_TRADEMARK_NOTICE } from "./meta";
+
 export const EXAMS: Exam[] = [
   {
     slug: "ckad-practice",
-    title: "CKAD practice exam",
-    style: "CKAD-style",
+    title: "CKAD™-style practice exam",
+    style: "Unofficial practice",
     summary: "Twelve application tasks: Pods, Deployments, config, probes, resources, Jobs, NetworkPolicy, Ingress and storage.",
     minutes: 60,
     passPercent: 66,
@@ -410,7 +414,9 @@ export const EXAMS: Exam[] = [
         body: "Create a Job `hello-job` in namespace `batch` that runs image `busybox` with command `echo hello`. It must complete successfully 3 times, with at most 2 Pods running at once.",
         check: (x) => {
           const j = obj<Job>(x.cluster, "Job", "hello-job", "batch");
-          return j?.spec?.completions === 3 && j.spec.parallelism === 2 && (j.status?.succeeded ?? 0) >= 3 && j.spec.template.spec.containers[0].image.startsWith("busybox");
+          const ct = j?.spec?.template.spec.containers[0];
+          const parallelism = j?.spec?.parallelism ?? 1;
+          return j?.spec?.completions === 3 && parallelism >= 1 && parallelism <= 2 && (j.status?.succeeded ?? 0) >= 3 && !!ct?.image.startsWith("busybox") && /\becho hello\b/.test(cmdline(ct));
         },
         hint: "completions and parallelism are Job spec fields. kubectl create job --dry-run=client -o yaml gives you a start.",
         solution: { yaml: CKAD_JOB },
@@ -422,7 +428,8 @@ export const EXAMS: Exam[] = [
         body: "Create a CronJob `cleanup` in namespace `batch` that runs image `busybox` with command `echo cleaning up` every 15 minutes, and keeps only the last 2 successful Jobs.",
         check: (x) => {
           const cj = obj<CronJob>(x.cluster, "CronJob", "cleanup", "batch");
-          return ["*/15 * * * *", "0,15,30,45 * * * *", "0/15 * * * *"].includes(cj?.spec?.schedule ?? "") && cj?.spec?.successfulJobsHistoryLimit === 2 && !!cj.spec.jobTemplate.spec.template.spec.containers[0].image.startsWith("busybox");
+          const ct = cj?.spec?.jobTemplate.spec.template.spec.containers[0];
+          return ["*/15 * * * *", "0,15,30,45 * * * *", "0/15 * * * *"].includes(cj?.spec?.schedule ?? "") && cj?.spec?.successfulJobsHistoryLimit === 2 && !!ct?.image.startsWith("busybox") && /\becho cleaning up\b/.test(cmdline(ct));
         },
         hint: "successfulJobsHistoryLimit is a CronJob spec field.",
         solution: { yaml: CKAD_CRON },
@@ -473,8 +480,8 @@ export const EXAMS: Exam[] = [
   },
   {
     slug: "cka-practice",
-    title: "CKA practice exam",
-    style: "CKA-style",
+    title: "CKA™-style practice exam",
+    style: "Unofficial practice",
     summary: "Ten cluster tasks: scheduling, draining a Node, RBAC, storage, troubleshooting, NetworkPolicy, taints, metrics and Services.",
     minutes: 60,
     passPercent: 66,
@@ -512,7 +519,7 @@ export const EXAMS: Exam[] = [
         points: 10,
         namespace: "drain",
         title: "Retire a Node",
-        body: "Node `worker-3` is being retired. Mark it unschedulable and evict every Pod running on it, except DaemonSet Pods. The Deployment `batch-runner` in namespace `drain` must end up with 3 ready replicas on the remaining Nodes.",
+        body: "Node `worker-3` is being retired. Mark it unschedulable and evict every Pod running on it (evicting gracefully moves a Pod off the Node, which is what `kubectl drain` does), except DaemonSet Pods. The Deployment `batch-runner` in namespace `drain` must end up with 3 ready replicas on the remaining Nodes.",
         check: (x) => !!node(x.cluster, "worker-3")?.spec?.unschedulable && evictable(x.cluster, "worker-3").length === 0 && readyCount(x.cluster, "batch-runner", "drain") === 3,
         hint: "kubectl drain cordons the Node too. It needs a flag to leave DaemonSet Pods alone.",
         solution: { commands: ["kubectl drain worker-3 --ignore-daemonsets"] },
@@ -524,7 +531,7 @@ export const EXAMS: Exam[] = [
         body: "Create a ServiceAccount `monitor` in namespace `rbac`. Create a ClusterRole `node-reader` that allows `get`, `list` and `watch` on Nodes, and bind it to the ServiceAccount cluster-wide with a ClusterRoleBinding `monitor-node-reader`. The ServiceAccount must not be able to change Nodes.",
         check: (x) => {
           const sa = "system:serviceaccount:rbac:monitor";
-          return !!obj(x.cluster, "ServiceAccount", "monitor", "rbac") && !!obj(x.cluster, "ClusterRole", "node-reader", undefined) && !!obj(x.cluster, "ClusterRoleBinding", "monitor-node-reader", undefined) && ["get", "list", "watch"].every((v) => can(x.cluster, sa, v, "nodes")) && !can(x.cluster, sa, "delete", "nodes") && !can(x.cluster, sa, "patch", "nodes");
+          return !!obj(x.cluster, "ServiceAccount", "monitor", "rbac") && !!obj(x.cluster, "ClusterRole", "node-reader", undefined) && !!obj(x.cluster, "ClusterRoleBinding", "monitor-node-reader", undefined) && ["get", "list", "watch"].every((v) => can(x.cluster, sa, v, "nodes")) && ["create", "update", "patch", "delete", "*"].every((v) => !can(x.cluster, sa, v, "nodes"));
         },
         hint: "kubectl create serviceaccount, create clusterrole, create clusterrolebinding --serviceaccount=NAMESPACE:NAME.",
         solution: { commands: ["kubectl create serviceaccount monitor -n rbac", "kubectl create clusterrole node-reader --verb=get,list,watch --resource=nodes", "kubectl create clusterrolebinding monitor-node-reader --clusterrole=node-reader --serviceaccount=rbac:monitor"] },
@@ -533,15 +540,15 @@ export const EXAMS: Exam[] = [
         points: 10,
         namespace: "team-a",
         title: "Namespace access for a user",
-        body: "User `jane` must be able to create, update and delete Deployments in namespace `team-a`, and must get nothing in any other namespace. Use a Role `deploy-admin` and a RoleBinding `jane-deploy-admin` in `team-a`.",
+        body: "User `jane` must be able to create, update and delete Deployments in namespace `team-a`, and nothing more: no access to other resources such as Secrets in `team-a`, and nothing in any other namespace. Use a Role `deploy-admin` and a RoleBinding `jane-deploy-admin` in `team-a`.",
         check: (x) =>
           !!obj(x.cluster, "Role", "deploy-admin", "team-a") &&
           !!obj(x.cluster, "RoleBinding", "jane-deploy-admin", "team-a") &&
           ["create", "update", "delete"].every((v) => can(x.cluster, "jane", v, "deployments", "team-a", "apps")) &&
           !can(x.cluster, "jane", "create", "deployments", "default", "apps") &&
-          !can(x.cluster, "jane", "get", "secrets", "team-a"),
+          ["get", "list", "create", "update", "delete"].every((v) => !can(x.cluster, "jane", v, "secrets", "team-a") && !can(x.cluster, "jane", v, "pods", "team-a")),
         hint: "kubectl create role … --resource=deployments, then kubectl create rolebinding … --user=jane.",
-        solution: { commands: ["kubectl create role deploy-admin --verb=create,update,delete,get,list,watch --resource=deployments -n team-a", "kubectl create rolebinding jane-deploy-admin --role=deploy-admin --user=jane -n team-a"] },
+        solution: { commands: ["kubectl create role deploy-admin --verb=create,update,delete --resource=deployments -n team-a", "kubectl create rolebinding jane-deploy-admin --role=deploy-admin --user=jane -n team-a"] },
       },
       {
         points: 12,
@@ -566,7 +573,7 @@ export const EXAMS: Exam[] = [
           const d = dep(x.cluster, "frontend", "debug");
           return (ep?.subsets?.[0]?.addresses?.length ?? 0) === 2 && ep?.subsets?.[0]?.ports?.[0]?.port === 80 && firstContainer(d)?.image === "nginx:1.27" && obj<Service>(x.cluster, "Service", "frontend", "debug")?.spec?.ports?.[0]?.port === 80;
         },
-        hint: "Compare the Service's targetPort with the port the containers listen on. kubectl describe svc and kubectl get endpoints help.",
+        hint: "Compare the Service's targetPort with the port the containers listen on. kubectl describe svc and kubectl describe endpointslices help.",
         solution: { commands: [`kubectl patch service frontend -n debug -p '{"spec":{"ports":[{"port":80,"targetPort":80}]}}'`] },
       },
       {

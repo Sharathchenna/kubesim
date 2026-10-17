@@ -1,8 +1,10 @@
 // The home page's hero: an isometric twin of the Cluster View (same geometry
-// as the promo film, videos/src/videos/kubesim-film/iso.tsx). One Pod
-// crash-loops and is replaced by its ReplicaSet, on a 12 s CSS loop, while a
-// Service keeps sending traffic to the healthy ones. Decorative: the real,
-// interactive cluster is further down the page.
+// as the promo film, videos/src/videos/kubesim-film/iso.tsx). One Pod is
+// deleted and its ReplicaSet creates a replacement, on a 12 s CSS loop, while
+// a Service keeps sending traffic to the healthy ones. (Not a crash loop: a
+// crashing container is restarted in place by the kubelet, and the ReplicaSet
+// leaves that Pod alone.) Decorative: the real, interactive cluster is further
+// down the page.
 
 const NODE_W = 200;
 const NODE_H = 16;
@@ -119,7 +121,7 @@ export function HeroCluster() {
         <Pod n="w1" k={1} className="hc-pop" style={{ animationDelay: "0.5s" }} />
         <Pod n="w1" k={3} className="hc-pop" style={{ animationDelay: "0.65s" }} faces={POD_TEAL} />
         <Pod n="w2" k={2} className="hc-pop" style={{ animationDelay: "0.8s" }} />
-        {/* the Pod that crashes, its red phase, the scheduler's reservation and the replacement */}
+        {/* the Pod that's deleted, its red Terminating phase, the scheduler's reservation and the replacement */}
         <g className="hc-pop" style={{ animationDelay: "0.95s" }}>
           <Pod n="w2" k={3} className="hc-crash" />
         </g>
@@ -147,21 +149,21 @@ export function HeroCluster() {
       {/* narration chips, like the canvas's "What just happened" */}
       <div className="pointer-events-none absolute left-[4%] top-[6%] flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/90 px-3 py-1.5 font-mono text-[11.5px] text-slate-600 shadow-[0_4px_16px_rgba(15,23,42,.06)] backdrop-blur">
         <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-        deployment/web · 3/3 ready
+        deployment/web · replicas: 3
       </div>
       <div className="hc-chip pointer-events-none absolute bottom-[4%] right-0 max-w-[250px] lg:bottom-[9%] lg:-right-10 rounded-xl border border-red-200 bg-white/95 px-3 py-2 shadow-[0_8px_24px_rgba(15,23,42,.08)] backdrop-blur">
         <div className="flex items-center gap-1.5 font-mono text-[11.5px] font-medium text-red-700">
           <span className="hc-blink h-1.5 w-1.5 rounded-full bg-red-500" />
-          CrashLoopBackOff
+          Terminating
         </div>
-        <div className="mt-0.5 text-[12px] leading-snug text-slate-600">web-7d4b9-x2k9p keeps exiting. The kubelet backs off: 10s, 20s, 40s…</div>
+        <div className="mt-0.5 text-[12px] leading-snug text-slate-600">kubectl delete pod web-7d4b9-x2k9p. A Pod that&apos;s shutting down no longer counts for its ReplicaSet.</div>
       </div>
       <div className="hc-chip2 pointer-events-none absolute bottom-[4%] right-0 max-w-[250px] lg:bottom-[9%] lg:-right-10 rounded-xl border border-green-200 bg-white/95 px-3 py-2 shadow-[0_8px_24px_rgba(15,23,42,.08)] backdrop-blur">
         <div className="flex items-center gap-1.5 font-mono text-[11.5px] font-medium text-green-700">
           <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
           SuccessfulCreate
         </div>
-        <div className="mt-0.5 text-[12px] leading-snug text-slate-600">The ReplicaSet counts 2 of 3 and creates web-7d4b9-q8m2c on worker-2.</div>
+        <div className="mt-0.5 text-[12px] leading-snug text-slate-600">The ReplicaSet counts 2 of 3 and creates web-7d4b9-q8m2c. The scheduler places it on worker-2.</div>
       </div>
     </div>
   );

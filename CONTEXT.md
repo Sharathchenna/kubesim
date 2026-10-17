@@ -41,7 +41,7 @@ An interactive animated diagram of one concept: the Cluster View playing a scrip
 _Avoid_: Animation, demo, visualisation
 
 **Concept Illustration**:
-A hand-made SVG diagram inside a Lesson showing something the Simulated Cluster doesn't model, such as control-plane internals.
+A step-through SVG diagram, written as data (boxes, arrows and captions), shown inside a Lesson and on the Concepts page. It shows something the Simulated Cluster doesn't model, such as control-plane internals.
 _Avoid_: Figure, image, drawing
 
 **Track**:

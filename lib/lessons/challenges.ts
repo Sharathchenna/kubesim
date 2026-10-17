@@ -1,6 +1,6 @@
 // Challenges: a broken (or unfinished) cluster and a goal, with no
 // step-by-step instructions. Each goal is a Step whose Check tests cluster
-// state; hints stay hidden until asked for, and "Show me" is a last resort.
+// state; hints stay hidden until asked for, and "Show the fix" is a last resort.
 // Every Challenge is replayed by lessons.test.ts, so each goal must be solvable.
 
 import type { Deployment, Node, PersistentVolumeClaim, Pod } from "@/lib/engine";
@@ -13,6 +13,8 @@ export interface Challenge extends Lesson {
   difficulty: "easy" | "medium" | "hard";
   /** The situation, told like a ticket from a colleague. Markdown-ish, like Step bodies. */
   brief: string;
+  /** Read-only commands suggested as a first look (defaults to a generic triage pair). */
+  start?: string[];
 }
 
 const ns = (c: Parameters<NonNullable<Lesson["setup"]>>[0], name: string) => c.create({ apiVersion: "v1", kind: "Namespace", metadata: { name } });
@@ -114,9 +116,9 @@ export const CHALLENGES: Challenge[] = [
     track: "networking",
     title: "Connection refused",
     summary: "Healthy Pods, a Service in front of them, and no traffic getting through.",
-    brief: "`curl http://api` fails with `Connection refused`, but both `api` Pods are Running and Ready. Nobody has touched the Deployment. Make the Service work.",
+    brief: "`curl http://api` fails with `Failed to connect to api port 80`, but both `api` Pods are Running and Ready. Nobody has touched the Deployment. Make the Service work.",
     minutes: 4,
-    concepts: ["Service", "Selectors", "Endpoints"],
+    concepts: ["Service", "Selectors", "EndpointSlices"],
     setup: (c) => {
       deployment(c, "api", "nginxdemos/hello:plain-text", 2);
       c.create({ apiVersion: "v1", kind: "Service", metadata: { name: "api", labels: { app: "api" } }, spec: { selector: { app: "api-server" }, ports: [{ port: 80 }] } });
@@ -138,7 +140,7 @@ export const CHALLENGES: Challenge[] = [
     track: "config",
     title: "Stuck before it starts",
     summary: "Pods that never get as far as running their container.",
-    brief: "The `frontend` Pods have been stuck since the cluster was rebuilt from backups. The config they need is a single setting: `API_URL=http://api:8080`.",
+    brief: "The `frontend` Pods have been stuck since someone tidied up \"unused\" ConfigMaps last night. The config they need is a single setting: `API_URL=http://api:8080`.",
     minutes: 5,
     concepts: ["ConfigMap", "CreateContainerConfigError"],
     setup: (c) => deployment(c, "frontend", "nginx:1.27", 2, "default", { envFrom: [{ configMapRef: { name: "frontend-config" } }] }),
@@ -188,9 +190,9 @@ export const CHALLENGES: Challenge[] = [
     track: "workloads",
     title: "Health checks gone wrong",
     summary: "Every Pod is Running, none is Ready, and the Service is empty.",
-    brief: "We added health checks to `web` this morning. Since then every Pod shows `0/1` under READY and the `web` Service has no endpoints. nginx itself looks fine in the logs. Keep the readiness probe, but make it correct.",
+    brief: "We added health checks to `web` this morning. Since then every Pod shows `0/1` under READY and the `web` Service sends traffic nowhere. nginx itself looks fine in the logs. Keep the readiness probe, but make it correct.",
     minutes: 6,
-    concepts: ["Readiness probe", "Endpoints"],
+    concepts: ["Readiness probe", "EndpointSlices"],
     setup: (c) => {
       deployment(c, "web", "nginx:1.27", 3, "default", { readinessProbe: { httpGet: { path: "/", port: 8080 }, periodSeconds: 5 } });
       service(c, "web", 80);
@@ -199,7 +201,7 @@ export const CHALLENGES: Challenge[] = [
     steps: [
       {
         title: "All web Pods Ready and behind the Service",
-        body: "All 3 `web` Pods are Ready and listed in the Service's endpoints, and they still have a readiness probe.",
+        body: "All 3 `web` Pods are Ready and receive traffic from the Service, and they still have a readiness probe.",
         check: (x) => readyCount(x.cluster, "web") === 3 && endpointCount(x.cluster, "web") === 3 && podsWith(x.cluster, "app", "web").every((p) => !!p.spec?.containers[0].readinessProbe),
         hint: "kubectl describe pod shows the probe and why it fails. Which port does nginx listen on?",
         solution: { commands: [`kubectl patch deployment web -p '{"spec":{"template":{"spec":{"containers":[{"name":"web","readinessProbe":{"httpGet":{"path":"/","port":80}}}]}}}}'`] },
@@ -229,6 +231,7 @@ export const CHALLENGES: Challenge[] = [
   },
   {
     slug: "wrong-storageclass",
+    start: ["kubectl get pvc", "kubectl get storageclass"],
     difficulty: "medium",
     track: "storage",
     title: "Copied from another cluster",
@@ -269,11 +272,12 @@ export const CHALLENGES: Challenge[] = [
   },
   {
     slug: "forbidden-sa",
+    start: ["kubectl get role,rolebinding -n apps", "kubectl describe rolebinding -n apps"],
     difficulty: "medium",
     track: "security",
     title: "The pipeline is Forbidden",
     summary: "RBAC that looks right, for a ServiceAccount that still can't do its job.",
-    brief: "The deploy pipeline runs as ServiceAccount `deployer` in namespace `apps`. Every run fails with `deployments.apps \"web\" is forbidden: User \"system:serviceaccount:apps:deployer\" cannot patch resource \"deployments\"`. A Role and a RoleBinding were set up for it last week. It must not get more access than that Role gives.",
+    brief: "The deploy pipeline runs as ServiceAccount `deployer` in namespace `apps`. Every run fails with `deployments.apps \"web\" is forbidden: User \"system:serviceaccount:apps:deployer\" cannot patch resource \"deployments\"`. (That `system:serviceaccount:apps:deployer` string is how Kubernetes names the ServiceAccount `deployer` in namespace `apps`.) A Role and a RoleBinding were set up for it last week. It must not get more access than that Role gives.",
     minutes: 7,
     concepts: ["RBAC", "RoleBinding", "kubectl auth can-i"],
     setup: (c) => {
@@ -296,11 +300,12 @@ export const CHALLENGES: Challenge[] = [
   },
   {
     slug: "egress-dns",
+    start: ["kubectl get networkpolicy", "kubectl describe networkpolicy"],
     difficulty: "hard",
     track: "networking",
     title: "Locked down too far",
     summary: "An egress policy that blocks more than it meant to.",
-    brief: "Security added an egress NetworkPolicy for `frontend` yesterday. Since then frontend can't reach backend: `kubectl exec deploy/frontend -- wget -qO- --timeout=2 http://backend` fails. Frontend must stay locked down (it may not reach the internet), but it has to reach backend by name.",
+    brief: "Security added an egress NetworkPolicy for `frontend` yesterday. Since then frontend can't reach backend. This fails:\n\n```bash\nkubectl exec deploy/frontend -- wget -qO- --timeout=2 http://backend\n```\n\nFrontend must stay locked down (it may not reach the internet), but it has to reach backend by name.",
     minutes: 10,
     concepts: ["NetworkPolicy", "Egress", "DNS"],
     setup: (c) => {
@@ -331,6 +336,7 @@ export const CHALLENGES: Challenge[] = [
   },
   {
     slug: "after-maintenance",
+    start: ["kubectl get nodes", "kubectl describe nodes"],
     difficulty: "hard",
     track: "operations",
     title: "Nothing schedules after maintenance",

@@ -5,6 +5,7 @@ import YAML from "yaml";
 import type { Cluster, ConfigMap, CronJob, Deployment, Endpoints, HorizontalPodAutoscaler, Job, Node, PersistentVolume, PersistentVolumeClaim, Pod, Role, Service, StatefulSet } from "@/lib/engine";
 import { authorize, connectionAllowed, isIsolated, isPodReady, jobComplete, jobFailed, routeIngress, userFor } from "@/lib/engine";
 import { dnsAllowed } from "@/lib/engine/netpol";
+import { TRACKS, trackOf, type TrackId } from "./meta";
 
 export interface CheckContext {
   cluster: Cluster;
@@ -25,6 +26,8 @@ export interface Step {
 export interface Lesson {
   slug: string;
   title: string;
+  /** One or two words for tight spaces, like the track previews on the home page. Defaults to the title. */
+  short?: string;
   summary: string;
   minutes: number;
   concepts: string[];
@@ -42,6 +45,10 @@ export interface Lesson {
 // ---------------------------------------------------------------- helpers
 
 const ran = (ctx: CheckContext, re: RegExp) => ctx.history.some((h) => re.test(h));
+/** `kubectl logs` for a target (a regex source), with flags like -f or --tail anywhere on the line. */
+const logsOf = (target: string) => new RegExp(`\\bkubectl logs\\b(?:.*\\s)?(?:${target})(?:\\s|$)`);
+/** `kubectl get pods` (or `get all`) scoped to a namespace, however the namespace flag is spelled. */
+const listedPodsIn = (ns: string) => new RegExp(`\\bkubectl\\b(?=.*\\sget\\s+(?:pods?|po|all)\\b)(?=.*(?:\\s-n[\\s=]?${ns}\\b|\\s--namespace[\\s=]${ns}\\b|\\s-A\\b|\\s--all-namespaces\\b))`);
 const pod = (c: Cluster, name: string, ns = "default") => c.raw("Pod", ns, name) as unknown as Pod | undefined;
 const podsWith = (c: Cluster, key: string, value: string, ns = "default") => c.list<Pod>("Pod", ns).filter((p) => p.metadata.labels?.[key] === value && !p.metadata.deletionTimestamp);
 const readyCount = (c: Cluster, app: string, ns = "default") => podsWith(c, "app", app, ns).filter(isPodReady).length;
@@ -556,6 +563,7 @@ export const LESSONS: Lesson[] = [
     slug: "first-pod",
     track: "foundations",
     title: "Your first Pod",
+    short: "First Pod",
     summary: "Meet the cluster, run a container in a Pod, read its logs, and see what happens when you delete it.",
     minutes: 6,
     concepts: ["Node", "Pod", "kubectl"],
@@ -569,14 +577,14 @@ export const LESSONS: Lesson[] = [
       },
       {
         title: "Run a Pod",
-        body: "The smallest thing Kubernetes runs is a **Pod**: one or more containers that share a network address. Create one running the `nginx` web server:\n\n```bash\nkubectl run web --image=nginx\n```\n\nWatch the canvas: the Pod appears in the **scheduler queue**, gets placed on a worker, pulls its image, and starts.",
+        body: "The smallest thing Kubernetes runs is a **Pod**: one or more containers that share one IP address and can reach each other on `localhost`. Create one running the `nginx` web server:\n\n```bash\nkubectl run web --image=nginx\n```\n\nWatch the canvas: the Pod appears in the **scheduler queue**, gets placed on a worker, pulls its image, and starts.",
         check: (x) => !!pod(x.cluster, "web"),
         hint: "kubectl run NAME --image=IMAGE",
         solution: { commands: ["kubectl run web --image=nginx"] },
       },
       {
         title: "Wait for it to be Running",
-        body: "Check its status. Run this a few times as it moves from `Pending` to `ContainerCreating` to `Running`:\n\n```bash\nkubectl get pods -o wide\n```\n\nThe `-o wide` flag adds the Pod's IP address and which Node it landed on.",
+        body: "Check its status. Run this a few times: the `STATUS` column shows `Pending`, then `ContainerCreating`, then `Running`. This step is done once the Pod is Ready, shown as `1/1` under `READY` (one of one containers ready):\n\n```bash\nkubectl get pods -o wide\n```\n\nThe `-o wide` flag adds the Pod's IP address and which Node it landed on.",
         check: (x) => {
           const p = pod(x.cluster, "web");
           return !!p && isPodReady(p) && ran(x, /kubectl get (pods|pod|po)/);
@@ -587,7 +595,7 @@ export const LESSONS: Lesson[] = [
       {
         title: "Read its logs",
         body: "Containers write to stdout; Kubernetes keeps it for you. Read the nginx startup messages:\n\n```bash\nkubectl logs web\n```\n\nYou can also click the Pod on the canvas and open **Inspect** to see its logs and events.",
-        check: (x) => ran(x, /kubectl logs (pod\/)?web/),
+        check: (x) => ran(x, logsOf("(?:pods?/)?web")),
         hint: "kubectl logs POD_NAME",
         solution: { commands: ["kubectl logs web"] },
       },
@@ -604,6 +612,7 @@ export const LESSONS: Lesson[] = [
     slug: "declarative-yaml",
     track: "foundations",
     title: "Declarative YAML",
+    short: "YAML",
     summary: "Describe what you want in a manifest and let Kubernetes make it so. Apply, edit, re-apply.",
     minutes: 7,
     concepts: ["Manifest", "kubectl apply", "Desired state"],
@@ -625,14 +634,15 @@ spec:
       {
         title: "Apply a Pod manifest",
         body: "`kubectl run` is handy, but real teams write **manifests**: YAML files that describe the *desired state*. Kubernetes' job is to make reality match.\n\nThe **YAML editor** below has a Pod manifest. Read it, then press **kubectl apply -f manifest.yaml**.\n\nStep through what happens behind the scenes when you apply:\n\n```illustration apply```",
-        check: (x) => !!pod(x.cluster, "hello"),
-        hint: "Open the YAML editor tab and click the black Apply button.",
+        // Wait for Running so the next Step's `kubectl logs` has output to show.
+        check: (x) => pod(x.cluster, "hello")?.status?.phase === "Running",
+        hint: "Open the YAML editor tab and click the black Apply button, then give the Pod a few seconds to start.",
         solution: { yaml: `apiVersion: v1\nkind: Pod\nmetadata:\n  name: hello\n  labels:\n    app: hello\nspec:\n  containers:\n  - name: hello\n    image: busybox\n    command: ["sh", "-c", "while true; do echo hello from $HOSTNAME; sleep 5; done"]\n` },
       },
       {
         title: "Watch its output",
-        body: "This Pod prints a line every 5 seconds. Follow it:\n\n```bash\nkubectl logs hello\n```",
-        check: (x) => ran(x, /kubectl logs (pod\/)?hello/),
+        body: "This Pod prints a line every 5 seconds. Read what it has printed so far:\n\n```bash\nkubectl logs hello\n```\n\nAdd `-f` to keep following new lines (Ctrl+C stops).",
+        check: (x) => ran(x, logsOf("(?:pods?/)?hello")),
         hint: "Switch to the Terminal tab.",
         solution: { commands: ["kubectl logs hello"] },
       },
@@ -656,6 +666,7 @@ spec:
     slug: "replicasets-self-healing",
     track: "foundations",
     title: "ReplicaSets & self-healing",
+    short: "ReplicaSets",
     summary: "See the control loop that replaces lost Pods, and how labels decide which Pods a ReplicaSet owns.",
     minutes: 7,
     concepts: ["ReplicaSet", "Labels & selectors", "Control loop"],
@@ -686,7 +697,7 @@ spec:
       {
         title: "See the labels",
         body: "Show every Pod with its labels:\n\n```bash\nkubectl get pods --show-labels\n```\n\nOr filter with a selector, the same way the ReplicaSet does:\n\n```bash\nkubectl get pods -l app=web\n```",
-        check: (x) => ran(x, /kubectl get (pods|po).*(-l|--selector)/),
+        check: (x) => ran(x, /kubectl get (pods|pod|po)\b.*(\s-l[\s=]?\S|\s--selector[\s=])/),
         hint: "Try the -l flag.",
         solution: { commands: ["kubectl get pods -l app=web"] },
       },
@@ -696,20 +707,21 @@ spec:
     slug: "deployments-scaling",
     track: "workloads",
     title: "Deployments & scaling",
+    short: "Deployments",
     summary: "Create a Deployment from the command line and scale it up and down.",
     minutes: 5,
     concepts: ["Deployment", "Scaling", "Scheduling"],
     steps: [
       {
         title: "Create a Deployment",
-        body: "```bash\nkubectl create deployment api --image=nginxdemos/hello:plain-text --replicas=2\n```\n\nThe Deployment creates a ReplicaSet, which creates 2 Pods. The scheduler spreads them across workers so one Node failing doesn't take everything down.",
+        body: "```bash\nkubectl create deployment api --image=nginxdemos/hello:plain-text --replicas=2\n```\n\nThe Deployment creates a ReplicaSet, which creates 2 Pods. The scheduler usually spreads them across workers, so one Node failing doesn't take everything down. That spreading is best-effort, not a promise: if you need a guarantee, add `topologySpreadConstraints` to the Pod template.",
         check: (x) => readyCount(x.cluster, "api") === 2,
         hint: "Wait until both Pods show Running.",
         solution: { commands: ["kubectl create deployment api --image=nginxdemos/hello:plain-text --replicas=2"] },
       },
       {
         title: "Scale up",
-        body: "Traffic is growing. Ask for 6 replicas:\n\n```bash\nkubectl scale deployment api --replicas=6\n```\n\nWatch the new Pods fill both workers evenly.",
+        body: "Traffic is growing. Ask for 6 replicas:\n\n```bash\nkubectl scale deployment api --replicas=6\n```\n\nWatch the new Pods spread across both workers, usually about evenly (best-effort, as above).",
         check: (x) => (dep(x.cluster, "api")?.spec?.replicas ?? 0) === 6 && readyCount(x.cluster, "api") === 6,
         hint: "kubectl scale deployment NAME --replicas=N",
         solution: { commands: ["kubectl scale deployment api --replicas=6"] },
@@ -724,7 +736,7 @@ spec:
       {
         title: "Describe it",
         body: "`describe` gives the full story of an object, including the events that led here:\n\n```bash\nkubectl describe deployment api\n```\n\nLook for the `ScalingReplicaSet` events at the bottom.",
-        check: (x) => ran(x, /kubectl describe (deployment|deploy|deployments)[ /]api/),
+        check: (x) => ran(x, /kubectl describe (deployments?(\.apps)?|deploy)[ /]api\b/),
         hint: "kubectl describe deployment api",
         solution: { commands: ["kubectl describe deployment api"] },
       },
@@ -734,6 +746,7 @@ spec:
     slug: "rolling-updates",
     track: "workloads",
     title: "Rolling updates & rollbacks",
+    short: "Rollouts",
     summary: "Ship a new version with zero downtime, break a rollout on purpose, and undo it.",
     minutes: 8,
     concepts: ["Rolling update", "Revision history", "Rollback"],
@@ -742,7 +755,7 @@ spec:
     steps: [
       {
         title: "Update the image",
-        body: "`web` runs `nginx:1.26`. Upgrade it:\n\n```bash\nkubectl set image deployment/web web=nginx:1.27\n```\n\nWatch the canvas: a **new ReplicaSet** (new colour) appears. Pods move over a few at a time; old ones leave only after new ones are Ready. At no point is the app down.",
+        body: "`web` runs `nginx:1.26`. Upgrade it:\n\n```bash\nkubectl set image deployment/web web=nginx:1.27\n```\n\nWatch the canvas: a **new ReplicaSet** (new colour) appears. Pods move over a few at a time. By default a rollout may run 25% more Pods than asked for (`maxSurge`) and have 25% of them unavailable (`maxUnavailable`): with 4 replicas, one old Pod goes straight away while two new ones start, and the rest of the old Pods leave only as new ones become Ready. At least 3 Pods keep serving throughout.",
         check: (x) => rolledOut(x.cluster, "web") && podsWith(x.cluster, "app", "web").every((p) => p.spec!.containers[0].image === "nginx:1.27"),
         hint: "The container is named web, so the argument is web=nginx:1.27.",
         solution: { commands: ["kubectl set image deployment/web web=nginx:1.27"] },
@@ -756,7 +769,7 @@ spec:
       },
       {
         title: "Ship a broken version",
-        body: "Now make a typo on purpose:\n\n```bash\nkubectl set image deployment/web web=ngnix:1.27\n```\n\nThe new Pod can't pull its image (`ErrImagePull`, then `ImagePullBackOff`). But look: most old Pods **keep serving**. The rollout is stuck, not broken.",
+        body: "Now make a typo on purpose:\n\n```bash\nkubectl set image deployment/web web=ngnix:1.27\n```\n\nThe two new Pods can't pull their image (`ErrImagePull`, then `ImagePullBackOff`). But look: three old Pods **keep serving**, because `maxUnavailable` stops the rollout from taking down more. The rollout is stuck, not broken.",
         check: (x) => podsWith(x.cluster, "app", "web").some((p) => ["ErrImagePull", "ImagePullBackOff"].includes(waitingReason(p) ?? "")),
         hint: "It takes a couple of seconds for the pull to fail.",
         solution: { commands: ["kubectl set image deployment/web web=ngnix:1.27"] },
@@ -772,18 +785,19 @@ spec:
   },
   {
     slug: "services",
-    track: "networking",
+    track: "foundations",
     title: "Services & networking",
+    short: "Services",
     summary: "Give a set of Pods one stable address, load-balance across them, and reach them from outside.",
     minutes: 8,
-    concepts: ["Service", "Endpoints", "DNS", "NodePort"],
+    concepts: ["Service", "EndpointSlice", "DNS", "NodePort"],
     setup: (c) => deployment(c, "hello", "nginxdemos/hello:plain-text", 3),
     warmupMs: 10_000,
     steps: [
       {
         title: "Pods come and go",
         body: "Every Pod gets its own IP, but Pods are replaced all the time, so IPs change. See them:\n\n```bash\nkubectl get pods -o wide\n```",
-        check: (x) => ran(x, /kubectl get (pods|po).*-o wide/),
+        check: (x) => ran(x, /kubectl get (pods|pod|po)\b.*-o( |=)?wide/),
         hint: "Add -o wide.",
         solution: { commands: ["kubectl get pods -o wide"] },
       },
@@ -796,17 +810,17 @@ spec:
       },
       {
         title: "Send traffic",
-        body: "Call the Service by name. Run it several times and watch different Pods answer (`Server name`):\n\n```bash\ncurl http://hello\n```",
+        body: "Call the Service by name. Run it several times and watch different Pods answer (`Server name`):\n\n```bash\ncurl http://hello\n```\n\nA shortcut: the simulator's terminal can call Services by name, the way a Pod inside the cluster would. On a real cluster a `ClusterIP` Service name only resolves from inside a Pod, not from your laptop; you'd run the same request from a throwaway Pod, e.g. `kubectl run tmp --rm -it --image=busybox -- wget -qO- http://hello`.",
         check: (x) => x.history.filter((h) => /curl .*hello/.test(h)).length >= 3,
         hint: "Run curl at least three times. ↑ recalls the last command.",
         solution: { commands: ["curl http://hello", "curl http://hello", "curl http://hello"] },
       },
       {
-        title: "Look at the Endpoints",
-        body: "The Service keeps a live list of ready Pod IPs, called **Endpoints**:\n\n```bash\nkubectl get endpoints hello\n```\n\nDelete a Pod and run it again: the list updates as the replacement becomes ready.",
-        check: (x) => ran(x, /kubectl get (endpoints|ep)/),
-        hint: "kubectl get endpoints hello",
-        solution: { commands: ["kubectl get endpoints hello"] },
+        title: "Look at the EndpointSlices",
+        body: "Kubernetes keeps a live list of the Pods behind the Service, with their IPs and whether each is ready, in **EndpointSlices**. Each slice is labelled with its Service's name:\n\n```bash\nkubectl get endpointslices -l kubernetes.io/service-name=hello\n```\n\nDelete a Pod and run it again: the old Pod's IP goes and its replacement's appears.\n\nEndpointSlices have been the standard since v1.21. You'll still see `kubectl get endpoints` in older guides: the v1 Endpoints API works, but it has been deprecated since v1.33.",
+        check: (x) => ran(x, /kubectl (get|describe) (endpointslices?|endpoints|ep)\b/) || ran(x, /kubectl describe (svc|services?)\b/),
+        hint: "kubectl get endpointslices -l kubernetes.io/service-name=hello",
+        solution: { commands: ["kubectl get endpointslices -l kubernetes.io/service-name=hello"] },
       },
       {
         title: "Open it to the outside",
@@ -826,8 +840,9 @@ spec:
   },
   {
     slug: "namespaces",
-    track: "operations",
+    track: "foundations",
     title: "Namespaces",
+    short: "Namespaces",
     summary: "Split one cluster into separate spaces for teams or environments.",
     minutes: 5,
     concepts: ["Namespace", "Scope", "Context"],
@@ -848,8 +863,8 @@ spec:
       },
       {
         title: "Deploy into it",
-        body: "Most commands take `-n` to pick a namespace:\n\n```bash\nkubectl create deployment shop --image=nginx -n team-a\nkubectl get pods -n team-a\n```\n\nWithout `-n` you're in `default`, so `kubectl get pods` alone won't show them. Try `kubectl get pods -A` to see every namespace.",
-        check: (x) => readyCount(x.cluster, "shop", "team-a") >= 1 && ran(x, /kubectl get (pods|po).*(-n team-a|-A|--all-namespaces)/),
+        body: "Most commands take `-n` (or `--namespace`) to pick a namespace. `kubectl create deployment` makes a Deployment without writing YAML:\n\n```bash\nkubectl create deployment shop --image=nginx -n team-a\nkubectl get pods -n team-a\n```\n\nWithout `-n` you're in `default`, so `kubectl get pods` alone won't show them. Try `kubectl get pods -A` to see every namespace.",
+        check: (x) => readyCount(x.cluster, "shop", "team-a") >= 1 && ran(x, listedPodsIn("team-a")),
         hint: "Remember the -n team-a flag on both commands.",
         solution: { commands: ["kubectl create deployment shop --image=nginx -n team-a", "kubectl get pods -n team-a"] },
       },
@@ -866,6 +881,7 @@ spec:
     slug: "troubleshooting",
     track: "operations",
     title: "Troubleshooting",
+    short: "Troubleshooting",
     summary: "Three things are broken. Use get, describe, logs and events to find and fix each one.",
     minutes: 10,
     concepts: ["Debugging", "ImagePullBackOff", "CrashLoopBackOff", "Selectors"],
@@ -896,24 +912,35 @@ spec:
       },
       {
         title: "Fix the image",
-        body: "Describe a `shop` Pod (or the Deployment) and read the **Events** at the bottom:\n\n```bash\nkubectl describe deployment shop\nkubectl get events\n```\n\nThe tag `latestt` has a typo. Fix it:\n\n```bash\nkubectl set image deployment/shop shop=nginx:1.27\n```",
+        body: "Describe the `shop` Pods and read the **Events** at the bottom. The pull errors are recorded on the Pods, not on the Deployment:\n\n```bash\nkubectl describe pods -l app=shop\nkubectl get events\n```\n\nThe tag `latestt` has a typo. Fix it:\n\n```bash\nkubectl set image deployment/shop shop=nginx:1.27\n```",
         check: (x) => readyCount(x.cluster, "shop") === 2,
         hint: "The container is called shop.",
         solution: { commands: ["kubectl set image deployment/shop shop=nginx:1.27"] },
       },
       {
-        title: "Fix the crashing Pod",
-        body: "`worker` keeps restarting. Its logs from the *previous* run say why:\n\n```bash\nkubectl logs worker --previous\n```\n\nPostgres refuses to start without a password. A Pod's containers can't be changed in place, so delete it and re-create it with the variable in the YAML editor (`env: [{name: POSTGRES_PASSWORD, value: secret}]`).",
+        title: "Find why it crashes",
+        body: "`worker` keeps restarting. Its logs from the *previous* run say why:\n\n```bash\nkubectl logs worker --previous\n```\n\nPostgres refuses to start without a password. A Pod's environment variables can't be changed in place (only a few fields, like a container's image, can), so delete the Pod. You'll re-create it in the next Step:\n\n```bash\nkubectl delete pod worker\n```",
         check: (x) => {
           const p = pod(x.cluster, "worker");
-          return !!p && isPodReady(p) && ran(x, /kubectl logs (pod\/)?worker/);
+          const fixed = !!p?.spec?.containers[0].env?.some((e) => e.name === "POSTGRES_PASSWORD");
+          return ran(x, logsOf("(?:pods?/)?worker")) && (!p || fixed);
         },
-        hint: "Delete it with kubectl delete pod worker, then apply a Pod manifest with an env var.",
-        solution: { commands: ["kubectl logs worker --previous", "kubectl delete pod worker --force --grace-period=0"], yaml: `apiVersion: v1\nkind: Pod\nmetadata:\n  name: worker\n  labels:\n    app: worker\nspec:\n  containers:\n  - name: worker\n    image: postgres:16\n    env:\n    - name: POSTGRES_PASSWORD\n      value: secret\n` },
+        hint: "kubectl logs worker --previous, then kubectl delete pod worker. Wait for it to disappear.",
+        solution: { commands: ["kubectl logs worker --previous", "kubectl delete pod worker"] },
+      },
+      {
+        title: "Re-create it with a password",
+        body: "Re-create `worker` in the YAML editor, with an environment variable under the container:\n\n```yaml\nenv:\n- name: POSTGRES_PASSWORD\n  value: secret\n```\n\n(In a real app the password would come from a Secret; the Configuration track shows how.)",
+        check: (x) => {
+          const p = pod(x.cluster, "worker");
+          return !!p && isPodReady(p);
+        },
+        hint: "Apply a Pod named worker, image postgres:16, with the env var above.",
+        solution: { yaml: `apiVersion: v1\nkind: Pod\nmetadata:\n  name: worker\n  labels:\n    app: worker\nspec:\n  containers:\n  - name: worker\n    image: postgres:16\n    env:\n    - name: POSTGRES_PASSWORD\n      value: secret\n` },
       },
       {
         title: "Fix the Service",
-        body: "`curl http://shop` fails even though the Pods are healthy now. Check its endpoints:\n\n```bash\nkubectl get endpoints shop\nkubectl describe service shop\n```\n\nNo endpoints: the selector says `app=shopp`, but the Pods are labelled `app=shop`. Fix the selector in the YAML editor and apply.",
+        body: "`curl http://shop` fails even though the Pods are healthy now. Check which Pods the Service found:\n\n```bash\nkubectl describe service shop\nkubectl get endpointslices -l kubernetes.io/service-name=shop\n```\n\nNo endpoints: the selector says `app=shopp`, but the Pods are labelled `app=shop`. Fix the selector in the YAML editor and apply.",
         check: (x) => ((x.cluster.raw("Endpoints", "default", "shop") as unknown as Endpoints | undefined)?.subsets?.[0]?.addresses?.length ?? 0) > 0,
         hint: "Change shopp to shop in the editor's Service manifest.",
         solution: { yaml: `apiVersion: v1\nkind: Service\nmetadata:\n  name: shop\nspec:\n  selector:\n    app: shop\n  ports:\n  - port: 80\n` },
@@ -924,6 +951,7 @@ spec:
     slug: "health-checks",
     track: "workloads",
     title: "Health checks: readiness & liveness",
+    short: "Health checks",
     summary: "Tell Kubernetes how to check your app. Break a Pod on purpose and watch readiness take it out of the Service, then liveness restart a stuck container.",
     minutes: 10,
     concepts: ["Readiness probe", "Liveness probe", "Startup probe", "kubectl exec"],
@@ -935,7 +963,7 @@ spec:
     steps: [
       {
         title: "Add a readiness probe",
-        body: "A running container isn't always a working one. **Probes** are small checks the kubelet runs against each container on a timer, to ask the app how it's doing.\n\n```illustration probes```\n\nThe `web` Deployment has no probes yet. Give it a **readiness probe**: an HTTP GET on `/` every 5 seconds. Apply this in the YAML editor:\n\n" + yamlBlock(WEB_READINESS) + "\n\nA new Pod counts as Ready only once its probe passes. Watch the rollout replace all three Pods.",
+        body: "A running container isn't always a working one. **Probes** are small checks the **kubelet** (the agent on each Node that starts and watches its containers) runs against each container on a timer, to ask the app how it's doing.\n\n```illustration probes```\n\nThe `web` Deployment has no probes yet. Give it a **readiness probe**: an HTTP GET on `/` every 5 seconds. Apply this in the YAML editor:\n\n" + yamlBlock(WEB_READINESS) + "\n\nA new Pod counts as Ready only once its probe passes. Watch the rollout replace all three Pods.",
         check: (x) => {
           const ps = podsWith(x.cluster, "app", "web");
           return ps.length === 3 && ps.every((p) => up(p) && !!p.spec?.containers[0].readinessProbe?.httpGet) && rolledOut(x.cluster, "web");
@@ -945,17 +973,17 @@ spec:
       },
       {
         title: "Break one Pod",
-        body: "`kubectl exec` runs a command inside a container, like `docker exec`. Delete nginx's home page in one Pod (type `kubectl exec web-` and press Tab to complete a name):\n\n```bash\nkubectl exec <pod> -- rm /usr/share/nginx/html/index.html\n```\n\nnginx now answers `/` with `403 Forbidden`. After 3 failed probes in a row (about 15 seconds) that Pod shows `0/1` under READY, but its STATUS is still `Running`:\n\n```bash\nkubectl get pods\n```",
+        body: "`kubectl exec` runs a command inside a container. The pattern is `kubectl exec POD -- COMMAND`: everything after `--` is the command that runs inside, not a kubectl flag. Delete nginx's home page in one Pod (type `kubectl exec web-` and press Tab to complete a name):\n\n```bash\nkubectl exec <pod> -- rm /usr/share/nginx/html/index.html\n```\n\nnginx now answers `/` with `403 Forbidden`. After 3 failed probes in a row (about 15 seconds) that Pod shows `0/1` under READY, but its STATUS is still `Running`:\n\n```bash\nkubectl get pods\n```",
         check: (x) => podsWith(x.cluster, "app", "web").some((p) => p.status?.phase === "Running" && !isPodReady(p) && restarts(p) === 0) && readyCount(x.cluster, "web") === 2,
         hint: "kubectl exec POD -- COMMAND. Everything after -- runs inside the container.",
         solution: { commands: (c) => [`kubectl exec ${(podsWith(c, "app", "web").find(isPodReady) ?? podsWith(c, "app", "web")[0])?.metadata.name} -- rm /usr/share/nginx/html/index.html`] },
       },
       {
         title: "Traffic skips it",
-        body: "A Service only sends traffic to **Ready** Pods. List its endpoints: only two IPs are left.\n\n```bash\nkubectl get endpoints web\n```\n\nOn the canvas the broken Pod has lost its line to the Service, and `curl http://web` still works every time. The Pod's events say why: `Readiness probe failed: HTTP probe failed with statuscode: 403`.\n\n```bash\nkubectl get events --field-selector reason=Unhealthy\n```",
-        check: (x) => ran(x, /kubectl (get|describe) (endpoints|ep|endpointslices?|svc|services?)\b/),
-        hint: "kubectl get endpoints web",
-        solution: { commands: ["kubectl get endpoints web"] },
+        body: "A Service only sends traffic to **Ready** Pods. The Service's `Endpoints:` line now lists just two IPs. Its EndpointSlice still lists all three Pods, with the broken one marked `Ready: false`:\n\n```bash\nkubectl describe service web\nkubectl describe endpointslices -l kubernetes.io/service-name=web\n```\n\nOn the canvas the broken Pod has lost its line to the Service, and `curl http://web` still works every time. The Pod's events say why: `Readiness probe failed: HTTP probe failed with statuscode: 403`.\n\n```bash\nkubectl get events --field-selector reason=Unhealthy\n```",
+        check: (x) => ran(x, /kubectl (get|describe) (endpoints|ep|endpointslices?)\b/) || ran(x, /kubectl describe (svc|services?)\b/),
+        hint: "kubectl describe service web",
+        solution: { commands: ["kubectl describe service web"] },
       },
       {
         title: "Readiness never restarts",
@@ -989,6 +1017,7 @@ spec:
     slug: "jobs-and-cronjobs",
     track: "workloads",
     title: "Jobs & CronJobs",
+    short: "Jobs",
     summary: "Run work that finishes: one-off Jobs, parallel batches, retries that give up, and Jobs on a schedule.",
     minutes: 9,
     concepts: ["Job", "CronJob", "completions & parallelism", "backoffLimit"],
@@ -1003,7 +1032,7 @@ spec:
       {
         title: "Read the result",
         body: "`kubectl get jobs` shows `1/1` completions. The finished Pod is kept, so you can read its output:\n\n```bash\nkubectl get jobs\nkubectl logs job/pi\n```",
-        check: (x) => ran(x, /kubectl logs (job\/pi|pi-)/),
+        check: (x) => ran(x, logsOf("jobs?(?:\\.batch)?/pi|pi-\\S+")),
         hint: "kubectl logs job/pi picks the Job's Pod for you.",
         solution: { commands: ["kubectl get jobs", "kubectl logs job/pi"] },
       },
@@ -1044,6 +1073,7 @@ spec:
     slug: "resources-and-limits",
     track: "config",
     title: "Resources & limits",
+    short: "Resources",
     summary: "Reserve CPU and memory for containers, see a Pod that can't be scheduled, watch a container get OOMKilled, and measure real usage.",
     minutes: 10,
     concepts: ["Requests & limits", "QoS class", "Insufficient cpu", "OOMKilled", "kubectl top"],
@@ -1096,6 +1126,7 @@ spec:
     slug: "configmaps-and-secrets",
     track: "config",
     title: "ConfigMaps & Secrets",
+    short: "ConfigMaps",
     summary: "Keep settings out of your images: environment variables and files from ConfigMaps, passwords from Secrets, and what happens when one is missing.",
     minutes: 10,
     concepts: ["ConfigMap", "Secret", "envFrom", "Volumes", "CreateContainerConfigError"],
@@ -1156,6 +1187,7 @@ spec:
     slug: "ingress",
     track: "networking",
     title: "Ingress",
+    short: "Ingress",
     summary: "Put one HTTP entrance in front of several Services and route by hostname and path, with the ingress-nginx controller.",
     minutes: 8,
     concepts: ["Ingress", "Ingress controller", "Host & path routing"],
@@ -1169,7 +1201,7 @@ spec:
     steps: [
       {
         title: "Meet the Ingress controller",
-        body: "An **Ingress** routes HTTP traffic from outside the cluster to Services, by hostname and URL path. One entrance, many apps.\n\n```illustration ingress```\n\nAn Ingress is only a set of rules. Something has to act on them: an **Ingress controller**. This cluster runs ingress-nginx, like a kind cluster set up for Ingress:\n\n```bash\nkubectl get pods -n ingress-nginx\nkubectl get ingressclass\n```",
+        body: "An **Ingress** routes HTTP traffic from outside the cluster to Services, by hostname and URL path. One entrance, many apps.\n\n```illustration ingress```\n\nAn Ingress is only a set of rules. Something has to act on them: an **Ingress controller**. This cluster runs ingress-nginx, the controller most Ingress guides were written for. That project was retired in March 2026 (no more releases), but the Ingress API itself is stable and other controllers implement it; for new setups, the **Gateway API** is where Kubernetes networking is heading. The Ingress rules in this Lesson are standard; the 404 and 503 pages you'll see are ingress-nginx's own. Have a look at the controller:\n\n```bash\nkubectl get pods -n ingress-nginx\nkubectl get ingressclass\n```",
         check: (x) => ran(x, /ingress-nginx|kubectl get (ingressclass(es)?)\b/),
         hint: "kubectl get pods -n ingress-nginx",
         solution: { commands: ["kubectl get pods -n ingress-nginx", "kubectl get ingressclass"] },
@@ -1183,7 +1215,7 @@ spec:
       },
       {
         title: "Send a request",
-        body: "The terminal is outside the cluster, like your laptop. It reaches ingress-nginx on `localhost`, and `hello-world.example` points there too, as if it were in `/etc/hosts`:\n\n```bash\ncurl http://hello-world.example/\ncurl -H 'Host: hello-world.example' http://localhost/\ncurl http://localhost/\n```\n\nThe first two match the rule: ingress-nginx picks the rule by the request's `Host` header. The last one matches no rule, so ingress-nginx answers `404 Not Found` itself.",
+        body: "This time use the terminal the way you'd use your laptop, from outside the cluster. ingress-nginx listens on `localhost`, and `hello-world.example` points there too, as if it were in `/etc/hosts`:\n\n```bash\ncurl http://hello-world.example/\ncurl -H 'Host: hello-world.example' http://localhost/\ncurl http://localhost/\n```\n\nThe first two match the rule: ingress-nginx picks the rule by the request's `Host` header. The last one matches no rule, so ingress-nginx answers `404 Not Found` itself.",
         check: (x) => ran(x, /curl .*hello-world\.example/),
         hint: "Run the first curl.",
         solution: { commands: ["curl http://hello-world.example/", "curl http://localhost/"] },
@@ -1208,6 +1240,7 @@ spec:
     slug: "network-policies",
     track: "networking",
     title: "Network policies",
+    short: "NetworkPolicy",
     summary: "Firewall rules for Pods: deny everything, allow only what's needed, across namespaces, and remember DNS when you limit outgoing traffic.",
     minutes: 12,
     concepts: ["NetworkPolicy", "podSelector", "namespaceSelector", "Egress", "DNS"],
@@ -1268,6 +1301,7 @@ spec:
     slug: "persistent-storage",
     track: "storage",
     title: "Persistent storage",
+    short: "Volumes",
     summary: "Claim a volume, see why it waits for a Pod, and keep data when the Pod that wrote it is gone.",
     minutes: 9,
     concepts: ["PersistentVolumeClaim", "PersistentVolume", "StorageClass", "WaitForFirstConsumer"],
@@ -1320,13 +1354,14 @@ spec:
     slug: "statefulsets",
     track: "storage",
     title: "StatefulSets",
+    short: "StatefulSets",
     summary: "Run Pods that keep their identity: ordered start, stable names and DNS, and a volume each that follows them.",
     minutes: 10,
     concepts: ["StatefulSet", "Headless Service", "volumeClaimTemplates", "Stable DNS"],
     steps: [
       {
         title: "Create a StatefulSet",
-        body: "Deployment Pods are interchangeable: random names, any order, shared storage. Databases and other clustered apps need each member to keep its identity. That's what a **StatefulSet** is for.\n\nApply this example from the Kubernetes docs: a **headless** Service (`clusterIP: None`) and a StatefulSet with a volume claim template.\n\n" + yamlBlock(WEB_STATEFULSET) + "\n\nWatch the canvas: `web-0` starts first. `web-1` is only created once `web-0` is Running and Ready, then `web-2`.",
+        body: "Deployment Pods are interchangeable: random names, any order, and if they mount a claim, they all share the same one. Databases and other clustered apps need each member to keep its identity. That's what a **StatefulSet** is for.\n\nApply this example from the Kubernetes docs: a **headless** Service (`clusterIP: None`) and a StatefulSet with a volume claim template.\n\n" + yamlBlock(WEB_STATEFULSET) + "\n\nWatch the canvas: `web-0` starts first. `web-1` is only created once `web-0` is Running and Ready, then `web-2`.",
         check: (x) => !!obj(x.cluster, "StatefulSet", "web") && [0, 1, 2].every((i) => up(pod(x.cluster, `web-${i}`))),
         hint: "Open the YAML in the editor and Apply. The three Pods take about half a minute.",
         solution: { yaml: WEB_STATEFULSET },
@@ -1372,6 +1407,7 @@ spec:
     slug: "scheduling",
     track: "operations",
     title: "Scheduling: selectors, taints & drains",
+    short: "Scheduling",
     summary: "Steer Pods onto the right Nodes with labels, keep them off with taints, and empty a Node safely before maintenance.",
     minutes: 10,
     concepts: ["nodeSelector", "Taints & tolerations", "Cordon & drain", "DaemonSet"],
@@ -1406,7 +1442,7 @@ spec:
       },
       {
         title: "Drain a Node",
-        body: "Before maintenance you **drain** a Node: mark it unschedulable (cordon), then evict its Pods.\n\n```bash\nkubectl drain worker-2\n```\n\nIt refuses, and says why. `kube-proxy` belongs to a **DaemonSet**, which runs one Pod on every Node (`kubectl get daemonsets -n kube-system`), so evicting it is pointless. And `fast` has no controller, so nothing would re-create it. Accept both:\n\n```bash\nkubectl drain worker-2 --ignore-daemonsets --force\n```\n\nThe `web` Pods are evicted. worker-1 is tainted and worker-2 is cordoned (hatched on the canvas), so their replacements wait in the scheduler queue. `fast` is gone for good.",
+        body: "Before maintenance you **drain** a Node: mark it unschedulable (cordon), then evict its Pods: ask the API to remove each one politely, giving it time to shut down so its controller can start a replacement elsewhere.\n\n```bash\nkubectl drain worker-2\n```\n\nIt refuses, and says why. `kube-proxy` belongs to a **DaemonSet**, which runs one Pod on every Node (`kubectl get daemonsets -n kube-system`), so evicting it is pointless. And `fast` has no controller, so nothing would re-create it. Accept both:\n\n```bash\nkubectl drain worker-2 --ignore-daemonsets --force\n```\n\nThe `web` Pods are evicted. worker-1 is tainted and worker-2 is cordoned (hatched on the canvas), so their replacements wait in the scheduler queue. `fast` is gone for good.",
         check: (x) => {
           const n = obj<Node>(x.cluster, "Node", "worker-2", undefined);
           const left = x.cluster.list<Pod>("Pod").filter((p) => p.spec?.nodeName === "worker-2" && !p.metadata.deletionTimestamp && !p.metadata.ownerReferences?.some((o) => o.kind === "DaemonSet"));
@@ -1428,6 +1464,7 @@ spec:
     slug: "autoscaling",
     track: "operations",
     title: "Autoscaling with the HPA",
+    short: "Autoscaling",
     summary: "The official HorizontalPodAutoscaler walkthrough: put CPU load on php-apache, watch it scale out, then scale back in.",
     minutes: 10,
     concepts: ["HorizontalPodAutoscaler", "metrics-server", "Stabilization window"],
@@ -1439,20 +1476,28 @@ spec:
       {
         title: "The app and its CPU request",
         body: "`php-apache` serves a PHP page that burns CPU on every request. Its container requests `200m` of CPU. A **HorizontalPodAutoscaler** (HPA) adds or removes Pods to keep average CPU near a target, measured as a percentage of that request.\n\n```illustration hpa```\n\nSee what it uses now:\n\n```bash\nkubectl top pods\n```",
-        check: (x) => ran(x, /kubectl top/),
+        check: (x) => ran(x, /kubectl top (pods?|po|nodes?|no)\b/),
         hint: "kubectl top pods",
         solution: { commands: ["kubectl top pods"] },
       },
       {
         title: "Create the autoscaler",
-        body: "Keep average CPU at 50% of the request, with between 1 and 10 Pods:\n\n```bash\nkubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10\nkubectl get hpa\n```\n\nThe HPA checks every 15 seconds. TARGETS reads `cpu: <unknown>/50%` until it has a first reading, then `cpu: 0%/50%`.",
-        check: (x) => x.cluster.list<HorizontalPodAutoscaler>("HorizontalPodAutoscaler", "default").some((h) => h.spec?.scaleTargetRef.kind === "Deployment" && h.spec.scaleTargetRef.name === "php-apache"),
-        hint: "kubectl autoscale deployment NAME --cpu-percent=N --min=N --max=N",
-        solution: { commands: ["kubectl autoscale deployment php-apache --cpu-percent=50 --min=1 --max=10"] },
+        body: "Keep average CPU at 50% of the request, with between 1 and 10 Pods:\n\n```bash\nkubectl autoscale deployment php-apache --cpu=50% --min=1 --max=10\nkubectl get hpa\n```\n\nThe HPA checks every 15 seconds. TARGETS reads `cpu: <unknown>/50%` until it has a first reading, then `cpu: 0%/50%`.",
+        check: (x) =>
+          x.cluster.list<HorizontalPodAutoscaler>("HorizontalPodAutoscaler", "default").some(
+            (h) =>
+              h.spec?.scaleTargetRef.kind === "Deployment" &&
+              h.spec.scaleTargetRef.name === "php-apache" &&
+              (h.spec.minReplicas ?? 1) === 1 &&
+              h.spec.maxReplicas === 10 &&
+              !!h.spec.metrics?.some((m) => m.type === "Resource" && m.resource?.name === "cpu" && m.resource.target.type === "Utilization" && m.resource.target.averageUtilization === 50),
+          ),
+        hint: "kubectl autoscale deployment NAME --cpu=N% --min=N --max=N (older guides use --cpu-percent=N, now deprecated)",
+        solution: { commands: ["kubectl autoscale deployment php-apache --cpu=50% --min=1 --max=10"] },
       },
       {
         title: "Generate load",
-        body: "Start a Pod that calls the Service in a tight loop, exactly as in the Kubernetes docs:\n\n```bash\n" + LOAD_GENERATOR + "\nkubectl get hpa php-apache --watch\n```\n\nWithin a minute CPU goes far above 50% and the HPA raises the Deployment's replicas. New Pods appear on the canvas and share the load, so the percentage comes down. Press Ctrl+C to stop watching.",
+        body: "Start a Pod that calls the Service in a tight loop, as in the Kubernetes docs (which also add `-i --tty --rm` so you can stop it with Ctrl+C; here you'll delete it instead):\n\n```bash\n" + LOAD_GENERATOR + "\nkubectl get hpa php-apache --watch\n```\n\nWithin a minute CPU goes far above 50% and the HPA raises the Deployment's replicas. New Pods appear on the canvas and share the load, so the percentage comes down. Press Ctrl+C to stop watching.",
         check: (x) => (dep(x.cluster, "php-apache")?.spec?.replicas ?? 1) >= 4,
         hint: "Copy the whole line, quotes included.",
         solution: { commands: [LOAD_GENERATOR] },
@@ -1471,7 +1516,7 @@ spec:
       {
         title: "Shorten the window",
         body: "Five minutes is sensible in production. Here, cut the window to 30 seconds with the HPA's `behavior` field:\n\n```bash\nkubectl patch hpa php-apache -p '{\"spec\":{\"behavior\":{\"scaleDown\":{\"stabilizationWindowSeconds\":30}}}}'\n```\n\nAbout half a minute later the Deployment is back to 1 Pod. `minReplicas` stops it from going lower.",
-        check: (x) => obj<HorizontalPodAutoscaler>(x.cluster, "HorizontalPodAutoscaler", "php-apache")?.spec?.behavior?.scaleDown?.stabilizationWindowSeconds !== undefined && dep(x.cluster, "php-apache")?.spec?.replicas === 1,
+        check: (x) => obj<HorizontalPodAutoscaler>(x.cluster, "HorizontalPodAutoscaler", "php-apache")?.spec?.behavior?.scaleDown?.stabilizationWindowSeconds === 30 && dep(x.cluster, "php-apache")?.spec?.replicas === 1,
         hint: "kubectl patch hpa takes a JSON fragment with -p.",
         solution: { commands: [`kubectl patch hpa php-apache -p '{"spec":{"behavior":{"scaleDown":{"stabilizationWindowSeconds":30}}}}'`] },
       },
@@ -1481,6 +1526,7 @@ spec:
     slug: "rbac",
     track: "security",
     title: "RBAC & ServiceAccounts",
+    short: "RBAC",
     summary: "Give a CI pipeline its own identity, see it get Forbidden, then grant exactly what it needs with a Role and a RoleBinding.",
     minutes: 9,
     concepts: ["ServiceAccount", "Role", "RoleBinding", "kubectl auth can-i", "Impersonation"],
@@ -1514,7 +1560,10 @@ spec:
       {
         title: "Write a Role",
         body: "A **Role** lists what's allowed in one namespace: verbs (`get`, `list`, `patch`…) on resources (`deployments`, `pods`…). Let the pipeline read and update Deployments, but not delete them:\n\n```bash\nkubectl create role deployer --verb=get,list,watch,patch --resource=deployments -n dev\nkubectl describe role deployer -n dev\n```\n\nA Role on its own changes nothing: nobody has it yet.",
-        check: (x) => !!obj<Role>(x.cluster, "Role", "deployer", "dev")?.rules?.some((r) => r.resources?.includes("deployments") && (r.verbs.includes("patch") || r.verbs.includes("*"))),
+        check: (x) => {
+          const rules = (obj<Role>(x.cluster, "Role", "deployer", "dev")?.rules ?? []).filter((r) => r.resources?.some((res) => res === "deployments" || res === "*"));
+          return rules.some((r) => r.verbs.includes("patch")) && !rules.some((r) => r.verbs.includes("delete") || r.verbs.includes("*"));
+        },
         hint: "--verb and --resource take comma-separated lists.",
         solution: { commands: ["kubectl create role deployer --verb=get,list,watch,patch --resource=deployments -n dev"] },
       },
@@ -1528,7 +1577,7 @@ spec:
       {
         title: "Act as the pipeline",
         body: "Restart the `api` Deployment the way the pipeline would, then try to delete it:\n\n```bash\nkubectl rollout restart deployment api -n dev --as=" + CI + "\nkubectl delete deployment api -n dev --as=" + CI + "\n```\n\nThe restart works (it's a patch); the delete is Forbidden. A Pod with `serviceAccountName: ci` gets this identity's token mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`, and any client using it gets exactly these permissions.",
-        check: (x) => !!dep(x.cluster, "api", "dev")?.spec?.template.metadata?.annotations?.["kubectl.kubernetes.io/restartedAt"],
+        check: (x) => !!dep(x.cluster, "api", "dev")?.spec?.template.metadata?.annotations?.["kubectl.kubernetes.io/restartedAt"] && ran(x, /kubectl rollout restart .*--as[= ]system:serviceaccount:dev:ci\b/),
         hint: "kubectl rollout restart deployment api -n dev --as=…",
         solution: { commands: [`kubectl rollout restart deployment api -n dev --as=${CI}`] },
       },
@@ -1536,20 +1585,7 @@ spec:
   },
 ];
 
-export type TrackId = "foundations" | "workloads" | "config" | "networking" | "storage" | "operations" | "security";
-
-/** The curriculum map: Lessons grouped by topic, in the order to take them. */
-export const TRACKS: { id: TrackId; title: string; blurb: string }[] = [
-  { id: "foundations", title: "Foundations", blurb: "Pods, YAML, and the controllers that keep them running." },
-  { id: "workloads", title: "Workloads", blurb: "Deployments, rollouts, health checks, and the other ways to run Pods." },
-  { id: "config", title: "Configuration", blurb: "Resources, ConfigMaps and Secrets." },
-  { id: "networking", title: "Networking", blurb: "Services, Ingress and NetworkPolicy." },
-  { id: "storage", title: "Storage", blurb: "PersistentVolumes and StatefulSets." },
-  { id: "operations", title: "Operations", blurb: "Namespaces, autoscaling, Nodes and troubleshooting." },
-  { id: "security", title: "Security", blurb: "Who may do what: RBAC and ServiceAccounts." },
-];
-
-export const trackOf = (l: Lesson): TrackId => l.track ?? "foundations";
+export { TRACKS, trackOf, type TrackId };
 
 export function solutionCommands(step: Step, c: Cluster): string[] {
   const s = step.solution.commands;
