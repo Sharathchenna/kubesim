@@ -35,10 +35,18 @@ export function removeItem(key: string) {
     // Storage unavailable.
   }
 }
+const isNum = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+
+/** Parses the progress map, dropping entries that aren't `{ done, total }` numbers (older or foreign data). */
 function parseProgress(raw: string | null): Progress {
   try {
-    const v = JSON.parse(raw ?? "{}");
-    return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+    const v: unknown = JSON.parse(raw ?? "{}");
+    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+    const out: Progress = {};
+    for (const [k, e] of Object.entries(v as Record<string, unknown>)) {
+      if (e && typeof e === "object" && isNum((e as { done?: unknown }).done) && isNum((e as { total?: unknown }).total)) out[k] = { done: (e as { done: number }).done, total: (e as { total: number }).total };
+    }
+    return out;
   } catch {
     return {};
   }
@@ -109,8 +117,9 @@ const examStore = (slug: string) => `kubesim.exam.${slug}.results.v1`;
 
 export function loadExamResults(slug: string): ExamResult[] {
   try {
-    const v = JSON.parse(getItem(examStore(slug)) ?? "[]");
-    return Array.isArray(v) ? v : [];
+    const v: unknown = JSON.parse(getItem(examStore(slug)) ?? "[]");
+    if (!Array.isArray(v)) return [];
+    return v.filter((r): r is ExamResult => !!r && typeof r === "object" && isNum(r.score) && typeof r.passed === "boolean" && isNum(r.at) && isNum(r.seconds));
   } catch {
     return [];
   }
@@ -130,7 +139,7 @@ export function saveExamResult(slug: string, r: ExamResult) {
 export function resetAllProgress() {
   for (const k of memory.keys()) if (k.startsWith("kubesim.")) memory.delete(k);
   try {
-    for (const k of Object.keys(localStorage)) if (k.startsWith("kubesim.") && k !== "kubesim.sandbox.v1") localStorage.removeItem(k);
+    for (const k of Object.keys(localStorage)) if (k.startsWith("kubesim.") && !k.startsWith("kubesim.sandbox.v1")) localStorage.removeItem(k); // the Sandbox cluster (and its backup) isn't progress
   } catch {
     // Storage unavailable.
   }

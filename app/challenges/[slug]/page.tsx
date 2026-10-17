@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/site";
 import { notFound } from "next/navigation";
 import { ChallengePlayer } from "@/components/learn/ChallengePlayer";
 import { CHALLENGES, challengeBySlug } from "@/lib/lessons/challenges";
@@ -8,7 +9,8 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const c = challengeBySlug((await params).slug);
-  return { title: c ? `${c.title} · Challenge · kubesim` : "Challenge · kubesim" };
+  const key = (await params).slug;
+  return pageMetadata({ path: `/challenges/${key}/`, title: c ? `${c.title} · Challenge · kubesim` : "Challenge · kubesim" });
 }
 
 export default async function Page({ params }: { params: Promise<{ slug: string }> }) {

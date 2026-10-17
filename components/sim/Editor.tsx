@@ -24,7 +24,7 @@ const theme = EditorView.theme({
   ".cm-gutters": { backgroundColor: "#fff", border: "none", color: "#cbd5e1" },
   ".cm-activeLine": { backgroundColor: "#f8fafc" },
   ".cm-activeLineGutter": { backgroundColor: "#f8fafc", color: "#64748b" },
-  "&.cm-focused": { outline: "none" },
+  "&.cm-focused": { outline: "2px solid rgba(37,99,235,.35)", outlineOffset: "-2px" },
   ".cm-cursor": { borderLeftColor: "#0f172a" },
 });
 
@@ -52,6 +52,7 @@ export function Editor({ sim }: { sim: SimStore }) {
             if (u.docChanged) sim.files[sim.editorFile] = u.state.doc.toString();
           }),
           theme,
+          EditorView.contentAttributes.of({ "aria-label": "YAML editor" }),
         ],
       }),
     });
@@ -83,7 +84,7 @@ export function Editor({ sim }: { sim: SimStore }) {
         <Btn tone="primary" onClick={() => view.current && sim.apply(view.current.state.doc.toString())}>
           kubectl apply -f {file}
         </Btn>
-        <div className="hidden text-[11px] text-slate-400 md:block">⌘/Ctrl + Enter also applies. Files are shared with the terminal: try ls, cat, and kubectl get … -o yaml &gt; file.yaml</div>
+        <div className="hidden text-[11px] text-slate-500 md:block">⌘/Ctrl + Enter also applies. Files are shared with the terminal: try ls, cat, and kubectl get … -o yaml &gt; file.yaml</div>
         {last && <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border p-2 font-mono text-[11px] leading-snug ${last.ok ? "border-slate-200 bg-slate-50 text-slate-600" : "border-red-100 bg-red-50 text-red-700"}`}>{last.out}</pre>}
       </div>
     </div>

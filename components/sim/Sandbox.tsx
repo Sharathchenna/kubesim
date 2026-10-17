@@ -59,7 +59,7 @@ const SCENARIOS: { id: string; title: string; blurb: string; icon: string; go: (
     blurb: "Change the image. New Pods (new colour) come up one at a time before old ones leave.",
     go: (sim, c) => {
       ensureWeb(sim, c);
-      const cur = (c.raw("Deployment", "default", "web") as unknown as Deployment | undefined)?.spec?.template.spec.containers[0].image;
+      const cur = (c.raw("Deployment", "default", "web") as unknown as Deployment | undefined)?.spec?.template?.spec?.containers?.[0]?.image;
       const next = cur === "nginx:1.27" ? "nginx:1.26" : "nginx:1.27";
       sim.schedule([
         { after: cur ? 300 : 6000, fn: () => sim.run((cl) => A.setImage(cl, "web", next)) },
@@ -71,7 +71,7 @@ const SCENARIOS: { id: string; title: string; blurb: string; icon: string; go: (
     id: "badimage",
     icon: "↶",
     title: "Broken rollout → undo",
-    blurb: "Roll out a typo'd image. It stalls in ImagePullBackOff while old Pods keep serving. Then undo.",
+    blurb: "Roll out a typo'd image. It stalls in ImagePullBackOff while old Pods keep serving. Then the scenario runs kubectl rollout undo for you; a real cluster never undoes a rollout by itself.",
     go: (sim, c) => {
       ensureWeb(sim, c);
       const d = c.raw("Deployment", "default", "web") ? 300 : 6000;
@@ -95,7 +95,7 @@ const SCENARIOS: { id: string; title: string; blurb: string; icon: string; go: (
     id: "nodefail",
     icon: "⏻",
     title: "Node failure",
-    blurb: "Power off a worker. NotReady after ~50s, eviction after 5 more minutes. Runs at 30×.",
+    blurb: "Switch off a worker. NotReady after ~50s, eviction after 5 more minutes. Runs at 30×.",
     go: (sim, c) => {
       ensureWeb(sim, c, "nginxdemos/hello:plain-text", 4);
       sim.setSpeed(30);
@@ -117,7 +117,7 @@ const SCENARIOS: { id: string; title: string; blurb: string; icon: string; go: (
     id: "drain",
     icon: "⤓",
     title: "Drain for maintenance",
-    blurb: "Cordon and drain a worker: its Pods move elsewhere, gracefully, with no downtime.",
+    blurb: "Cordon and drain a worker: its Pods move elsewhere gracefully (no downtime for apps running more than one replica).",
     go: (sim, c) => {
       ensureWeb(sim, c, "nginxdemos/hello:plain-text", 4);
       sim.schedule([{ after: c.raw("Deployment", "default", "web") ? 300 : 7000, fn: () => sim.run((cl) => A.drain(cl, "worker-1")) }]);
@@ -365,7 +365,7 @@ function ScenariosPanel({ sim, c, onRun }: { sim: Sim; c: Cluster; onRun?: () =>
   return (
     <div className="p-4">
       <Heading>Guided scenarios</Heading>
-      <p className="mb-3 text-[12.5px] leading-relaxed text-slate-500">Each scenario runs real Kubernetes behaviour on the simulated cluster. Watch the canvas and the command log.</p>
+      <p className="mb-3 text-[12.5px] leading-relaxed text-slate-500">Each scenario runs real Kubernetes behaviour on the simulated cluster. Watch the diagram and the Commands tab.</p>
       <div className="flex flex-col gap-2">
         {SCENARIOS.map((s) => (
           <button key={s.id} onClick={() => { s.go(sim, c); onRun?.(); }} className="group flex items-start gap-3 rounded-xl border border-slate-200/80 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,.04)] transition hover:border-slate-300 hover:shadow-[0_2px_8px_rgba(15,23,42,.06)]">
@@ -416,12 +416,12 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
 
       <div>
         <Heading right={<Btn tone="ghost" onClick={() => sim.run((cl) => A.runCrashPod(cl))}>+ crashing pod</Btn>}>Deployments · {deployments.length}</Heading>
-        {deployments.length === 0 && <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-[12.5px] text-slate-400">No deployments yet</p>}
+        {deployments.length === 0 && <p className="rounded-xl border border-dashed border-slate-200 p-4 text-center text-[12.5px] text-slate-500">No deployments yet</p>}
         <div className="flex flex-col gap-2">
           {deployments.map((d) => {
             const n = d.metadata.name;
             const want = d.spec?.replicas ?? 1;
-            const img = d.spec!.template.spec.containers[0].image;
+            const img = d.spec?.template?.spec?.containers?.[0]?.image ?? "";
             const svc = c.raw("Service", "default", n);
             const done = !isRollingOut(c, d);
             const ready = d.status?.readyReplicas ?? 0;
@@ -434,10 +434,10 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
                       {n}
                       {!done && <span className="rounded-md bg-amber-50 px-1.5 py-px text-[10.5px] font-medium text-amber-700">rolling out</span>}
                     </div>
-                    <div className="mt-0.5 truncate font-mono text-[11px] text-slate-400">{img}</div>
+                    <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500">{img}</div>
                   </div>
                   <div className="flex items-center rounded-lg border border-slate-200 bg-slate-50">
-                    <button className="h-7 w-7 text-slate-500 hover:text-slate-900" onClick={() => sim.run((cl) => A.scale(cl, n, want - 1))} aria-label="Scale down">
+                    <button className="h-7 w-7 text-slate-500 hover:text-slate-900 disabled:opacity-30" disabled={want <= 0} onClick={() => sim.run((cl) => A.scale(cl, n, Math.max(0, want - 1)))} aria-label="Scale down">
                       −
                     </button>
                     <span className="w-9 text-center font-mono text-[11.5px] tabular-nums text-slate-700">
@@ -450,15 +450,15 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
                 </div>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
                   <select value="" onChange={(e) => e.target.value && sim.run((cl) => A.setImage(cl, n, e.target.value))} className="h-7 rounded-lg border border-slate-200 bg-white px-1.5 text-[12px] text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.04)]">
-                    <option value="">Set image…</option>
+                    <option value="">Change image…</option>
                     {[...A.IMAGES, "ngnix:1.27 (typo)"].filter((i) => i !== img).map((i) => (
                       <option key={i} value={i.split(" ")[0]}>
                         {i}
                       </option>
                     ))}
                   </select>
-                  <Btn onClick={() => sim.run((cl) => A.rolloutUndo(cl, n))}>Undo</Btn>
-                  {svc ? <Btn onClick={() => sim.curl(`http://${n}`, 10)}>curl ×10</Btn> : <Btn onClick={() => sim.run((cl) => A.expose(cl, n, "NodePort"))}>Expose</Btn>}
+                  <Btn onClick={() => sim.run((cl) => A.rolloutUndo(cl, n))} title="kubectl rollout undo: go back to the previous Pod template">Undo rollout</Btn>
+                  {svc ? <Btn onClick={() => sim.curl(`http://${n}`, 10)} title="curl the Service 10 times and watch which Pods answer">Send 10 requests</Btn> : <Btn onClick={() => sim.run((cl) => A.expose(cl, n, "NodePort"))} title="kubectl expose: give these Pods one stable address (a NodePort Service)">Expose via Service</Btn>}
                   <Btn tone="danger" className="ml-auto" onClick={() => sim.run((cl) => A.deleteDeployment(cl, n))}>
                     Delete
                   </Btn>
@@ -479,23 +479,23 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
             const label = ready ? (up ? (n.spec?.unschedulable ? "Cordoned" : "Ready") : "No heartbeat") : "NotReady";
             const color = ready ? (up ? (n.spec?.unschedulable ? "#f59e0b" : "#16a34a") : "#dc2626") : "#f59e0b";
             return (
-              <div key={n.metadata.uid} className="flex items-center gap-2 px-3 py-2.5">
+              <div key={n.metadata.uid} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                 <Dot color={color} />
-                <div className="min-w-0 flex-1">
+                <div className="min-w-[4.5rem] flex-1">
                   <div className="font-mono text-[12.5px] text-slate-800">{nm}</div>
-                  <div className="text-[11px] text-slate-400">{label}</div>
+                  <div className="text-[11px] text-slate-500">{label}</div>
                 </div>
                 {up ? (
-                  <Btn tone="danger" onClick={() => sim.run((cl) => A.chaosKill(cl, nm))} title="Chaos: power off">
-                    Power off
+                  <Btn tone="danger" onClick={() => sim.run((cl) => A.chaosKill(cl, nm))} title="Chaos: switch this Node off to watch the cluster react. Bring it back any time.">
+                    Simulate failure
                   </Btn>
                 ) : (
-                  <Btn tone="primary" onClick={() => sim.run((cl) => A.chaosRecover(cl, nm))}>
-                    Power on
+                  <Btn tone="primary" onClick={() => sim.run((cl) => A.chaosRecover(cl, nm))} title="Switch this Node back on">
+                    Recover
                   </Btn>
                 )}
-                <Btn onClick={() => sim.run((cl) => A.cordon(cl, nm, !n.spec?.unschedulable))}>{n.spec?.unschedulable ? "Uncordon" : "Cordon"}</Btn>
-                <Btn onClick={() => sim.run((cl) => A.drain(cl, nm))}>Drain</Btn>
+                <Btn onClick={() => sim.run((cl) => A.cordon(cl, nm, !n.spec?.unschedulable))} title={n.spec?.unschedulable ? "kubectl uncordon: let new Pods be scheduled here again" : "kubectl cordon: stop new Pods landing here (current Pods stay)"}>{n.spec?.unschedulable ? "Uncordon" : "Cordon"}</Btn>
+                <Btn onClick={() => sim.run((cl) => A.drain(cl, nm))} title="kubectl drain: stop new Pods landing here and move the current ones to other Nodes">Drain</Btn>
               </div>
             );
           })}
@@ -507,19 +507,37 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
 
 // ---------------------------------------------------------------- page
 
-/** Loads a cluster from a shared link (#cluster=…), once. */
-function useSharedLink(sim: Sim): { status: string | null; share: () => void } {
-  const [status, setStatus] = useState<string | null>(null);
+interface LinkNote {
+  text: string;
+  tone: "info" | "error";
+  /** Offer to bring back the cluster the Learner had before the link replaced it. */
+  restore?: boolean;
+}
+
+/** Loads a cluster from a shared link (#cluster=…), on load and when the hash changes. */
+function useSharedLink(sim: Sim): { note: LinkNote | null; setNote: (n: LinkNote | null) => void; share: () => void } {
+  const [note, setNote] = useState<LinkNote | null>(null);
   useEffect(() => {
-    const token = tokenFromHash(window.location.hash);
-    if (!token) return;
-    decodeCluster(token)
-      .then((state) => {
-        sim.load(state);
-        setStatus("Loaded the shared cluster");
-      })
-      .catch((e) => setStatus(`Couldn't open that link: ${(e as Error).message}`))
-      .finally(() => history.replaceState(null, "", window.location.pathname + window.location.search));
+    let cancelled = false;
+    const open = () => {
+      const token = tokenFromHash(window.location.hash);
+      if (token === undefined) return;
+      const clear = () => history.replaceState(history.state, "", window.location.pathname + window.location.search);
+      (token ? decodeCluster(token) : Promise.reject(new Error("That link is damaged (was it cut short when it was copied?).")))
+        .then((state) => {
+          if (cancelled) return;
+          sim.load(state);
+          setNote({ text: "Loaded the shared cluster.", tone: "info", restore: sim.hasBackup() });
+        })
+        .catch((e) => !cancelled && setNote({ text: `Couldn't open that link: ${(e as Error).message}`, tone: "error" }))
+        .finally(clear);
+    };
+    open();
+    window.addEventListener("hashchange", open);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("hashchange", open);
+    };
   }, [sim]);
   const share = () => {
     const snap = sim.snapshot();
@@ -529,19 +547,19 @@ function useSharedLink(sim: Sim): { status: string | null; share: () => void } {
         const url = `${window.location.origin}${window.location.pathname}#${SHARE_PARAM}=${token}`;
         try {
           await navigator.clipboard.writeText(url);
-          setStatus(`Link copied (${Math.ceil(url.length / 1024)} KB). Anyone who opens it gets a copy of this cluster.`);
+          setNote({ text: `Link copied (${Math.ceil(url.length / 1024)} KB). Anyone who opens it gets a copy of this cluster.`, tone: "info" });
         } catch {
           window.prompt("Copy this link:", url);
         }
       })
-      .catch(() => setStatus("Sharing needs a newer browser (CompressionStream)."));
+      .catch(() => setNote({ text: "Sharing needs a newer browser (CompressionStream).", tone: "error" }));
   };
-  return { status, share };
+  return { note, setNote, share };
 }
 
 export function Sandbox() {
   const sim = useSimulation({ persistKey: "kubesim.sandbox.v1" });
-  const { status: shareStatus, share } = useSharedLink(sim);
+  const { note, setNote, share } = useSharedLink(sim);
   const [mobileTab, setMobileTab] = useState<"cluster" | "panel" | "terminal">("cluster");
   const [sel, setSel] = useState<Selection>(null);
   const [tab, setTab] = useState<"scenarios" | "build" | "inspect">("scenarios");
@@ -556,46 +574,78 @@ export function Sandbox() {
     }
   };
 
-  if (!c) return <div className="flex h-screen items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-400">Booting cluster…</div>;
+  if (!c) return <div className="flex h-dvh items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-500">Booting cluster…</div>;
 
   return (
-    <div className="flex h-screen flex-col bg-[#f7f8fa] text-slate-900">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#f7f8fa] text-slate-900">
+      <h1 className="sr-only">Sandbox</h1>
       <AppHeader
         center={
           <>
             <SimControls sim={sim} />
-            {shareStatus ? (
-              <span role="status" className="hidden max-w-[360px] truncate rounded-full bg-blue-50 px-2 py-0.5 text-[11.5px] font-medium text-blue-700 xl:inline" title={shareStatus}>
-                {shareStatus}
-              </span>
-            ) : (
-              sim.restoredFromSave && sim.queue.length === 0 && <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-medium text-slate-600 xl:inline">Restored your saved cluster</span>
-            )}
-            {sim.queue.length > 0 && <span className="hidden rounded-full xl:inline bg-blue-50 px-2 py-0.5 text-[11.5px] font-medium text-blue-700">Scenario running</span>}
+            {!note && sim.restoredFromSave && !sim.scenarioRunning && <span className="hidden rounded-full bg-slate-100 px-2 py-0.5 text-[11.5px] font-medium text-slate-600 xl:inline">Restored your saved cluster</span>}
+            {sim.scenarioRunning && <span className="hidden rounded-full xl:inline bg-blue-50 px-2 py-0.5 text-[11.5px] font-medium text-blue-700">Scenario running</span>}
+            {sim.saveTooBig && <span className="hidden rounded-full bg-amber-50 px-2 py-0.5 text-[11.5px] font-medium text-amber-800 xl:inline" title="This cluster is too big to save in the browser. Scale something down to keep autosaving.">Too big to autosave</span>}
           </>
         }
         right={
           <>
-            <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-slate-500">
-              <button role="switch" aria-checked={showSystem} onClick={() => setShowSystem(!showSystem)} className={`relative h-4 w-7 rounded-full transition ${showSystem ? "bg-slate-900" : "bg-slate-200"}`}>
+            <label className="flex cursor-pointer items-center gap-2 text-[12.5px] text-slate-500 max-sm:hidden" title="Show system Pods">
+              <button role="switch" aria-label="System pods" aria-checked={showSystem} onClick={() => setShowSystem(!showSystem)} className={`relative h-4 w-7 rounded-full transition ${showSystem ? "bg-slate-900" : "bg-slate-200"}`}>
                 <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-all ${showSystem ? "left-3.5" : "left-0.5"}`} />
               </button>
-              <span className="hidden md:inline">System pods</span>
+              {/* The header is crowded below xl: the switch keeps its name for screen readers and its tooltip. */}
+              <span className="hidden xl:inline" aria-hidden>System pods</span>
             </label>
             <Btn onClick={share} title="Copy a link that opens a copy of this cluster">
               Share
             </Btn>
             <Btn
               onClick={() => {
+                if (!window.confirm("Start over with a fresh cluster? This deletes everything in your current Sandbox cluster.")) return;
                 sim.reset();
                 setSel(null);
+                setNote(null);
               }}
             >
-              Reset
+              Start over
             </Btn>
           </>
         }
       />
+      {(note || sim.hasBackup()) && (
+        <div role="status" className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-1.5 text-[12.5px] ${note?.tone === "error" ? "border-red-200 bg-red-50 text-red-800" : "border-blue-100 bg-blue-50 text-blue-900"}`}>
+          <span className="min-w-0 flex-1">{note?.text ?? "You opened a shared cluster. Your own cluster from before is kept."}</span>
+          {sim.hasBackup() && (
+            <>
+              <button
+                className="font-medium underline underline-offset-2"
+                onClick={() => {
+                  if (sim.restoreBackup()) {
+                    setSel(null);
+                    setNote({ text: "Restored your cluster from before you opened the link.", tone: "info" });
+                  }
+                }}
+              >
+                Restore my cluster
+              </button>
+              <button className="text-blue-700 underline-offset-2 hover:underline" onClick={() => {
+                if (window.confirm("Forget the cluster you had before opening the link?")) {
+                  sim.dropBackup();
+                  setNote(null);
+                }
+              }}>
+                Keep the shared one
+              </button>
+            </>
+          )}
+          {note && !sim.hasBackup() && (
+            <button className="grid h-6 w-6 shrink-0 place-items-center rounded opacity-70 hover:opacity-100" onClick={() => setNote(null)} aria-label="Dismiss">
+              ×
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex min-h-0 flex-1">
         <div className={`flex min-h-0 min-w-0 flex-1 ${mobileTab === "panel" ? "max-lg:hidden" : ""}`}>
           <Workspace sim={sim} selection={sel} onSelect={select} showSystem={showSystem} mobileView={mobileTab === "terminal" ? "dock" : "canvas"} palette />
@@ -624,7 +674,7 @@ export function Sandbox() {
         onChange={setMobileTab}
         options={[
           { value: "cluster", label: "Cluster" },
-          { value: "panel", label: tab === "inspect" ? "Inspect" : "Scenarios" },
+          { value: "panel", label: tab === "inspect" ? "Inspect" : tab === "build" ? "Build" : "Scenarios" },
           { value: "terminal", label: "Terminal" },
         ]}
       />

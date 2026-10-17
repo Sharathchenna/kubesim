@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { run, watchErrors } from "./helpers";
+import { run, setSpeed, watchErrors } from "./helpers";
 
 test("home page links to every way to learn", async ({ page }) => {
   const errors = watchErrors(page);
@@ -39,7 +39,7 @@ test("sandbox: the Ingress scenario routes by path", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/sandbox/");
   await page.getByRole("button", { name: /Ingress routing/ }).click();
-  await page.getByRole("button", { name: "30×", exact: true }).click();
+  await setSpeed(page, "30×");
   const log = page.getByRole("log", { name: "Terminal output" });
   await expect(log).toContainText("curl http://localhost/apple", { timeout: 30_000 });
   await expect(log).toContainText("banana");
@@ -88,15 +88,7 @@ test("a challenge hides the fix until asked", async ({ page }) => {
   await expect(goal.getByText("One way to fix it")).toBeVisible();
 });
 
-test("a practice exam starts a timer and grades on submit", async ({ page }) => {
-  await page.goto("/exams/");
-  await page.getByRole("main").locator("a[href^='/exams/']").first().click();
-  await page.getByRole("button", { name: /^Start the/ }).click();
-  await expect(page.getByRole("timer")).toBeVisible();
-  page.once("dialog", (d) => d.accept());
-  await page.getByRole("button", { name: "Submit exam" }).click();
-  await expect(page.getByRole("status").filter({ hasText: /You scored \d+%/ })).toBeVisible();
-});
+// The practice exam flow is covered in flow.spec.ts ("exam: submitting grades the attempt…").
 
 test("explainers play", async ({ page }) => {
   const errors = watchErrors(page);

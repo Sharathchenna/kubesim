@@ -1,3 +1,4 @@
+import { pageMetadata } from "@/lib/site";
 import { notFound } from "next/navigation";
 import { ExplainerPlayer } from "@/components/learn/ExplainerPlayer";
 import { EXPLAINERS, explainerById } from "@/lib/explainers/explainers";
@@ -8,7 +9,8 @@ export function generateStaticParams() {
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const e = explainerById((await params).id);
-  return { title: e ? `${e.title} · kubesim` : "Explainer · kubesim" };
+  const key = (await params).id;
+  return pageMetadata({ path: `/explainers/${key}/`, title: e ? `${e.title} · kubesim` : "Explainer · kubesim" });
 }
 
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {

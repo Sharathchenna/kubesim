@@ -1,12 +1,15 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { AppHeader } from "@/components/AppHeader";
+
+export const metadata: Metadata = { title: "Page not found · kubesim", robots: { index: false, follow: true } };
 
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-[#f7f8fa]">
       <AppHeader />
       <main className="mx-auto max-w-xl px-6 pt-24 text-center">
-        <div className="font-mono text-[13px] text-slate-400">Error from server (NotFound)</div>
+        <div className="font-mono text-[13px] text-slate-500">Error from server (NotFound)</div>
         <h1 className="mt-3 text-[30px] font-semibold tracking-tight text-slate-900">This page doesn&apos;t exist</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-slate-500">Like a Pod that was never scheduled. Try one of these instead:</p>
         <div className="mt-8 flex justify-center gap-3">

@@ -14,3 +14,9 @@ export function watchErrors(page: Page): string[] {
   page.on("pageerror", (e) => errors.push(String(e)));
   return errors;
 }
+
+/** Picks a simulation speed from the header's speed menu. */
+export async function setSpeed(page: Page, speed: "1×" | "5×" | "30×" | "60×") {
+  await page.getByRole("button", { name: /^Simulation speed/ }).click();
+  await page.getByRole("group", { name: "Simulation speed" }).getByRole("button", { name: new RegExp(`^${speed}`) }).click();
+}

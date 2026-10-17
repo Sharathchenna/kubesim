@@ -28,7 +28,7 @@ export function ConceptIndex() {
             <section key={s.id}>
               <Illustration scene={s} />
               {WHERE[s.id] && (
-                <Link href={WHERE[s.id].href} className="mt-3 inline-block text-[13px] font-medium text-slate-700 hover:text-slate-900">
+                <Link href={WHERE[s.id].href} className="mt-3 inline-flex min-h-6 items-center text-[13px] font-medium text-slate-700 hover:text-slate-900">
                   Try it in “{WHERE[s.id].label}” →
                 </Link>
               )}

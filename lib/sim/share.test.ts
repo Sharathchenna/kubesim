@@ -2,7 +2,7 @@
 // engine error must never take the page down.
 import { describe, expect, test } from "bun:test";
 import { Cluster } from "@/lib/engine";
-import { decodeCluster, encodeCluster } from "./share";
+import { decodeCluster, encodeCluster, tokenFromHash } from "./share";
 import { SimStore } from "./useSimulation";
 
 async function deflate(text: string): Promise<string> {
@@ -58,5 +58,69 @@ describe("simulation loop", () => {
     const bad = { ...sim.snapshot()!, objects: null } as never;
     expect(() => sim.load(bad)).toThrow("doesn't run in this version");
     expect(sim.cluster).toBe(before);
+  });
+});
+
+describe("untrusted links", () => {
+  const snap = () => {
+    const c = new Cluster({ seed: 1, systemPods: false });
+    return JSON.parse(JSON.stringify(c.snapshot()));
+  };
+  test("prototype keys are refused", async () => {
+    const s = snap();
+    const text = JSON.stringify(s).replace('"objects":{', '"objects":{"__proto__":{"kind":"X","metadata":{"name":"y"}},');
+    await expect(decodeCluster(await deflate(text))).rejects.toThrow("doesn't contain a cluster");
+    const t2 = JSON.stringify(s).replace('"config":{', '"config":{"constructor":{"prototype":{"polluted":1}},');
+    await expect(decodeCluster(await deflate(t2))).rejects.toThrow("doesn't contain a cluster");
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+  test("objects must sit under their own key and have a name", async () => {
+    const s = snap();
+    s.objects["ConfigMap/default/a"] = { apiVersion: "v1", kind: "ConfigMap", metadata: { name: "b", namespace: "default", uid: "u" } };
+    await expect(decodeCluster(await deflate(JSON.stringify(s)))).rejects.toThrow("doesn't contain a cluster");
+    const s2 = snap();
+    s2.objects["ConfigMap/default/"] = { apiVersion: "v1", kind: "ConfigMap", metadata: { name: "", namespace: "default" } };
+    await expect(decodeCluster(await deflate(JSON.stringify(s2)))).rejects.toThrow("doesn't contain a cluster");
+  });
+  test("too many Pods is refused as too large", async () => {
+    const s = snap();
+    for (let i = 0; i < 700; i++) s.pods[`p${i}`] = { containers: {}, sandboxAt: 0 };
+    await expect(decodeCluster(await deflate(JSON.stringify(s)))).rejects.toThrow("too large");
+  });
+  test("malformed percent-encoding in the hash doesn't throw", () => {
+    expect(tokenFromHash("#cluster=%E0%A4%A")).toBe("");
+    expect(tokenFromHash("#other=1")).toBeUndefined();
+    expect(tokenFromHash("#cluster=1.abc")).toBe("1.abc");
+  });
+});
+
+describe("shared clusters and the Learner's own save", () => {
+  function memoryStorage() {
+    const m = new Map<string, string>();
+    Object.assign(globalThis, {
+      localStorage: { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), key: () => null, length: 0, clear: () => m.clear() },
+      requestAnimationFrame: () => 0,
+      cancelAnimationFrame: () => {},
+    });
+    return m;
+  }
+  test("loading a link keeps a backup of the saved cluster, and restoring brings it back", () => {
+    const m = memoryStorage();
+    const mine = new SimStore({ persistKey: "k", systemPods: false });
+    mine.start();
+    mine.exec("kubectl create deployment mine --image=nginx");
+    mine.persist(true);
+    const other = new Cluster({ seed: 2, systemPods: false });
+    other.create({ apiVersion: "v1", kind: "ConfigMap", metadata: { name: "theirs" }, data: {} } as never);
+    mine.load(other.snapshot());
+    expect(mine.cluster!.raw("ConfigMap", "default", "theirs")).toBeTruthy();
+    // Not saved over the Learner's cluster yet: it's on probation.
+    mine.persist(true);
+    expect(m.get("k")).toContain('"mine"');
+    expect(mine.hasBackup()).toBe(true);
+    expect(mine.restoreBackup()).toBe(true);
+    expect(mine.cluster!.raw("Deployment", "default", "mine")).toBeTruthy();
+    expect(mine.hasBackup()).toBe(false);
+    mine.stop();
   });
 });

@@ -19,11 +19,11 @@ function setup(c: Cluster) {
   c.create({ apiVersion: "v1", kind: "Service", metadata: { name: "web" }, spec: { selector: { app: "web" }, ports: [{ port: 80 }] } });
 }
 
-export default function TryIt() {
-  const sim = useSimulation({ setup, warmupMs: 15_000, seed: 3, onStart: (s) => s.exec("kubectl get pods") });
+export default function TryIt({ active = true }: { active?: boolean }) {
+  const sim = useSimulation({ setup, warmupMs: 15_000, seed: 3, onStart: (s) => s.exec("kubectl get pods") }, active);
   const [sel, setSel] = useState<Selection>(null);
   const c = sim.cluster;
-  if (!c) return <div className="grid h-full place-items-center text-[13px] text-slate-400">Starting a cluster…</div>;
+  if (!c) return <div className="grid h-full place-items-center text-[13px] text-slate-500">Starting a cluster…</div>;
   const victim = c.list<Pod>("Pod", "default").find((p) => p.metadata.labels?.app === "web" && !p.metadata.deletionTimestamp);
   const chips = [
     ["kubectl get pods -o wide", "List the Pods"],
@@ -34,7 +34,7 @@ export default function TryIt() {
   return (
     <div className="grid h-full min-h-0 md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:grid-rows-1">
       <div className="relative hidden min-h-[300px] border-b border-slate-200/80 md:block lg:border-b-0 lg:border-r">
-        <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} />
+        <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} captureWheel={false} />
       </div>
       <div className="flex min-h-0 flex-col bg-white">
         <div className="flex flex-wrap gap-1.5 border-b border-slate-100 p-3">

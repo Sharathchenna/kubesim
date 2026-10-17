@@ -15,7 +15,7 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
   const pending = pods.filter((p) => !p.spec?.nodeName);
   const item = "rounded px-1 text-left underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500";
   const workloads = [
-    ...c.list<Deployment>("Deployment").filter((d) => ok(d.metadata.namespace)).map((d) => ({ kind: "deployment" as const, o: d, text: `Deployment ${d.metadata.name}: ${d.status?.readyReplicas ?? 0} of ${d.spec?.replicas ?? 1} ready, image ${d.spec!.template.spec.containers[0].image}` })),
+    ...c.list<Deployment>("Deployment").filter((d) => ok(d.metadata.namespace)).map((d) => ({ kind: "deployment" as const, o: d, text: `Deployment ${d.metadata.name}: ${d.status?.readyReplicas ?? 0} of ${d.spec?.replicas ?? 1} ready, image ${(d.spec?.template?.spec?.containers?.[0]?.image ?? "")}` })),
     ...c.list<StatefulSet>("StatefulSet").filter((d) => ok(d.metadata.namespace)).map((d) => ({ kind: "statefulset" as const, o: d, text: `StatefulSet ${d.metadata.name}: ${d.status?.readyReplicas ?? 0} of ${d.spec?.replicas ?? 1} ready` })),
     ...c.list<DaemonSet>("DaemonSet").filter((d) => ok(d.metadata.namespace)).map((d) => ({ kind: "daemonset" as const, o: d, text: `DaemonSet ${d.metadata.name}: ${d.status?.numberReady ?? 0} of ${d.status?.desiredNumberScheduled ?? 0} nodes ready` })),
     ...c.list<CronJob>("CronJob").filter((d) => ok(d.metadata.namespace)).map((d) => ({ kind: "cronjob" as const, o: d, text: `CronJob ${d.metadata.name}: schedule ${d.spec!.schedule}, ${d.status?.active?.length ?? 0} running` })),
@@ -33,7 +33,7 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
   );
   return (
     <div className="h-full overflow-y-auto p-4 text-[13px] leading-relaxed text-slate-700">
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Cluster as text</h2>
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Cluster as text</h2>
       <section aria-labelledby="ct-nodes" className="mt-3">
         <h3 id="ct-nodes" className="font-semibold text-slate-900">
           Nodes ({nodes.length})

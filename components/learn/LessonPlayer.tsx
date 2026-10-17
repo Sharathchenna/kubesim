@@ -13,6 +13,7 @@ import { MobileTabs, SimControls, Workspace } from "../sim/Workspace";
 import { Prose } from "./Prose";
 import { loadPassed, savePassed } from "./progress";
 import { replaySteps } from "@/lib/lessons/replay";
+import { prefersReducedMotion, safeCheck } from "./checks";
 
 export function LessonPlayer({ slug }: { slug: string }) {
   const lesson = lessonBySlug(slug)!;
@@ -53,8 +54,8 @@ export function LessonPlayer({ slug }: { slug: string }) {
   const next = CURRICULUM[idx + 1];
   const stepRef = useRef<HTMLLIElement>(null);
 
-  // Re-evaluate the current step's Check every frame.
-  const ok = !!c && !done && lesson.steps[current].check({ cluster: c, history: sim.history });
+  // Re-evaluate the current step's Check whenever the cluster changes. A Check that throws counts as "not yet".
+  const ok = !!c && !done && safeCheck(() => lesson.steps[current].check({ cluster: c, history: sim.history }));
   useEffect(() => {
     if (!ok) return;
     const t = setTimeout(() => {
@@ -73,7 +74,7 @@ export function LessonPlayer({ slug }: { slug: string }) {
     return () => clearTimeout(t);
   }, [ok, current, slug, lesson.steps.length, sim]);
   useEffect(() => {
-    stepRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    stepRef.current?.scrollIntoView({ behavior: prefersReducedMotion() ? "auto" : "smooth", block: "nearest" });
   }, [passed]);
 
   const openEditor = (yaml: string) => {
@@ -86,7 +87,17 @@ export function LessonPlayer({ slug }: { slug: string }) {
   };
   const showMe = () => {
     const s = lesson.steps[current].solution;
-    for (const cmd of solutionCommands(lesson.steps[current], c!)) sim.exec(cmd);
+    // A solution can depend on what earlier commands created (e.g. a NodePort
+    // is only known after `expose`): re-plan until it asks for nothing new.
+    const ranCmds = new Set<string>();
+    for (let round = 0; round < 3; round++) {
+      const todo = solutionCommands(lesson.steps[current], c!).filter((cmd) => !ranCmds.has(cmd));
+      if (!todo.length) break;
+      for (const cmd of todo) {
+        ranCmds.add(cmd);
+        sim.exec(cmd);
+      }
+    }
     if (s.yaml) {
       openEditor(s.yaml);
       sim.apply(s.yaml);
@@ -94,15 +105,16 @@ export function LessonPlayer({ slug }: { slug: string }) {
     setSolving({ step: current, boosted: false });
   };
 
-  if (!c) return <div className="flex h-screen items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-400">Preparing your cluster…</div>;
+  if (!c) return <div className="flex h-dvh items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-500">Preparing your cluster…</div>;
 
   return (
-    <div className="flex h-screen flex-col bg-[#f7f8fa] text-slate-900">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#f7f8fa] text-slate-900">
       <AppHeader
         center={<SimControls sim={sim} />}
         right={
           <Btn
             onClick={() => {
+              if ((passed.length || sim.history.length) && !window.confirm("Start this lesson over? Your progress in it and its cluster are reset.")) return;
               sim.reset();
               setSel(null);
               setSolving(null);
@@ -115,10 +127,10 @@ export function LessonPlayer({ slug }: { slug: string }) {
       <div className="flex min-h-0 flex-1">
         <aside className={`flex w-full shrink-0 flex-col border-r border-slate-200/80 bg-white lg:w-[380px] xl:w-[440px] ${mobileTab !== "steps" ? "max-lg:hidden" : ""}`}>
           <div className="border-b border-slate-100 px-6 pb-4 pt-5">
-            <Link href="/learn" className="text-[12px] font-medium text-slate-400 hover:text-slate-700">
+            <Link href="/learn" className="inline-flex min-h-6 items-center text-[12px] font-medium text-slate-500 hover:text-slate-700">
               ← All lessons
             </Link>
-            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Lesson {idx + 1} of {CURRICULUM.length}</div>
+            <div className="mt-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Lesson {idx + 1} of {CURRICULUM.length}</div>
             {restoring && passed.length > 0 && (
               <p className="mt-2 rounded-lg bg-blue-50 px-2.5 py-1.5 text-[12px] text-blue-800">
                 Welcome back. We rebuilt your cluster from the {passed.length} step{passed.length > 1 ? "s" : ""} you finished.
@@ -154,21 +166,21 @@ export function LessonPlayer({ slug }: { slug: string }) {
                   return (
                     <li key={i} ref={isCur ? stepRef : undefined} className={`relative rounded-2xl px-3 py-3 transition ${isCur ? "border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,.04),0_8px_24px_rgba(15,23,42,.05)]" : "border border-transparent"}`}>
                       <div className="flex items-center gap-3">
-                        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${isDone ? "bg-green-600 text-white" : isCur ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-400"}`}>
+                        <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-semibold ${isDone ? "bg-green-600 text-white" : isCur ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500"}`}>
                           {isDone ? (
                             <svg viewBox="0 0 16 16" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={2.2}><path d="M3.5 8.5l3 3 6-7" strokeLinecap="round" strokeLinejoin="round" /></svg>
                           ) : (
                             i + 1
                           )}
                         </span>
-                        <span className={`text-[14px] font-medium ${isCur ? "text-slate-900" : isDone ? "text-slate-500" : "text-slate-400"}`}>{s.title}</span>
+                        <span className={`text-[14px] font-medium ${isCur ? "text-slate-900" : isDone ? "text-slate-500" : "text-slate-500"}`}>{s.title}</span>
                         {isCur && ok && <span className="ml-auto text-[11.5px] font-medium text-green-600">Nice!</span>}
                       </div>
                       {isCur && (
                         <div className="mt-3 pl-9">
                           <Prose text={s.body} onRun={run} onEdit={openEditor} />
                           <div className="mt-4 flex items-center gap-2">
-                            <span className="flex items-center gap-1.5 text-[12px] text-slate-400">
+                            <span className="flex items-center gap-1.5 text-[12px] text-slate-500">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
                               Waiting for you…
                             </span>
@@ -176,7 +188,9 @@ export function LessonPlayer({ slug }: { slug: string }) {
                               <Btn tone="ghost" onClick={() => setHint(!hint)}>
                                 Hint
                               </Btn>
-                              <Btn onClick={showMe}>Show me</Btn>
+                              <Btn onClick={showMe} title="Runs the commands for this step so you can watch how it is done">
+                                Show me
+                              </Btn>
                             </div>
                           </div>
                           {solving?.step === i && !ok && (
@@ -233,7 +247,7 @@ export function LessonPlayer({ slug }: { slug: string }) {
             }}
             tabs={["terminal", "editor", "events", "resources"]}
             initialTab={lesson.startTab ?? "terminal"}
-            dockHeight="h-[42%]"
+            dockHeight="h-[38%]"
             mobileView={mobileTab === "cluster" ? "canvas" : "dock"}
           />
         </div>

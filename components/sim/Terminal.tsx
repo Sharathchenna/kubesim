@@ -1,24 +1,41 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { complete } from "@/lib/kubectl/kubectl";
 import type { SimStore } from "@/lib/sim/useSimulation";
 
-/** A kubectl terminal: history (↑/↓), Tab completion, Ctrl+L to clear. */
+/** How close to the bottom (px) still counts as "following" the output. */
+const STICK_PX = 24;
+
+/** A kubectl terminal: history (↑/↓), Tab completion, Ctrl+L to clear, Ctrl+C to stop streaming. */
 export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolean }) {
   const [line, setLine] = useState("");
   const [hi, setHi] = useState(-1);
   const [hint, setHint] = useState<string[]>([]);
   const input = useRef<HTMLInputElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
-  const n = sim.term.length;
+  /** Whether the Learner is at the bottom; if they scrolled up to read, new output doesn't yank them down. */
+  const follow = useRef(true);
+  const last = sim.term[sim.term.length - 1];
+  const tail = `${sim.term.length}:${last?.id ?? 0}:${last?.out.length ?? 0}:${hint.length}`;
 
-  useEffect(() => {
-    scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
-  }, [n, sim.version]);
+  useLayoutEffect(() => {
+    const el = scroll.current;
+    if (el && follow.current) el.scrollTop = el.scrollHeight;
+  }, [tail]);
+  // A command the Learner just ran always brings the prompt back into view.
+  const lastCmdId = [...sim.term].reverse().find((t) => t.cmd !== undefined)?.id;
+  useLayoutEffect(() => {
+    follow.current = true;
+    const el = scroll.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [lastCmdId]);
   useEffect(() => {
     if (autoFocus) input.current?.focus();
   }, [autoFocus]);
+
+  // Screen readers hear each finished command's output once, not every streaming refresh.
+  const announce = last && !last.live ? `${last.cmd ? `${last.cmd}: ` : ""}${last.out.slice(0, 400)}` : "";
 
   const history = sim.history;
   const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -47,7 +64,8 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
       }
     } else if (e.key === "Tab") {
       e.preventDefault();
-      const opts = complete({ cluster: sim.cluster!, namespace: sim.namespace }, line);
+      const ctx = { cluster: sim.cluster!, namespace: sim.namespace, files: sim.files };
+      const opts = complete(ctx, line);
       if (opts.length === 1) {
         setLine(line.replace(/\S*$/, opts[0]) + " ");
         setHint([]);
@@ -63,7 +81,10 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
     } else if (e.key === "l" && e.ctrlKey) {
       e.preventDefault();
       sim.exec("clear");
-    } else if (e.key === "c" && e.ctrlKey) {
+    } else if (e.key === "c" && e.ctrlKey && !e.metaKey) {
+      // With text selected, Ctrl+C copies as usual.
+      const el = e.currentTarget;
+      if (el.selectionStart !== el.selectionEnd || !window.getSelection()?.isCollapsed) return;
       e.preventDefault();
       if (!sim.stopWatch()) {
         setLine("");
@@ -74,9 +95,20 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
 
   return (
     <div className="flex h-full flex-col font-mono text-[12px] leading-relaxed" onClick={() => window.getSelection()?.isCollapsed && input.current?.focus()}>
-      <div ref={scroll} className="min-h-0 flex-1 overflow-auto px-4 py-2" role="log" aria-label="Terminal output" aria-live="polite" aria-relevant="additions">
+      <div
+        ref={scroll}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < STICK_PX;
+        }}
+        className="min-h-0 flex-1 overflow-auto px-4 py-2"
+        role="log"
+        aria-label="Terminal output"
+        aria-live="off"
+        tabIndex={0}
+      >
         {sim.term.length === 0 && (
-          <div className="text-slate-400">
+          <div className="text-slate-500">
             Type a command and press Enter. Try <span className="text-slate-700">kubectl get pods</span> or <span className="text-slate-700">help</span>. Tab completes, ↑ recalls history.
           </div>
         )}
@@ -84,7 +116,7 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
           <div key={t.id} className="mb-1.5">
             {t.cmd !== undefined && (
               <div>
-                <span className="text-blue-600">{sim.namespace === "default" ? "" : `(${sim.namespace}) `}$</span> <span className="text-slate-900">{t.cmd}</span>
+                <span className="text-blue-600">{!t.ns || t.ns === "default" ? "" : `(${t.ns}) `}$</span> <span className="text-slate-900">{t.cmd}</span>
               </div>
             )}
             {t.out && <pre className={`whitespace-pre-wrap break-words ${t.ok ? "text-slate-600" : "text-red-600"}`}>{t.out}</pre>}
@@ -99,10 +131,16 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
             )}
           </div>
         ))}
-        {hint.length > 0 && <div className="text-slate-400">{hint.join("   ")}</div>}
+        {hint.length > 0 && <div className="text-slate-500">{hint.join("   ")}</div>}
       </div>
-      <div className="flex items-center gap-2 border-t border-slate-100 px-4 py-2">
-        <span className="text-blue-600">$</span>
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {announce}
+      </div>
+      {/* The prompt row never shrinks: the output above scrolls instead, so the input stays fully on screen. */}
+      <div className="flex shrink-0 items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-2.5 focus-within:bg-white focus-within:shadow-[inset_0_0_0_2px_rgba(37,99,235,.35)]">
+        <span className="text-blue-600" aria-hidden="true">
+          {sim.namespace === "default" ? "" : `(${sim.namespace}) `}$
+        </span>
         <input
           ref={input}
           value={line}
@@ -111,7 +149,7 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
           spellCheck={false}
           autoCapitalize="off"
           autoComplete="off"
-          className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-300"
+          className="min-w-0 flex-1 bg-transparent text-slate-900 outline-none placeholder:text-slate-500"
           placeholder="kubectl get pods"
           aria-label="Terminal input"
         />

@@ -1,13 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { EXPLAINERS } from "@/lib/explainers/explainers";
-import { LESSONS, TRACKS, trackOf, type Lesson } from "@/lib/lessons/lessons";
-import { CHALLENGES } from "@/lib/lessons/challenges";
-import { CURRICULUM } from "@/lib/lessons/curriculum";
-import { EXAMS } from "@/lib/lessons/exams";
+import { CHALLENGES, CURRICULUM, EXAMS, EXAM_TRADEMARK_NOTICE, EXPLAINERS, LESSONS, TRACKS, trackOf, type LessonMeta as Lesson } from "@/lib/lessons/meta";
 import { AppHeader } from "../AppHeader";
-import { DIFFICULTY } from "./ChallengePlayer";
+import { DIFFICULTY } from "./difficulty";
 import { challengeKey, examKey, resetAllProgress, useProgress } from "./progress";
 
 function Shell({ eyebrow, title, intro, children }: { eyebrow: string; title: string; intro: string; children: React.ReactNode }) {
@@ -52,8 +48,8 @@ function LessonRow({ l, i, isNext }: { l: Lesson; i: number; isNext: boolean }) 
           </div>
         </div>
         <div className="hidden shrink-0 text-right sm:block">
-          <div className="text-[12px] text-slate-400">{l.minutes} min</div>
-          <div className="mt-1 font-mono text-[11.5px] text-slate-400">
+          <div className="text-[12px] text-slate-500">{l.minutes} min</div>
+          <div className="mt-1 font-mono text-[11.5px] text-slate-500">
             {p?.done ?? 0}/{l.steps.length} steps
           </div>
         </div>
@@ -79,7 +75,7 @@ export function LessonIndex() {
               <div className="mt-2 h-1 overflow-hidden rounded-full bg-slate-100" role="progressbar" aria-valuemin={0} aria-valuemax={ls.length} aria-valuenow={d} aria-label={`${t.title}: ${d} of ${ls.length} lessons done`}>
                 <div className="h-full rounded-full bg-green-600" style={{ width: `${ls.length ? (d / ls.length) * 100 : 0}%` }} />
               </div>
-              <div className="mt-1.5 font-mono text-[11px] text-slate-400">
+              <div className="mt-1.5 font-mono text-[11px] text-slate-500">
                 {d}/{ls.length}
               </div>
             </a>
@@ -113,14 +109,14 @@ export function LessonIndex() {
       </div>
       <div className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link href="/challenges" className="rounded-2xl border border-slate-200/80 bg-white p-5 hover:border-slate-300">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{CHALLENGES.length} challenges</div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{CHALLENGES.length} challenges</div>
           <div className="mt-1 text-[15.5px] font-semibold text-slate-900">Fix a broken cluster →</div>
           <p className="mt-1 text-[13px] text-slate-500">No steps, just a symptom and a goal. Practise troubleshooting.</p>
         </Link>
         <Link href="/exams" className="rounded-2xl border border-slate-200/80 bg-white p-5 hover:border-slate-300">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{EXAMS.length} practice exams</div>
-          <div className="mt-1 text-[15.5px] font-semibold text-slate-900">Try a timed, CKAD/CKA-style exam →</div>
-          <p className="mt-1 text-[13px] text-slate-500">Independent tasks, a clock, and a score at the end.</p>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{EXAMS.length} practice exams</div>
+          <div className="mt-1 text-[15.5px] font-semibold text-slate-900">Try a timed practice exam →</div>
+          <p className="mt-1 text-[13px] text-slate-500">Unofficial practice in the style of the CKAD™ and CKA™ exams: independent tasks, a clock, and a score at the end.</p>
         </Link>
       </div>
     </Shell>
@@ -131,7 +127,7 @@ export function ChallengeIndex() {
   const progress = useProgress();
   const solved = CHALLENGES.filter((c) => (progress[challengeKey(c.slug)]?.done ?? 0) >= c.steps.length).length;
   return (
-    <Shell eyebrow="Challenges" title="Fix a broken cluster" intro={`Each challenge starts with something wrong and a goal, like a ticket from a colleague. There are no steps: investigate with kubectl, find the cause, fix it. Hints are there if you're stuck. ${solved} of ${CHALLENGES.length} solved.`}>
+    <Shell eyebrow="Challenges" title="Fix a broken cluster" intro={`Each challenge starts with something wrong and a goal, like a ticket from a colleague. There are no steps: investigate with kubectl, find the cause, fix it. Hints, and the fix itself, are there if you're stuck. ${solved} of ${CHALLENGES.length} solved.`}>
       {(["easy", "medium", "hard"] as const).map((level) => {
         const list = CHALLENGES.filter((c) => c.difficulty === level);
         if (!list.length) return null;
@@ -149,7 +145,7 @@ export function ChallengeIndex() {
                     <div className="flex items-center gap-2">
                       <span className={`rounded-full border px-2 py-px text-[11px] font-medium ${DIFFICULTY[c.difficulty].cls}`}>{DIFFICULTY[c.difficulty].label}</span>
                       {done && <span className="rounded-full bg-green-600 px-2 py-px text-[11px] font-medium text-white">Solved</span>}
-                      <span className="ml-auto text-[12px] text-slate-400">{c.minutes} min</span>
+                      <span className="ml-auto text-[12px] text-slate-500">{c.minutes} min</span>
                     </div>
                     <h3 className="mt-3 text-[15.5px] font-semibold text-slate-900">{c.title}</h3>
                     <p className="mt-1 flex-1 text-[13.5px] leading-relaxed text-slate-500">{c.summary}</p>
@@ -175,13 +171,13 @@ export function ChallengeIndex() {
 export function ExamIndex() {
   const progress = useProgress();
   return (
-    <Shell eyebrow="Practice exams" title="Timed, exam-style practice" intro="Modelled on the CKAD and CKA: a fixed time, a list of independent tasks worth different points, and a score at the end. There are no hints while the clock runs. These aren't the real exams, but the skills are the same.">
+    <Shell eyebrow="Practice exams" title="Timed, exam-style practice" intro="Unofficial practice exams in the style of the CKAD™ and CKA™: a fixed time, a list of independent tasks worth different points, and a score at the end. There are no hints while the clock runs. These aren't the real exams and aren't endorsed by their makers, but many of the core skills are the same.">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {EXAMS.map((e) => {
           const best = progress[examKey(e.slug)]?.done;
           return (
             <Link key={e.slug} href={`/exams/${e.slug}`} className="group flex flex-col rounded-2xl border border-slate-200/80 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,.04)] transition hover:border-slate-300 hover:shadow-[0_8px_24px_rgba(15,23,42,.06)]">
-              <div className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-slate-400">{e.style}</div>
+              <div className="text-[11.5px] font-semibold uppercase tracking-[0.08em] text-slate-500">{e.style}</div>
               <h2 className="mt-2 text-[19px] font-semibold tracking-tight text-slate-900">{e.title}</h2>
               <p className="mt-2 flex-1 text-[14px] leading-relaxed text-slate-500">{e.summary}</p>
               <div className="mt-5 flex items-center gap-4 font-mono text-[12px] text-slate-500">
@@ -195,6 +191,7 @@ export function ExamIndex() {
         })}
       </div>
       {EXAMS.length === 0 && <p className="text-[14px] text-slate-500">Practice exams are on their way.</p>}
+      <p className="mt-10 border-t border-slate-200 pt-4 text-[12px] leading-relaxed text-slate-500">{EXAM_TRADEMARK_NOTICE}</p>
     </Shell>
   );
 }
@@ -216,7 +213,7 @@ export function ProgressPage() {
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {stats.map(([k, v, sub]) => (
           <div key={k} className="rounded-2xl border border-slate-200/80 bg-white p-5">
-            <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{k}</dt>
+            <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{k}</dt>
             <dd className="mt-1 font-mono text-[26px] font-medium text-slate-900">{v}</dd>
             <dd className="text-[12.5px] text-slate-500">{sub}</dd>
           </div>
@@ -225,7 +222,7 @@ export function ProgressPage() {
       {next && (
         <Link href={`/learn/${next.slug}`} className="mt-6 flex items-center justify-between rounded-2xl border border-slate-300 bg-white p-5 hover:bg-slate-50">
           <span>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Up next</span>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Up next</span>
             <span className="mt-1 block text-[15.5px] font-semibold text-slate-900">{next.title}</span>
           </span>
           <span aria-hidden="true">→</span>
@@ -254,7 +251,7 @@ export function ProgressPage() {
                           </span>
                           <span className={done ? "text-slate-500" : "text-slate-800"}>{l.title}</span>
                           <span className="sr-only">{done ? "(done)" : p?.done ? "(started)" : "(not started)"}</span>
-                          <span className="ml-auto font-mono text-[11px] text-slate-400">
+                          <span className="ml-auto font-mono text-[11px] text-slate-500">
                             {Math.min(p?.done ?? 0, l.steps.length)}/{l.steps.length}
                           </span>
                         </Link>
@@ -304,7 +301,7 @@ export function ExplainerIndex() {
                 {GLYPH[e.id] ?? <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />}
               </svg>
             </span>
-            <div className="mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{e.concept}</div>
+            <div className="mt-4 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{e.concept}</div>
             <h2 className="mt-1 text-[15.5px] font-semibold text-slate-900">{e.title}</h2>
             <p className="mt-1 flex-1 text-[13.5px] leading-relaxed text-slate-500">{e.summary}</p>
             <div className="mt-4 flex items-center gap-1.5 text-[12.5px] font-medium text-slate-900">

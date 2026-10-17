@@ -1,8 +1,12 @@
 // Shareable Sandbox links: the cluster snapshot, trimmed (no Events, logs or
 // metrics) and deflate-compressed, in the URL hash. Nothing leaves the
 // browser until the Learner shares the link themselves; there is no backend.
+//
+// A link is untrusted input: it is size-capped before and after
+// decompression, parsed without prototype-ish keys, and checked for the shape
+// the engine needs before it is ever handed to a Cluster.
 
-import type { ClusterState } from "@/lib/engine";
+import { objKey, type ClusterState } from "@/lib/engine";
 
 export const SHARE_PARAM = "cluster";
 const VERSION = "1";
@@ -31,8 +35,19 @@ function fromB64Url(s: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-/** A decompressed cluster bigger than this is not something kubesim made (a zip bomb, or garbage). */
-const MAX_BYTES = 32 * 1024 * 1024;
+/** Limits for what a link may hold. A kubesim cluster worth sharing is far smaller. */
+export const SHARE_LIMITS = {
+  /** Characters of the encoded token (a URL this long is already unusual). */
+  token: 2_000_000,
+  /** Bytes after decompression (anything bigger is a zip bomb or garbage). */
+  bytes: 8 * 1024 * 1024,
+  objects: 3000,
+  pods: 600,
+  nodes: 50,
+};
+
+const TOO_LARGE = "That link is too large to be a kubesim cluster.";
+const NOT_A_CLUSTER = "That link doesn't contain a cluster.";
 
 async function pipe(data: Uint8Array<ArrayBuffer>, stream: CompressionStream | DecompressionStream, limit = Infinity): Promise<Uint8Array> {
   const reader = new Blob([data]).stream().pipeThrough(stream).getReader();
@@ -44,7 +59,7 @@ async function pipe(data: Uint8Array<ArrayBuffer>, stream: CompressionStream | D
     size += value.byteLength;
     if (size > limit) {
       await reader.cancel();
-      throw new Error("That link is too large to be a kubesim cluster.");
+      throw new LinkError(TOO_LARGE);
     }
     chunks.push(value);
   }
@@ -58,12 +73,42 @@ async function pipe(data: Uint8Array<ArrayBuffer>, stream: CompressionStream | D
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+const FORBIDDEN_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-/** The parts of a snapshot the engine can't start without. */
-function looksLikeCluster(v: unknown): v is ClusterState {
-  if (!isRecord(v) || !isRecord(v.config) || !isRecord(v.objects) || !isRecord(v.pods) || !isRecord(v.nodes)) return false;
-  if (typeof v.now !== "number" || typeof v.rng !== "number" || typeof v.rv !== "number") return false;
-  return Object.values(v.objects).every((o) => isRecord(o) && typeof o.kind === "string" && isRecord(o.metadata) && typeof o.metadata.name === "string");
+/** An error whose message is meant for the Learner. */
+class LinkError extends Error {}
+
+/** JSON.parse that refuses keys which could reach an object's prototype. */
+function parseSafe(text: string): unknown {
+  return JSON.parse(text, (key, value) => {
+    if (FORBIDDEN_KEYS.has(key)) throw new LinkError(NOT_A_CLUSTER);
+    return value;
+  });
+}
+
+const isName = (v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 253;
+
+/** The parts of a snapshot the engine can't start without, with sane sizes. */
+function checkCluster(v: unknown): ClusterState {
+  if (!isRecord(v) || !isRecord(v.config) || !isRecord(v.objects) || !isRecord(v.pods) || !isRecord(v.nodes)) throw new LinkError(NOT_A_CLUSTER);
+  for (const k of ["now", "rng", "rv"] as const) if (typeof v[k] !== "number" || !Number.isFinite(v[k])) throw new LinkError(NOT_A_CLUSTER);
+  for (const k of ["logs", "volumes", "scheduleAttempts", "timers", "hpa"] as const) if (v[k] !== undefined && !isRecord(v[k])) throw new LinkError(NOT_A_CLUSTER);
+  const objects = Object.entries(v.objects);
+  const pods = Object.entries(v.pods);
+  const nodes = Object.entries(v.nodes);
+  if (objects.length > SHARE_LIMITS.objects || pods.length > SHARE_LIMITS.pods || nodes.length > SHARE_LIMITS.nodes) throw new LinkError(TOO_LARGE);
+  for (const [key, o] of objects) {
+    if (!isRecord(o) || typeof o.kind !== "string" || !isRecord(o.metadata)) throw new LinkError(NOT_A_CLUSTER);
+    const m = o.metadata;
+    if (!isName(m.name) || (m.namespace !== undefined && !isName(m.namespace)) || (m.uid !== undefined && typeof m.uid !== "string")) throw new LinkError(NOT_A_CLUSTER);
+    if (m.labels !== undefined && !isRecord(m.labels)) throw new LinkError(NOT_A_CLUSTER);
+    if (o.spec !== undefined && !isRecord(o.spec)) throw new LinkError(NOT_A_CLUSTER);
+    // Every object sits under the key the engine itself would give it.
+    if (key !== objKey(o.kind, m.namespace as string | undefined, m.name as string)) throw new LinkError(NOT_A_CLUSTER);
+  }
+  for (const [, p] of pods) if (!isRecord(p) || !isRecord(p.containers)) throw new LinkError(NOT_A_CLUSTER);
+  for (const [, n] of nodes) if (!isRecord(n)) throw new LinkError(NOT_A_CLUSTER);
+  return v as unknown as ClusterState;
 }
 
 export async function encodeCluster(state: ClusterState): Promise<string> {
@@ -73,23 +118,25 @@ export async function encodeCluster(state: ClusterState): Promise<string> {
 }
 
 export async function decodeCluster(token: string): Promise<ClusterState> {
+  if (token.length > SHARE_LIMITS.token) throw new Error(TOO_LARGE);
   const [v, body] = token.split(".");
   if (v !== VERSION || !body) throw new Error("This link was made by a different version of kubesim.");
-  let json: Uint8Array;
-  let state: unknown;
   try {
-    json = await pipe(fromB64Url(body), new DecompressionStream("deflate-raw"), MAX_BYTES);
-    state = JSON.parse(new TextDecoder().decode(json));
+    const json = await pipe(fromB64Url(body), new DecompressionStream("deflate-raw"), SHARE_LIMITS.bytes);
+    return checkCluster(parseSafe(new TextDecoder("utf-8", { fatal: true }).decode(json)));
   } catch (e) {
-    if ((e as Error).message.startsWith("That link")) throw e;
+    if (e instanceof LinkError) throw new Error(e.message);
     throw new Error("That link is damaged (was it cut short when it was copied?).");
   }
-  if (!looksLikeCluster(state)) throw new Error("That link doesn't contain a cluster.");
-  return state;
 }
 
-/** The share token in a URL hash like #cluster=1.abc…, if any. */
+/** The share token in a URL hash like #cluster=1.abc…, if any. A token that isn't valid percent-encoding comes back as "" (which fails to decode, with a message). */
 export function tokenFromHash(hash: string): string | undefined {
   const m = hash.replace(/^#/, "").split("&").find((kv) => kv.startsWith(`${SHARE_PARAM}=`));
-  return m ? decodeURIComponent(m.slice(SHARE_PARAM.length + 1)) : undefined;
+  if (!m) return undefined;
+  try {
+    return decodeURIComponent(m.slice(SHARE_PARAM.length + 1));
+  } catch {
+    return "";
+  }
 }

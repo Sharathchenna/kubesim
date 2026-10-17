@@ -5,7 +5,7 @@
 // along "flow" edges, and shows a caption. Contributors add a scene in
 // ./scenes.ts and register it; nothing here needs to change.
 
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 export type Tone = "slate" | "violet" | "blue" | "green" | "amber" | "red";
 
@@ -90,27 +90,20 @@ function edgePath(a: Box, b: Box, bend = 0): { d: string; mid: Pt } {
   return { d: `M${p.x},${p.y} Q${m.x},${m.y} ${ex},${ey}`, mid: { x: (p.x + 2 * m.x + q.x) / 4, y: (p.y + 2 * m.y + q.y) / 4 } };
 }
 
-export function Illustration({ scene }: { scene: Scene }) {
-  const [i, setI] = useState(0);
+/** The scene's drawing for one step. */
+function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?: string }) {
   const step = scene.steps[i];
   const on = new Set(step.on);
   const off = new Set(step.off ?? []);
   const flow = new Set(step.flow ?? []);
   const byId = new Map(scene.boxes.map((b) => [b.id, b]));
   const lit = (id: string) => on.size === 0 || on.has(id);
-
+  // The same scene can be drawn twice (inline and enlarged): keep marker/path ids unique.
+  const pre = `${scene.id}${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
-    <figure className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,.04)]">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
-        <figcaption className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Concept · {scene.title}</figcaption>
-        <span className="font-mono text-[11px] tabular-nums text-slate-400">
-          {i + 1}/{scene.steps.length}
-        </span>
-      </div>
-      <div className="canvas-dots" style={{ backgroundSize: "18px 18px" }}>
-        <svg viewBox={`0 0 ${scene.width} ${scene.height}`} className="block w-full" role="img" aria-label={`${scene.title}: ${step.title}. ${step.text}`}>
+    <svg viewBox={`0 0 ${scene.width} ${scene.height}`} className={className ?? "block w-full"} role="img" aria-label={`${scene.title}: ${step.title}. ${step.text}`}>
           <defs>
-            <marker id={`arr-${scene.id}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <marker id={`arr-${pre}`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,1 L9,5 L0,9 z" fill="context-stroke" />
             </marker>
           </defs>
@@ -136,7 +129,7 @@ export function Illustration({ scene }: { scene: Scene }) {
             const active = on.has(e.id);
             return (
               <g key={e.id} className="ill-t" opacity={lit(e.id) ? 1 : 0.3}>
-                <path id={`${scene.id}-${e.id}`} d={d} fill="none" stroke={active ? "#2563eb" : "#cbd5e1"} strokeWidth={active ? 1.8 : 1.2} markerEnd={`url(#arr-${scene.id})`} />
+                <path id={`${pre}-${e.id}`} d={d} fill="none" stroke={active ? "#2563eb" : "#cbd5e1"} strokeWidth={active ? 1.8 : 1.2} markerEnd={`url(#arr-${pre})`} />
                 {e.label && (
                   <g>
                     <rect x={mid.x - e.label.length * 3 - 6} y={mid.y - 9} width={e.label.length * 6 + 12} height={18} rx={9} fill="#fff" stroke={active ? "#bfdbfe" : "#e2e8f0"} />
@@ -148,7 +141,7 @@ export function Illustration({ scene }: { scene: Scene }) {
                 {flow.has(e.id) && (
                   <circle key={`${i}-${e.id}`} className="ill-packet" r={4.5} fill="#2563eb" stroke="#fff" strokeWidth={1.5}>
                     <animateMotion dur="1.6s" repeatCount="indefinite" rotate="auto">
-                      <mpath href={`#${scene.id}-${e.id}`} />
+                      <mpath href={`#${pre}-${e.id}`} />
                     </animateMotion>
                   </circle>
                 )}
@@ -178,21 +171,87 @@ export function Illustration({ scene }: { scene: Scene }) {
               );
             })}
         </svg>
+  );
+}
+
+export function Illustration({ scene }: { scene: Scene }) {
+  const [i, setI] = useState(0);
+  const [big, setBig] = useState(false);
+  const step = scene.steps[i];
+  const controls = (
+    <div className="ml-auto flex shrink-0 gap-1.5">
+      <button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0} className="h-7 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.04)] hover:bg-slate-50 disabled:opacity-40">
+        ← Prev
+      </button>
+      <button onClick={() => setI(i === scene.steps.length - 1 ? 0 : i + 1)} className="h-7 rounded-lg border border-slate-900 bg-slate-900 px-2.5 text-[12px] font-medium text-white hover:bg-slate-800">
+        {i === scene.steps.length - 1 ? "Replay" : "Next →"}
+      </button>
+    </div>
+  );
+  const caption = (
+    <div key={i} className="cv-fade min-w-[240px] flex-1">
+      <div className="text-[13.5px] font-semibold text-slate-900">{step.title}</div>
+      <p className="mt-0.5 text-[13px] leading-relaxed text-slate-600">{step.text}</p>
+    </div>
+  );
+
+  return (
+    <figure className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,.04)]">
+      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
+        <figcaption className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Concept · {scene.title}</figcaption>
+        <span className="ml-auto font-mono text-[11px] tabular-nums text-slate-500">
+          {i + 1}/{scene.steps.length}
+        </span>
+        <button onClick={() => setBig(true)} className="min-h-6 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50" aria-label={`Enlarge the ${scene.title} illustration`} title="Enlarge">
+          ⤢ Enlarge
+        </button>
       </div>
+      {/* Tapping the drawing opens it large: in a narrow column its labels are too small to read. */}
+      <button type="button" onClick={() => setBig(true)} className="canvas-dots block w-full cursor-zoom-in" style={{ backgroundSize: "18px 18px" }} aria-label={`Enlarge the ${scene.title} illustration`}>
+        <SceneSvg scene={scene} i={i} />
+      </button>
       <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-slate-100 px-4 py-3">
-        <div key={i} className="cv-fade min-w-[240px] flex-1">
-          <div className="text-[13.5px] font-semibold text-slate-900">{step.title}</div>
-          <p className="mt-0.5 text-[13px] leading-relaxed text-slate-600">{step.text}</p>
-        </div>
-        <div className="ml-auto flex shrink-0 gap-1.5">
-          <button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0} className="h-7 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.04)] hover:bg-slate-50 disabled:opacity-40">
-            ← Prev
-          </button>
-          <button onClick={() => setI(i === scene.steps.length - 1 ? 0 : i + 1)} className="h-7 rounded-lg border border-slate-900 bg-slate-900 px-2.5 text-[12px] font-medium text-white hover:bg-slate-800">
-            {i === scene.steps.length - 1 ? "Replay" : "Next →"}
-          </button>
-        </div>
+        {caption}
+        {controls}
       </div>
+      {big && (
+        <Lightbox title={`Concept · ${scene.title}`} onClose={() => setBig(false)}>
+          <div className="canvas-dots min-h-0 flex-1 overflow-auto" style={{ backgroundSize: "18px 18px" }}>
+            <SceneSvg scene={scene} i={i} className="mx-auto block h-full max-h-[70vh] w-full" />
+          </div>
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-slate-100 px-5 py-4">
+            {caption}
+            {controls}
+          </div>
+        </Lightbox>
+      )}
     </figure>
+  );
+}
+
+/** A modal over the page (native <dialog>: focus stays inside, Esc closes). */
+function Lightbox({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const d = ref.current;
+    if (d && !d.open) d.showModal();
+    return () => d?.close();
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      aria-label={title}
+      className="m-auto flex h-[min(92vh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-900/40 [&:not([open])]:hidden"
+    >
+      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
+        <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-slate-500">{title}</div>
+        <button onClick={onClose} className="rounded-md px-2 py-1 text-[13px] font-medium text-slate-600 hover:bg-slate-100" autoFocus>
+          Close
+        </button>
+      </div>
+      {children}
+    </dialog>
   );
 }

@@ -77,7 +77,7 @@ export function performDrop(sim: SimStore, item: DragItem, t: Target): DropResul
         : item.kind === "tool" && item.what === "cordon"
           ? "Drop Cordon onto a Node."
           : item.kind === "tool"
-            ? "Drop Chaos onto a Node (power it off or on) or a Pod (kill it)."
+            ? "Drop Chaos onto a Node (simulate a failure, or bring it back) or a Pod (kill it). Nothing here is permanent: Start over rebuilds the cluster."
             : item.kind === "object" && item.type === "service"
               ? "Drop a Service onto a Deployment to point it at that Deployment's Pods, or onto the trash to delete it."
               : item.kind === "object" && item.type === "pod"
@@ -143,7 +143,7 @@ export function performDrop(sim: SimStore, item: DragItem, t: Target): DropResul
       const up = c.state.nodes[t.name]?.up;
       const r = up ? A.chaosKill(c, t.name) : A.chaosRecover(c, t.name);
       sim.run(() => r);
-      return { ok: r.ok, note: up ? `${t.name} lost power. Kubernetes won't notice for ~50s (no heartbeats), then waits 5 min before evicting its Pods. Speed up time to watch.` : `${t.name} is back on. Its kubelet reports in and cleans up evicted Pods.` };
+      return { ok: r.ok, note: up ? `${t.name} has failed (simulated power loss). Kubernetes won't notice for ~50s (no heartbeats), then waits 5 min before evicting its Pods (removing them so they're replaced on healthy Nodes). Speed up time to watch, or drop Chaos on it again to bring it back.` : `${t.name} is back on. Its kubelet reports in and cleans up evicted Pods.` };
     }
     if (item.what === "chaos" && t.type === "pod") {
       const p = c.get<Pod>("Pod", t.ns, t.name);

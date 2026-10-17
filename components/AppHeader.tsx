@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const NAV = [
   { href: "/learn", label: "Lessons" },
@@ -29,10 +29,27 @@ export function Logo() {
 export function AppHeader({ center, right, glass }: { center?: React.ReactNode; right?: React.ReactNode; /** See-through and sticky, for marketing pages. */ glass?: boolean }) {
   const path = usePathname();
   const [menu, setMenu] = useState(false);
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: KeyboardEvent) => e.key === "Escape" && setMenu(false);
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [menu]);
   return (
     <header className={`flex h-14 shrink-0 items-center gap-3 border-b px-3 sm:px-4 ${glass ? "sticky top-0 z-40 border-slate-200/60 bg-[#f7f8fa]/70 backdrop-blur-xl backdrop-saturate-150" : "relative border-slate-200/80 bg-white"}`}>
-      <a href="#dock-panel" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-slate-900 focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-white">
-        Skip to terminal
+      <a
+        href="#main"
+        onClick={(e) => {
+          // Focus the page's <main> (or its heading) rather than relying on an id per page.
+          const main = document.querySelector<HTMLElement>("main") ?? document.querySelector<HTMLElement>("h1");
+          if (!main) return;
+          e.preventDefault();
+          if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
+          main.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-md focus:bg-slate-900 focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-white"
+      >
+        Skip to content
       </a>
       <button onClick={() => setMenu(!menu)} className="grid h-8 w-8 place-items-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden" aria-label="Menu" aria-expanded={menu}>
         <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round">

@@ -83,70 +83,20 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-/* Isometric Cluster View: calm, staged assembly and micro-interactions */
-.iso-base,
-.iso-rise,
-.iso-pop,
-.iso-led,
-.iso-float,
-.iso-spin {
-  transform-box: fill-box;
-  transform-origin: center;
-}
-@keyframes iso-base-in {
-  from { opacity: 0; transform: translateY(14px) scale(0.97); }
-  to { opacity: 1; transform: none; }
-}
-@keyframes iso-rise-in {
-  from { opacity: 0; transform: translateY(26px); }
-  to { opacity: 1; transform: none; }
-}
-@keyframes iso-pop-in {
-  0% { opacity: 0; transform: translateY(-14px) scale(0.7); }
-  70% { opacity: 1; transform: translateY(1px) scale(1.02); }
-  100% { opacity: 1; transform: none; }
-}
-@keyframes iso-led-on {
-  from { opacity: 0.15; }
-  to { opacity: 1; }
-}
-@keyframes iso-draw-in {
-  from { stroke-dasharray: 1; stroke-dashoffset: 1; }
-  to { stroke-dasharray: 1; stroke-dashoffset: 0; }
-}
-@keyframes iso-float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
-}
-@keyframes iso-spin {
-  to { stroke-dashoffset: -48; }
-}
-@keyframes iso-blink {
-  50% { opacity: 0.25; }
-}
-@keyframes iso-breathe {
-  50% { opacity: 0.55; }
-}
-.iso-base { animation: iso-base-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.iso-rise { animation: iso-rise-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.iso-pop { animation: iso-pop-in 0.6s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.iso-led { animation: iso-led-on 0.5s ease-out both; }
-.iso-draw { animation: iso-draw-in 1.1s cubic-bezier(0.65, 0, 0.35, 1) both; }
-.iso-float { animation: iso-float 4.5s ease-in-out infinite; }
-.iso-spin { animation: iso-spin 3.5s linear infinite; }
-.iso-blink { animation: iso-blink 1.1s ease-in-out infinite; }
-.pod-gone { opacity: 0.4; transition: opacity 0.8s; }
-.pod-stale { filter: grayscale(1); opacity: 0.7; }
-@media (prefers-reduced-motion: reduce) {
-  .iso-base, .iso-rise, .iso-pop, .iso-led, .iso-draw, .iso-float, .iso-spin, .iso-blink, .pod-starting { animation: none; }
-}
-
 /* Canvas: soft dotted grid that follows pan/zoom (position/size set inline). */
 .canvas-dots {
   background-color: #f7f8fa;
   background-image: radial-gradient(circle, #d5dae2 1px, transparent 1.2px);
 }
-.pod-starting { animation: iso-breathe 1.6s ease-in-out infinite; }
+/* Cluster View grid: ruled, minor + major lines, following pan/zoom (size/position set inline). */
+.canvas-grid {
+  background-color: var(--cv-bg, #f7f8fa);
+  background-image:
+    linear-gradient(to right, var(--cv-grid, #eef1f5) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-grid, #eef1f5) 1px, transparent 1px),
+    linear-gradient(to right, var(--cv-grid-major, #e2e7ee) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--cv-grid-major, #e2e7ee) 1px, transparent 1px);
+}
 
 /* 2D Cluster View */
 @keyframes cv-in { from { opacity: 0; } to { opacity: 1; } }
@@ -157,11 +107,103 @@ body {
 .cv-pulse { animation: cv-pulse 1.4s ease-in-out infinite; }
 .cv-blink { animation: cv-pulse 0.8s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
-  .cv-fade, .cv-edge, .cv-pod, .cv-pulse, .cv-blink { animation: none; transition: none; }
+  .cv-fade, .cv-edge, .cv-pod, .cv-pulse, .cv-blink, .cv-ring { animation: none; transition: none; }
+  .cv-flow { animation: none; stroke-dasharray: none; opacity: 0.35; }
   .cv-packet { display: none; }
 }
+
+/* ---------------------------------------------------------------------------
+   Cluster View design tokens. Every colour on the canvas comes from here: the
+   component sets data-kind on an object's <g>, CSS picks its palette.
+   Health is shown by colour AND shape (disc ok, ring starting, square failing).
+--------------------------------------------------------------------------- */
+.cv-root {
+  --cv-bg: #f7f8fa;
+  --cv-surface: #ffffff;
+  --cv-grid: #eef1f5;
+  --cv-grid-major: #e2e7ee;
+  --cv-line: #cbd5e1;
+  --cv-line-2: #94a3b8;
+  --cv-line-3: #64748b;
+  --cv-hair: #eef2f6;
+  --cv-text: #0f172a;
+  --cv-dim: #475569;
+  --cv-faint: #94a3b8;
+  --cv-accent: #2563eb;
+  --cv-ok: #16a34a;
+  --cv-warn: #d97706;
+  --cv-danger: #dc2626;
+  --cv-muted: #94a3b8;
+  --cv-ease-out: cubic-bezier(0.16, 0.84, 0.44, 1);
+  --cv-fast: 120ms;
+  --cv-base: 160ms;
+}
+[data-kind] { --k-fill: #fff; --k-stroke: #d5dce5; --k-tint: #f1f5f9; --k-ink: #334155; }
+[data-kind="deployment"], [data-kind="replicaset"] { --k-fill: #fbfbff; --k-stroke: #c7cff9; --k-tint: #eef0fe; --k-ink: #4338ca; }
+[data-kind="replicaset"] { --k-fill: #fff; }
+[data-kind="statefulset"] { --k-fill: #fbfefc; --k-stroke: #a7e3bd; --k-tint: #e7f8ee; --k-ink: #15803d; }
+[data-kind="daemonset"] { --k-fill: #fcfcfd; --k-stroke: #cfd6df; --k-tint: #eef2f6; --k-ink: #334155; }
+[data-kind="cronjob"], [data-kind="job"] { --k-fill: #fffcf8; --k-stroke: #f6c89a; --k-tint: #fff1e3; --k-ink: #c2410c; }
+[data-kind="node"] { --k-fill: #fff; --k-stroke: #d5dce5; --k-tint: #f1f5f9; --k-ink: #334155; }
+[data-kind="cp"] { --k-fill: #fdfcff; --k-stroke: #d9cffb; --k-tint: #f3effe; --k-ink: #6d28d9; }
+[data-kind="service"] { --k-fill: #fafcff; --k-stroke: #b6cdf6; --k-tint: #e8f0fe; --k-ink: #1d4ed8; }
+[data-kind="ingress"] { --k-fill: #fdfcff; --k-stroke: #d4c6fb; --k-tint: #f1ecfe; --k-ink: #6d28d9; }
+[data-kind="configmap"] { --k-stroke: #a5e3ee; --k-tint: #e3f7fb; --k-ink: #0e7490; }
+[data-kind="secret"] { --k-stroke: #dcc3f6; --k-tint: #f5ecfd; --k-ink: #7e22ce; }
+[data-kind="pvc"] { --k-stroke: #a7e3bd; --k-tint: #e7f8ee; --k-ink: #15803d; }
+[data-kind="networkpolicy"] { --k-stroke: #f7b6c1; --k-tint: #ffeef1; --k-ink: #be123c; }
+[data-kind="rolebinding"] { --k-stroke: #cfd6df; --k-tint: #eef2f6; --k-ink: #475569; }
+[data-kind="pod"] { --k-fill: #fff; --k-stroke: #dde3ea; }
+
+.cv-body { fill: var(--k-fill); stroke: var(--k-stroke); stroke-width: 1.25px; transition: stroke-width var(--cv-fast) ease; }
+.cv-obj { outline: none; }
+.cv-obj:hover > .cv-body { stroke-width: 2px; }
+.cv-obj:focus-visible > .cv-body { stroke: var(--cv-accent); stroke-width: 2px; }
+.cv-obj.is-bad > .cv-body { fill: #fef6f6; stroke: #f3b4b4; }
+.cv-obj.is-down > .cv-body { fill: #fef6f6; stroke: #f3b4b4; stroke-dasharray: 5 4; }
+.cv-obj.is-warn > .cv-body { stroke: #f4cf8f; }
+.cv-obj.is-hot > .cv-body { stroke: var(--cv-line-3); }
+.cv-tint { fill: var(--k-tint); }
+.cv-ink { color: var(--k-ink); fill: var(--k-ink); }
+.cv-hair { stroke: var(--cv-hair); }
+.cv-title { fill: var(--cv-text); font-weight: 600; }
+.cv-sub { fill: var(--cv-faint); }
+.cv-dim { fill: var(--cv-dim); }
+.cv-mono { font-family: var(--font-geist-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.cv-label { fill: var(--cv-faint); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+
+/* Selection: a separate accent ring with a gap, popping in. */
+@keyframes cv-ring-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
+.cv-ring { fill: none; stroke: var(--cv-accent); stroke-width: 2px; transform-box: fill-box; transform-origin: center; animation: cv-ring-in var(--cv-fast) var(--cv-ease-out) both; pointer-events: none; }
+
+/* Edges */
+.cv-wire { fill: none; stroke: var(--cv-line); stroke-width: 1.25px; }
+.cv-wire.is-hot { stroke: var(--cv-line-3); stroke-width: 1.6px; }
+.cv-arrow { fill: var(--cv-line); }
+.cv-arrow.is-hot { fill: var(--cv-line-3); }
+.cv-svc-wire { fill: none; stroke: #9fbcf2; stroke-width: 1.25px; }
+.cv-svc-wire.is-hot { stroke: var(--cv-accent); stroke-width: 1.8px; }
+.cv-svc-wire.is-notready { stroke: #f0a8a0; stroke-dasharray: 4 4; }
+/* Traffic: a dash pattern that flows toward the Pod while requests arrive. */
+@keyframes cv-flow { to { stroke-dashoffset: -12; } }
+.cv-flow { fill: none; stroke: var(--cv-accent); stroke-width: 1.5px; stroke-dasharray: 2 10; stroke-linecap: round; animation: cv-flow 0.6s linear infinite; opacity: 0.8; }
+
+/* Health marks */
+.cv-mark-ok { fill: var(--cv-ok); }
+.cv-mark-starting { fill: none; stroke: var(--cv-warn); stroke-width: 1.6px; }
+.cv-mark-bad { fill: var(--cv-danger); }
+.cv-mark-done { fill: var(--cv-muted); }
+.cv-mark-gone, .cv-mark-stale { fill: none; stroke: var(--cv-muted); stroke-width: 1.4px; stroke-dasharray: 2 2; }
+
+/* Minimap */
+.cv-minimap-node { position: absolute; border-radius: 1.5px; background: var(--k-stroke); }
 
 /* Concept Illustrations */
 .ill-t { transition: opacity 0.45s ease; }
 .ill-t path, .ill-t rect { transition: stroke 0.35s, stroke-width 0.35s; }
 @media (prefers-reduced-motion: reduce) { .ill-t, .ill-t path, .ill-t rect { transition: none; } .ill-packet { display: none; } }
+
+/* Reduced motion: no transitions anywhere, including inline ones (pan/zoom, Pods sliding between slots). */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+}

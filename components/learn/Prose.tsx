@@ -52,7 +52,7 @@ export function Prose({ text, onRun, onEdit }: { text: string; onRun?: (cmd: str
         ) : (
           <div key={i} className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
             <div className="flex items-center justify-between border-b border-slate-200/70 px-3 py-1.5">
-              <span className="font-mono text-[10.5px] uppercase tracking-wider text-slate-400">yaml</span>
+              <span className="font-mono text-[10.5px] uppercase tracking-wider text-slate-500">yaml</span>
               {onEdit && (
                 <button onClick={() => onEdit(b.text + "\n")} className="rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 shadow-[0_1px_1px_rgba(15,23,42,.04)] hover:bg-slate-50">
                   Open in editor

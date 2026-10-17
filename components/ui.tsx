@@ -15,7 +15,7 @@ export function Btn({ children, onClick, tone = "default", disabled, title, clas
     ghost: "border-transparent bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800",
   };
   return (
-    <button title={title} disabled={disabled} onClick={onClick} className={`inline-flex h-7 items-center justify-center gap-1 rounded-lg border px-2.5 text-[12px] font-medium transition-colors disabled:opacity-40 ${tones[tone]} ${className}`}>
+    <button type="button" title={title} disabled={disabled} onClick={onClick} className={`inline-flex h-7 items-center justify-center gap-1 rounded-lg border px-2.5 text-[12px] font-medium transition-colors disabled:opacity-40 ${tones[tone]} ${className}`}>
       {children}
     </button>
   );
@@ -28,7 +28,7 @@ export function Card({ children, className = "" }: { children: React.ReactNode; 
 export function Heading({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="mb-2.5 flex items-center justify-between">
-      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{children}</h3>
+      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{children}</h3>
       {right}
     </div>
   );
@@ -44,7 +44,7 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
   return (
     <div className="flex rounded-lg bg-slate-100 p-0.5">
       {options.map((o) => (
-        <button key={o.value} onClick={() => onChange(o.value)} className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${value === o.value ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,.1)]" : "text-slate-500 hover:text-slate-800"}`}>
+        <button key={o.value} type="button" aria-pressed={value === o.value} onClick={() => onChange(o.value)} className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${value === o.value ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,.1)]" : "text-slate-500 hover:text-slate-800"}`}>
           {o.label}
         </button>
       ))}

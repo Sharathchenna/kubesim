@@ -17,12 +17,12 @@ import { Inspector } from "../sim/Inspector";
 import { MobileTabs, SimControls, Workspace } from "../sim/Workspace";
 import { Prose } from "./Prose";
 import { challengeKey, loadPassed, savePassed } from "./progress";
+import { DIFFICULTY } from "./difficulty";
+import { safeCheck } from "./checks";
 
-export const DIFFICULTY: Record<string, { label: string; cls: string }> = {
-  easy: { label: "Easy", cls: "bg-green-50 text-green-700 border-green-200" },
-  medium: { label: "Medium", cls: "bg-amber-50 text-amber-700 border-amber-200" },
-  hard: { label: "Hard", cls: "bg-red-50 text-red-700 border-red-200" },
-};
+
+/** A first look that fits any broken cluster. */
+const START = ["kubectl get pods -o wide", "kubectl get events --sort-by=.lastTimestamp"];
 
 export function ChallengePlayer({ slug }: { slug: string }) {
   const ch = challengeBySlug(slug)!;
@@ -60,7 +60,7 @@ export function ChallengePlayer({ slug }: { slug: string }) {
   const next = CHALLENGES[idx + 1];
 
   // Every goal's Check, every frame.
-  const live = c ? ch.steps.map((g) => g.check({ cluster: c, history: sim.history })) : [];
+  const live = c ? ch.steps.map((g) => safeCheck(() => g.check({ cluster: c, history: sim.history }))) : [];
   const newly = live.map((ok, i) => (ok && !passed.includes(i) ? i : -1)).filter((i) => i >= 0);
   useEffect(() => {
     if (!newly.length) return;
@@ -75,7 +75,7 @@ export function ChallengePlayer({ slug }: { slug: string }) {
   }, [newly.join(","), key, ch.steps.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const done = passed.length === ch.steps.length;
 
-  if (!c) return <div className="flex h-screen items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-400">Breaking your cluster…</div>;
+  if (!c) return <div className="flex h-dvh items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-500">Breaking your cluster…</div>;
 
   const run = (cmd: string) => {
     sim.exec(cmd);
@@ -84,12 +84,13 @@ export function ChallengePlayer({ slug }: { slug: string }) {
   const d = DIFFICULTY[ch.difficulty];
 
   return (
-    <div className="flex h-screen flex-col bg-[#f7f8fa] text-slate-900">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#f7f8fa] text-slate-900">
       <AppHeader
         center={<SimControls sim={sim} />}
         right={
           <Btn
             onClick={() => {
+              if ((passed.length || sim.history.length) && !window.confirm("Start this challenge over? The cluster is broken again and your progress in it is reset.")) return;
               sim.reset();
               setSel(null);
               setHints([]);
@@ -103,11 +104,11 @@ export function ChallengePlayer({ slug }: { slug: string }) {
       <div className="flex min-h-0 flex-1">
         <aside className={`flex w-full shrink-0 flex-col border-r border-slate-200/80 bg-white lg:w-[380px] xl:w-[440px] ${mobileTab !== "goals" ? "max-lg:hidden" : ""}`}>
           <div className="border-b border-slate-100 px-6 pb-4 pt-5">
-            <Link href="/challenges" className="text-[12px] font-medium text-slate-400 hover:text-slate-700">
+            <Link href="/challenges" className="inline-flex min-h-6 items-center text-[12px] font-medium text-slate-500 hover:text-slate-700">
               ← All challenges
             </Link>
             <div className="mt-2 flex items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Challenge</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Challenge</span>
               <span className={`rounded-full border px-2 py-px text-[11px] font-medium ${d.cls}`}>{d.label}</span>
             </div>
             <h1 className="mt-1 text-[20px] font-semibold tracking-tight text-slate-900">{ch.title}</h1>
@@ -126,9 +127,16 @@ export function ChallengePlayer({ slug }: { slug: string }) {
             ) : (
               <div className="px-5 py-4">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">The situation</div>
-                  <Prose text={ch.brief} />
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">The situation</div>
+                  <Prose text={ch.brief} onRun={run} />
                 </div>
+                {!done && passed.length === 0 && (
+                  <div className="mt-3 rounded-2xl border border-blue-100 bg-blue-50/50 p-3.5">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-blue-700/70">Where to start</div>
+                    <p className="mb-2 text-[12.5px] text-slate-600">Look before you change anything. These only read the cluster:</p>
+                    <Prose text={"```bash\n" + (ch.start ?? START).join("\n") + "\n```"} onRun={run} />
+                  </div>
+                )}
                 <ol className="mt-4 flex flex-col gap-2" aria-label="Goals">
                   {ch.steps.map((g, i) => {
                     const isDone = passed.includes(i);
@@ -145,10 +153,10 @@ export function ChallengePlayer({ slug }: { slug: string }) {
                             </div>
                             {!isDone && (
                               <div className="mt-3 flex gap-1.5">
-                                <Btn tone="ghost" onClick={() => setHints((h) => (h.includes(i) ? h : [...h, i]))}>
+                                <Btn onClick={() => setHints((h) => (h.includes(i) ? h : [...h, i]))}>
                                   Hint
                                 </Btn>
-                                <Btn tone="ghost" onClick={() => setRevealed((r) => (r.includes(i) ? r : [...r, i]))}>
+                                <Btn onClick={() => setRevealed((r) => (r.includes(i) ? r : [...r, i]))}>
                                   Show the fix
                                 </Btn>
                               </div>
@@ -192,7 +200,7 @@ export function ChallengePlayer({ slug }: { slug: string }) {
               if (s) setPanel("inspect");
             }}
             tabs={["terminal", "editor", "events", "resources"]}
-            dockHeight="h-[42%]"
+            dockHeight="h-[38%]"
             mobileView={mobileTab === "cluster" ? "canvas" : "dock"}
           />
         </div>

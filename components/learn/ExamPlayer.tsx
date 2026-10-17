@@ -6,7 +6,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { examBySlug, type Exam } from "@/lib/lessons/exams";
+import { EXAM_TRADEMARK_NOTICE, examBySlug, type Exam } from "@/lib/lessons/exams";
 import { solutionCommands } from "@/lib/lessons/lessons";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { AppHeader } from "../AppHeader";
@@ -89,12 +89,13 @@ function ExamIntro({ exam, onStart }: { exam: Exam; onStart: () => void }) {
     <div className="min-h-screen bg-[#f7f8fa]">
       <AppHeader />
       <main className="mx-auto max-w-2xl px-6 pb-24 pt-14">
-        <Link href="/exams" className="text-[12px] font-medium text-slate-400 hover:text-slate-700">
+        <Link href="/exams" className="inline-flex min-h-6 items-center text-[12px] font-medium text-slate-500 hover:text-slate-700">
           ← All practice exams
         </Link>
-        <div className="mt-4 text-[12px] font-semibold uppercase tracking-[0.1em] text-slate-400">{exam.style} practice exam</div>
+        <div className="mt-4 text-[12px] font-semibold uppercase tracking-[0.1em] text-slate-500">{exam.style}</div>
         <h1 className="font-display mt-3 text-[48px] leading-[1.02] text-slate-900">{exam.title}</h1>
         <p className="mt-3 text-[15px] leading-relaxed text-slate-500">{exam.summary}</p>
+        <p className="mt-2 text-[13px] leading-relaxed text-slate-500">This is not the real exam: it&apos;s kubesim&apos;s own practice set, written in the same style.</p>
         <dl className="mt-8 grid grid-cols-3 gap-3">
           {[
             ["Time", `${exam.minutes} min`],
@@ -102,7 +103,7 @@ function ExamIntro({ exam, onStart }: { exam: Exam; onStart: () => void }) {
             ["Pass mark", `${exam.passPercent}%`],
           ].map(([k, v]) => (
             <div key={k} className="rounded-xl border border-slate-200 bg-white p-4">
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{k}</dt>
+              <dt className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{k}</dt>
               <dd className="mt-1 font-mono text-[18px] font-medium text-slate-900">{v}</dd>
             </div>
           ))}
@@ -112,7 +113,7 @@ function ExamIntro({ exam, onStart }: { exam: Exam; onStart: () => void }) {
           <ul className="mt-2 list-disc space-y-1 pl-5">
             <li>You get a fresh cluster and a terminal. Tasks are independent; do them in any order.</li>
             <li>Read each task carefully: names, namespaces, images and ports must match exactly.</li>
-            <li>There are no hints and no checkmarks while the clock runs, just like the real exam. <code className="rounded bg-slate-100 px-1 font-mono text-[12px]">kubectl explain</code> and <code className="rounded bg-slate-100 px-1 font-mono text-[12px]">--dry-run=client -o yaml</code> are fair game.</li>
+            <li>There are no hints and no checkmarks while the clock runs, just like the real exam. <code className="rounded bg-slate-100 px-1 font-mono text-[12px]">kubectl explain</code> and <code className="rounded bg-slate-100 px-1 font-mono text-[12px]">--dry-run=client -o yaml</code> are fair game. In the real exam you can also open the Kubernetes docs (kubernetes.io/docs and kubernetes.io/blog) and the Helm docs (helm.sh/docs) in the exam browser, so practising looking things up in the docs is part of preparing.</li>
             <li>Submit when you&apos;re done, or it grades itself when time runs out. Then you see the solutions.</li>
             <li>The clock keeps running if you leave the page; your cluster is saved in this browser.</li>
           </ul>
@@ -127,6 +128,7 @@ function ExamIntro({ exam, onStart }: { exam: Exam; onStart: () => void }) {
             </span>
           )}
         </div>
+        <p className="mt-10 border-t border-slate-200 pt-4 text-[12px] leading-relaxed text-slate-500">{EXAM_TRADEMARK_NOTICE}</p>
       </main>
     </div>
   );
@@ -174,10 +176,10 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
     submitRef.current = submit;
   });
 
-  if (!c) return <div className="flex h-screen items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-400">Preparing the exam cluster…</div>;
+  if (!c) return <div className="flex h-dvh items-center justify-center bg-[#f7f8fa] text-[13px] text-slate-500">Preparing the exam cluster…</div>;
 
   return (
-    <div className="flex h-screen flex-col bg-[#f7f8fa] text-slate-900">
+    <div className="flex h-dvh flex-col overflow-hidden bg-[#f7f8fa] text-slate-900">
       <AppHeader
         center={
           result ? (
@@ -193,7 +195,9 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
         }
         right={
           result ? (
-            <Btn onClick={onExit}>Back to start</Btn>
+            <Btn onClick={onExit} title="Leave the results and go back to the exam page; a new attempt gets a fresh cluster">
+              Back to exam page
+            </Btn>
           ) : (
             <Btn
               tone="primary"
@@ -209,7 +213,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
       <div className="flex min-h-0 flex-1">
         <aside className={`flex w-full shrink-0 flex-col border-r border-slate-200/80 bg-white lg:w-[400px] xl:w-[460px] ${mobileTab !== "tasks" ? "max-lg:hidden" : ""}`}>
           <div className="border-b border-slate-100 px-5 pb-3 pt-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{exam.style} practice exam</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{exam.style}</div>
             <h1 className="mt-1 text-[18px] font-semibold tracking-tight text-slate-900">{exam.title}</h1>
             <div className="mt-3 flex rounded-lg bg-slate-100 p-0.5 text-[12px] font-medium">
               {(["tasks", "inspect"] as const).map((p) => (
@@ -230,7 +234,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
                       You scored {result.score}% ({exam.passPercent}% to pass) in {Math.floor(result.seconds / 60)} min
                     </div>
                     <p className="mt-1 text-[13px] text-slate-600">
-                      {result.passed.filter(Boolean).length} of {exam.tasks.length} tasks correct. Open a task to see one way to solve it; the cluster stays yours to keep practising.
+                      {result.passed.filter(Boolean).length} of {exam.tasks.length} tasks correct. Open a task to see the fix; the cluster stays yours to keep practising.
                     </p>
                   </div>
                 )}
@@ -246,7 +250,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
                         <span className="min-w-0 flex-1 truncate text-[13.5px] font-medium text-slate-900">{t.title}</span>
                         {flags.includes(i) && !result && <span className="rounded bg-amber-100 px-1.5 text-[10.5px] font-medium text-amber-800">flagged</span>}
                         {t.namespace && <span className="rounded bg-slate-100 px-1.5 font-mono text-[10.5px] text-slate-600">{t.namespace}</span>}
-                        <span className="shrink-0 font-mono text-[11px] text-slate-400">{t.points}%</span>
+                        <span className="shrink-0 font-mono text-[11px] text-slate-500">{t.points}%</span>
                       </button>
                       {isOpen && (
                         <div className="border-t border-slate-100 px-4 pb-4 pt-3 text-[13px] text-slate-700">
@@ -260,7 +264,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
                           )}
                           {result && (
                             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-                              <div className="mb-1.5 text-[11.5px] text-slate-500">{verdict ? "Correct. One way to do it:" : "Not quite. One way to do it:"}</div>
+                              <div className="mb-1.5 text-[11.5px] text-slate-500">{verdict ? "Correct. Compare with the fix:" : "Not quite. Here's the fix:"}</div>
                               <Prose text={[...solutionCommands(t, c).map((cmd) => "```bash\n" + cmd + "\n```"), ...(t.solution.yaml ? ["```yaml\n" + t.solution.yaml + "\n```"] : [])].join("\n\n")} onRun={(cmd) => sim.exec(cmd)} onEdit={(y) => sim.openFile("solution.yaml", y)} />
                             </div>
                           )}
@@ -269,6 +273,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
                     </section>
                   );
                 })}
+                <p className="mt-4 text-[11.5px] leading-relaxed text-slate-500">{EXAM_TRADEMARK_NOTICE}</p>
               </div>
             )}
           </div>
@@ -282,7 +287,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
               if (s) setPanel("inspect");
             }}
             tabs={["terminal", "editor", "events", "resources"]}
-            dockHeight="h-[48%]"
+            dockHeight="h-[44%]"
             narration={false}
             mobileView={mobileTab === "cluster" ? "canvas" : "dock"}
           />
