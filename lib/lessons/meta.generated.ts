@@ -786,6 +786,419 @@ export const CHALLENGES: ChallengeMeta[] = [
     ],
     "difficulty": "hard",
     "brief": "Last night's Node maintenance is over, but `web` is stuck Pending and nothing new gets scheduled anywhere. The on-call engineer went home before finishing the checklist. Don't work around it with tolerations: put the workers back the way they were."
+  },
+  {
+    "slug": "secret-wrong-key",
+    "title": "Never got started",
+    "summary": "A new Deployment whose containers are never created.",
+    "minutes": 5,
+    "concepts": [
+      "Secret",
+      "secretKeyRef",
+      "CreateContainerConfigError"
+    ],
+    "track": "config",
+    "steps": [
+      {
+        "title": "payments running with the password from payments-db"
+      }
+    ],
+    "difficulty": "easy",
+    "brief": "The new `payments` Deployment went out an hour ago and neither of its Pods has started a container yet. Its database credentials live in the Secret `payments-db`, which is synced from Vault and is correct: don't edit it."
+  },
+  {
+    "slug": "oom-resizer",
+    "title": "Restarting for no reason",
+    "summary": "Workers that restart every few seconds while their logs look fine.",
+    "minutes": 4,
+    "concepts": [
+      "OOMKilled",
+      "Memory limits",
+      "kubectl describe"
+    ],
+    "track": "config",
+    "steps": [
+      {
+        "title": "Both resizer Pods Running, with a memory limit"
+      }
+    ],
+    "difficulty": "easy",
+    "brief": "The `resizer` workers restart every few seconds and never finish a job, but their logs show nothing wrong. Nothing in the code changed. Don't change what the workers run, and keep a memory limit on them: that's platform policy."
+  },
+  {
+    "slug": "failed-backfill",
+    "title": "The backfill failed",
+    "summary": "A one-off Job that gave up overnight and has to run again.",
+    "minutes": 7,
+    "concepts": [
+      "Job",
+      "backoffLimit",
+      "Immutable fields"
+    ],
+    "track": "workloads",
+    "steps": [
+      {
+        "title": "backfill completed, from 2026-01-01"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "The one-off `backfill` Job failed overnight and nothing was copied. It has to run once more, under the same name, and succeed, copying orders from 2026-01-01 onwards."
+  },
+  {
+    "slug": "cronjob-never-runs",
+    "title": "The cleanup never happens",
+    "summary": "A scheduled job that hasn't run once since it was deployed.",
+    "minutes": 6,
+    "concepts": [
+      "CronJob",
+      "Cron schedule",
+      "suspend"
+    ],
+    "track": "workloads",
+    "steps": [
+      {
+        "title": "cleanup runs every 5 minutes"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "The `cleanup` CronJob is meant to delete expired sessions every 5 minutes. It went out ten minutes ago, `kubectl get jobs` is still empty, and the sessions table keeps growing. Make it run on its intended schedule."
+  },
+  {
+    "slug": "cache-emptydir",
+    "title": "Cold cache after every deploy",
+    "summary": "A cache that comes back empty whenever its Pod is replaced.",
+    "minutes": 7,
+    "concepts": [
+      "emptyDir",
+      "PersistentVolumeClaim",
+      "Volumes"
+    ],
+    "track": "storage",
+    "steps": [
+      {
+        "title": "cache keeps /data on a Bound claim"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "Every time the `cache` Pod is replaced (a deploy, a Node drain, someone deleting it), Redis comes back completely empty and the site is slow for hours while it warms up again. What Redis keeps in `/data` has to survive the Pod being deleted and recreated. Keep `cache` a Deployment with one replica."
+  },
+  {
+    "slug": "cronjob-stuck-run",
+    "title": "No report since this morning",
+    "summary": "A CronJob that stopped producing runs after one bad night.",
+    "minutes": 12,
+    "concepts": [
+      "CronJob",
+      "concurrencyPolicy",
+      "activeDeadlineSeconds",
+      "Job"
+    ],
+    "track": "workloads",
+    "steps": [
+      {
+        "title": "report runs on schedule again"
+      },
+      {
+        "title": "A hung run can't block the schedule again"
+      }
+    ],
+    "difficulty": "hard",
+    "brief": "The `report` CronJob should build a report every 5 minutes. Last night's database move broke it, and someone fixed its command first thing this morning, but there hasn't been a single new report since. Get it running on schedule again, and make sure that a run that hangs can never again hold the schedule up for more than 5 minutes (without hung runs piling up instead)."
+  },
+  {
+    "slug": "configmap-subpath",
+    "title": "Yesterday's page",
+    "summary": "A ConfigMap edit that the site never picked up.",
+    "minutes": 10,
+    "concepts": [
+      "ConfigMap volumes",
+      "subPath",
+      "Rollout restart"
+    ],
+    "track": "config",
+    "steps": [
+      {
+        "title": "The site shows the new page"
+      },
+      {
+        "title": "Future edits go live on their own"
+      }
+    ],
+    "difficulty": "hard",
+    "brief": "Marketing changed the home page in the ConfigMap `site-content` this morning (the new text is correct), but `http://site` still shows the spring sale. They'll keep editing that ConfigMap all summer, and nobody wants to restart Pods every time they do."
+  },
+  {
+    "slug": "nodeselector-typo",
+    "title": "Waiting for the fast disk",
+    "summary": "A Deployment pinned to a Node that doesn't seem to exist.",
+    "minutes": 4,
+    "concepts": [
+      "nodeSelector",
+      "Node labels",
+      "FailedScheduling"
+    ],
+    "track": "operations",
+    "steps": [
+      {
+        "title": "search running on the SSD Node"
+      }
+    ],
+    "difficulty": "easy",
+    "brief": "`search` has to run on the Node with the SSD, which is labelled for it. Both `search` Pods have been Pending since it was deployed this morning. Leave the Node labels alone: other teams schedule by them."
+  },
+  {
+    "slug": "ingress-ignored",
+    "title": "404 at the front door",
+    "summary": "An Ingress that the cluster's controller never picks up.",
+    "minutes": 4,
+    "concepts": [
+      "Ingress",
+      "IngressClass",
+      "ingress-nginx"
+    ],
+    "track": "networking",
+    "steps": [
+      {
+        "title": "http://shop.example/ reaches shop"
+      }
+    ],
+    "difficulty": "easy",
+    "brief": "The `shop` Deployment, Service and Ingress were copied over from the old cluster yesterday. The Pods are Ready and the Service has endpoints, but from outside:\n\n```bash\ncurl http://shop.example/\n```\n\nreturns ingress-nginx's `404 Not Found` page. Customers must reach `shop` at `http://shop.example/`."
+  },
+  {
+    "slug": "allow-frontend",
+    "title": "Lockdown broke checkout",
+    "summary": "A default-deny policy did its job a little too well.",
+    "minutes": 7,
+    "concepts": [
+      "NetworkPolicy",
+      "Default deny",
+      "Ingress rules"
+    ],
+    "track": "networking",
+    "steps": [
+      {
+        "title": "frontend reaches api, nobody else does"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "Security rolled out `default-deny-ingress` this morning, and since then the frontend's calls to the API time out:\n\n```bash\nkubectl exec deploy/frontend -- wget -qO- --timeout=2 http://api\n```\n\nThe `default-deny-ingress` policy must stay exactly as it is. `api` must accept traffic from `frontend` and from nothing else."
+  },
+  {
+    "slug": "daemonset-tainted-node",
+    "title": "No logs from worker-2",
+    "summary": "A DaemonSet that quietly skips one Node.",
+    "minutes": 6,
+    "concepts": [
+      "DaemonSet",
+      "Taints",
+      "Tolerations"
+    ],
+    "track": "operations",
+    "steps": [
+      {
+        "title": "log-agent on both workers, worker-2 still reserved"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "`log-agent` is supposed to run on every worker Node, but the logging dashboard has had nothing from `worker-2` since it was set aside for GPU jobs last week. Whatever was done to `worker-2` must stay: ordinary apps must still keep off it."
+  },
+  {
+    "slug": "hpa-stuck",
+    "title": "The autoscaler that never scales",
+    "summary": "Heavy load, an HPA in place, and still a single Pod.",
+    "minutes": 10,
+    "concepts": [
+      "HorizontalPodAutoscaler",
+      "Resource requests",
+      "Sidecars"
+    ],
+    "track": "operations",
+    "steps": [
+      {
+        "title": "The HPA measures CPU and has scaled out"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "`php-apache` has been under heavy load all afternoon (the `load-generator` Pod is still running) and is slow, but it has stayed at 1 replica although it has an HPA. The HPA's settings were agreed with the team: target 50% CPU, 1 to 10 replicas. Leave them as they are, and don't drop the `log-shipper` sidecar: we need its logs. Get the HPA scaling the Deployment on its own."
+  },
+  {
+    "slug": "anti-affinity-third-replica",
+    "title": "The third replica",
+    "summary": "Scaling up hits a placement rule that can't be met.",
+    "minutes": 12,
+    "concepts": [
+      "Pod anti-affinity",
+      "Topology spread constraints",
+      "FailedScheduling"
+    ],
+    "track": "operations",
+    "steps": [
+      {
+        "title": "3 cache replicas Ready, on both workers"
+      }
+    ],
+    "difficulty": "hard",
+    "brief": "We scaled `cache` from 2 to 3 replicas last night, and the new one has been Pending ever since. We need all 3 running, still spread over both workers so that losing one Node can't take every replica down. Keep it at 3 replicas, keep a rule in the Deployment that spreads the replicas across Nodes, and keep app Pods off the control-plane Node. A short restart of `cache` is fine."
+  },
+  {
+    "slug": "storefront-gateway",
+    "title": "The shop won't load",
+    "summary": "An Ingress, a Service and a locked-down namespace, and no page at the end of it.",
+    "minutes": 14,
+    "concepts": [
+      "Ingress",
+      "Named ports",
+      "NetworkPolicy",
+      "namespaceSelector"
+    ],
+    "track": "networking",
+    "steps": [
+      {
+        "title": "http://shop.example/ loads, and only through the Ingress"
+      }
+    ],
+    "difficulty": "hard",
+    "brief": "The new `storefront` in namespace `shop` went live this morning and nobody outside can load it:\n\n```bash\ncurl http://shop.example/\n```\n\nThe Pods are Ready and look healthy in their logs. `shop` is a locked-down namespace: its `default-deny-ingress` policy must stay exactly as it is, and the storefront Pods may only accept traffic from the ingress controller, not from other Pods in `shop` or anywhere else in the cluster."
+  },
+  {
+    "slug": "run-as-nonroot",
+    "title": "Non-root, non-starting",
+    "summary": "A new non-root policy, and Pods that never get as far as starting.",
+    "minutes": 4,
+    "concepts": [
+      "securityContext",
+      "runAsNonRoot",
+      "CreateContainerConfigError"
+    ],
+    "track": "security",
+    "steps": [
+      {
+        "title": "worker running as a non-root user"
+      }
+    ],
+    "difficulty": "easy",
+    "brief": "The platform team now requires every workload to run as a non-root user, and added `runAsNonRoot: true` to the `worker` Deployment this morning. Since then neither `worker` Pod has started. `worker` is a plain busybox loop that doesn't care which user it runs as. Keep the policy: removing `runAsNonRoot` or setting it to `false` doesn't count."
+  },
+  {
+    "slug": "readonly-tmp",
+    "title": "Read-only, never Ready",
+    "summary": "A hardened container that can no longer write the one file it needs.",
+    "minutes": 7,
+    "concepts": [
+      "securityContext",
+      "readOnlyRootFilesystem",
+      "emptyDir",
+      "Readiness probe"
+    ],
+    "track": "security",
+    "steps": [
+      {
+        "title": "agent Ready with a read-only root filesystem"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "Security turned on read-only root filesystems for `agent` yesterday. Since then both `agent` Pods are Running but show `0/1` under READY, and `kubectl rollout status deploy/agent` never finishes. The read-only root filesystem must stay on, and so must the readiness probe."
+  },
+  {
+    "slug": "node-reader",
+    "title": "Nodes are forbidden",
+    "summary": "RBAC that grants Node access in a namespace, where Nodes don't live.",
+    "minutes": 7,
+    "concepts": [
+      "RBAC",
+      "ClusterRole",
+      "ClusterRoleBinding",
+      "kubectl auth can-i"
+    ],
+    "track": "security",
+    "steps": [
+      {
+        "title": "capacity-report may read Nodes, and nothing more"
+      }
+    ],
+    "difficulty": "medium",
+    "brief": "The capacity report runs as ServiceAccount `capacity-report` in namespace `monitoring`. It fails with `nodes is forbidden: User \"system:serviceaccount:monitoring:capacity-report\" cannot list resource \"nodes\" in API group \"\" at the cluster scope`, even though someone created a Role and a RoleBinding for it in `monitoring` last week. It needs to read Nodes and nothing more: no cluster-admin, no changes to Nodes, no Secrets or Pods."
+  },
+  {
+    "slug": "hardening-rollout",
+    "title": "Hardened into an outage",
+    "summary": "A weekend security hardening change that broke three things at once.",
+    "minutes": 12,
+    "concepts": [
+      "NetworkPolicy",
+      "RBAC",
+      "API groups",
+      "runAsNonRoot"
+    ],
+    "track": "security",
+    "steps": [
+      {
+        "title": "shop reachable again, behind default-deny"
+      },
+      {
+        "title": "CI can deploy shop, and no more"
+      },
+      {
+        "title": "audit running as non-root"
+      }
+    ],
+    "difficulty": "hard",
+    "brief": "**Pager, Monday 09:12: shop namespace.** The security hardening change went out over the weekend: default-deny NetworkPolicies with an allow rule per app, non-root everywhere, and tighter CI access. Since then:\n\n- The storefront is unreachable. This times out:\n\n```bash\nkubectl exec deploy/frontend -- wget -qO- --timeout=2 http://shop.shop\n```\n\n- The CI pipeline, running as ServiceAccount `ci` in `shop`, fails with `deployments.apps \"shop\" is forbidden: User \"system:serviceaccount:shop:ci\" cannot patch resource \"deployments\" in API group \"apps\" in the namespace \"shop\"`.\n- The `audit` Pod never starts.\n\nKeep the hardening: the `default-deny` policy stays and only `shop` may receive traffic, `audit` keeps `runAsNonRoot`, and CI gets no cluster-admin, no delete and no Secrets."
+  },
+  {
+    "slug": "payments-onboarding",
+    "title": "The new team can't launch",
+    "summary": "An onboarding script that set a new namespace up wrong in three places.",
+    "minutes": 12,
+    "concepts": [
+      "RoleBinding",
+      "Namespaces",
+      "Secret volume",
+      "FailedMount",
+      "targetPort"
+    ],
+    "track": "security",
+    "steps": [
+      {
+        "title": "Alice can work in payments, and only there"
+      },
+      {
+        "title": "payments-api running with its credentials"
+      },
+      {
+        "title": "frontend reaches payments-api"
+      }
+    ],
+    "difficulty": "hard",
+    "brief": "**Pager: payments launch blocked.** The onboarding script for the new `payments` team ran yesterday. This morning:\n\n- Alice (user `alice`) gets `Error from server (Forbidden): deployments.apps is forbidden: User \"alice\" cannot list resource \"deployments\" in API group \"apps\" in the namespace \"payments\"`.\n- The `payments-api` Pods have been stuck in ContainerCreating since they were created.\n- This fails from `frontend`:\n\n```bash\nkubectl exec deploy/frontend -- wget -qO- --timeout=2 http://payments-api.payments\n```\n\nAlice should have the built-in `edit` access in `payments` and no access anywhere else. `payments-api` must keep reading its database password from the Secret `payments-db`."
+  },
+  {
+    "slug": "audit-cleanup",
+    "title": "After the security audit",
+    "summary": "Least privilege and Secret hygiene, applied a little too quickly.",
+    "minutes": 12,
+    "concepts": [
+      "RoleBinding",
+      "roleRef",
+      "ClusterRole",
+      "Service selector",
+      "secretKeyRef"
+    ],
+    "track": "security",
+    "steps": [
+      {
+        "title": "release-bot can deploy blog and shop, and no more"
+      },
+      {
+        "title": "blog serving behind its Service"
+      },
+      {
+        "title": "comments running, password from blog-db"
+      }
+    ],
+    "difficulty": "hard",
+    "brief": "**Pager: blog down since Friday's audit cleanup.** The auditors replaced `release-bot`'s cluster-admin binding with per-namespace access, moved the comments database password out of a ConfigMap into a Secret, and removed \"unused\" labels. Since then:\n\n- Deploys to `blog` fail with `deployments.apps \"blog\" is forbidden: User \"system:serviceaccount:ops:release-bot\" cannot patch resource \"deployments\" in API group \"apps\" in the namespace \"blog\": RBAC: role.rbac.authorization.k8s.io \"release\" not found`. Deploys to `shop` still work.\n- `http://blog.blog` refuses connections, though both `blog` Pods are Running.\n- `comments` never starts.\n\nDon't undo the audit: no cluster-admin and nothing cluster-wide for `release-bot`, and the comments password stays in the Secret `blog-db`."
   }
 ];
 

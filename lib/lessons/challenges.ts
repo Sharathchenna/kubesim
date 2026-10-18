@@ -7,6 +7,9 @@ import type { Deployment, Node, PersistentVolumeClaim, Pod } from "@/lib/engine"
 import { egressAllowed, isIsolated } from "@/lib/engine";
 import { dnsAllowed } from "@/lib/engine/netpol";
 import type { Lesson } from "./lessons";
+import { NETWORKING_CHALLENGES } from "./challenge-sets/networking";
+import { SECURITY_CHALLENGES } from "./challenge-sets/security";
+import { WORKLOADS_CHALLENGES } from "./challenge-sets/workloads";
 import { can, deployment, dep, endpointCount, firstContainer, obj, podsWith, reaches, readyCount, rolledOut, service, up } from "./lessons";
 
 export interface Challenge extends Lesson {
@@ -368,6 +371,9 @@ export const CHALLENGES: Challenge[] = [
       },
     ],
   },
+  ...WORKLOADS_CHALLENGES,
+  ...NETWORKING_CHALLENGES,
+  ...SECURITY_CHALLENGES,
 ];
 
 export const challengeBySlug = (slug: string) => CHALLENGES.find((c) => c.slug === slug);

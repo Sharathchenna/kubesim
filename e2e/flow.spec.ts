@@ -3,10 +3,11 @@
 // (console errors, broken links, horizontal overflow, load time).
 
 import { expect, test, type Page } from "@playwright/test";
+import { CHALLENGES as CHALLENGE_META } from "../lib/lessons/meta.generated";
 import { run, setSpeed } from "./helpers";
 
 const LESSONS = ["first-pod", "replicasets-self-healing", "deployments-scaling", "rolling-updates", "services", "declarative-yaml", "namespaces", "configmaps-and-secrets", "health-checks", "resources-and-limits", "jobs-and-cronjobs", "scheduling", "statefulsets", "persistent-storage", "ingress", "network-policies", "autoscaling", "rbac", "troubleshooting"];
-const CHALLENGES = ["typo-image", "service-selector", "missing-configmap", "postgres-password", "readiness-wrong-port", "oversized-request", "wrong-storageclass", "forbidden-sa", "egress-dns", "after-maintenance"];
+const CHALLENGES = CHALLENGE_META.map((c) => c.slug);
 const EXPLAINERS = ["autoscaling", "crashloop", "ingress-routing", "network-policy", "node-failure", "readiness-vs-liveness", "rolling-update", "scaling", "self-healing", "service-load-balancing", "statefulset-ordering"];
 
 /** Collects page errors and console errors (ignoring favicon noise). */
