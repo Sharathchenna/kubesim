@@ -1,6 +1,6 @@
 # `kubectl logs POD -c <init-container>` says the container is not valid
 
-Status: needs-triage
+Status: ready-for-agent
 
 `containerOf` in `lib/kubectl/kubectl.ts:644` only searches `spec.containers`.
 

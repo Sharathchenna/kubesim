@@ -610,6 +610,10 @@ Controller: `pkg/controller/statefulset/stateful_set_control.go`, `stateful_pod_
     `create Claim <c> for Pod <p> in StatefulSet <s> failed error: <err>`
 - **ControllerRevisions:** named `<sts>-<hash>`, with label `controller.kubernetes.io/hash`
   (unverified).
+- **Adoption** (`stateful_set.go` `getPodsForStatefulSet`, `ClaimControllerRevisions`): a
+  StatefulSet adopts controller-less Pods that match its selector and are named
+  `<sts>-<ordinal>`, and controller-less ControllerRevisions that match its selector. So
+  re-applying a StatefulSet deleted with `--cascade=orphan` takes its Pods and history back.
 - **Immutable spec:** `spec: Forbidden: updates to statefulset spec for fields other than 'replicas', 'ordinals', 'template', 'updateStrategy', 'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden`.
 - **`kubectl get sts`:** `NAME READY AGE` (wide `CONTAINERS IMAGES`).
 - Docs: https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/
@@ -619,7 +623,8 @@ Controller: `pkg/controller/statefulset/stateful_set_control.go`, `stateful_pod_
 `lib/engine/controllers/statefulset.ts`:
 - `podFor()` sets the labels, hostname and subdomain.
 - `ensureClaims()` creates claims (with an ownerRef only for `whenDeleted: Delete`).
-- `ensureRevision()` manages ControllerRevisions.
+- `ensureRevision()` manages ControllerRevisions; `adoptOrphans()` claims orphaned Pods and
+  revisions.
 - `runStatefulSets()` does ordered or parallel create, scale-down, rolling update with
   partition, OnDelete, and status.
 
@@ -686,6 +691,8 @@ No `maxSurge`. No ControllerRevisions for DaemonSets.
 | provisioning handed to an external provisioner | Normal `ExternalProvisioning` `Waiting for a volume to be created either by the external provisioner '<p>' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.` |
 | no class, no matching PV | Normal `FailedBinding` `no persistent volumes available for this claim and no storage class is set` |
 | class not found | Warning `ProvisioningFailed` `storageclass.storage.k8s.io "<c>" not found` (unverified wrapper) |
+| provisioner not running (any name outside `kubernetes.io/`) | the claim stays `Pending` with the `volume(.beta).kubernetes.io/storage-provisioner` annotations; `ExternalProvisioning` repeats each resync (15 s) (`findProvisionablePlugin` returns no plugin and no error) |
+| `kubernetes.io/<x>` with no in-tree plugin, e.g. `kubernetes.io/no-provisioner` | Warning `ProvisioningFailed` `no volume plugin matched name: kubernetes.io/<x>` (`FindProvisionablePluginByName`) |
 | external provisioner | Normal `Provisioning` `External provisioner is provisioning volume for claim "<ns>/<name>"`, then `ProvisioningSucceeded` `Successfully provisioned volume pvc-<uid>` from `rancher.io/local-path_<pod>_<uuid>` (sig-storage-lib-external-provisioner; unverified) |
 
 - **Scheduler and provisioning flow:** the scheduler sets `volume.kubernetes.io/selected-node`.
@@ -720,7 +727,8 @@ No `maxSurge`. No ControllerRevisions for DaemonSets.
 `lib/engine/controllers/storage.ts`:
 - `runStorage()`: protection finalizers, pre-bound claims, WFFC wait, smallest-fit static binding,
   FailedBinding and ProvisioningFailed.
-- `provision()`: 1.5 s delay, the events above, the local-path PV shape.
+- `provision()`: 1.5 s delay, the events above, the local-path PV shape. Only
+  `rancher.io/local-path` is installed; every other provisioner waits for ever, as above.
 - `release()`: Delete removes the PV at once. Retain sets `Released`.
 
 The scheduler (`scheduler.ts` `volumePreFilter`, `volumeNodeOk`) sets `selected-node`.
@@ -1162,7 +1170,22 @@ node/worker-1 drained
   3. the aggregate again, printed as `error: <aggregate>`
 - An aggregate of more than one error prints as `[e1, e2]`. Evictions respect PDBs, and the
   `evicted` line is printed only after the Pod is gone.
-- Simulator: `lib/sim/actions.ts` `drain()`.
+- **PDB refusals** (`drain.go` `evictPods`): each Pod is evicted in its own loop that prints
+  `evicting pod <ns>/<p>` before every attempt. A 429 from the Eviction API prints, on stderr,
+  `error when evicting pods/"<p>" -n "<ns>" (will retry after 5s): Cannot evict pod as it would violate the pod's disruption budget.`
+  and retries 5 s later, for ever unless `--timeout` is set. A Pod that is already gone
+  (NotFound) counts as done, with no `evicted` line.
+- **`--timeout`** (`cmd/drain/drain.go` `deleteOrEvictPodsSimple`, `RunDrain`):
+  `There are pending pods in node "<n>" when an error occurred: drain did not complete within <d>`,
+  one `pod/<p>` line per pending Pod, then the usual `unable to drain node` /
+  `There are pending nodes to be drained:` / `error: drain did not complete within <d>` lines.
+  `<d>` is a Go duration (`30s`, `1m0s`).
+- **`--disable-eviction`** deletes instead of evicting, bypassing PDBs; each Pod prints
+  `pod/<p> deleted`.
+- Simulator: `lib/sim/actions.ts` `drain()` and `evictPods()` (through `policy.ts` `evictPod()`);
+  `kubectl.ts` `cmdDrain` streams a blocked drain and retries every 5 s of simulated time.
+  Ctrl+C stops it; running the command again starts a fresh drain. The terminal's live re-runs
+  pass `KubectlContext.live`. Tests: `v2.test.ts` "drain and disruption budgets".
 
 ### 20.7 `wait`
 

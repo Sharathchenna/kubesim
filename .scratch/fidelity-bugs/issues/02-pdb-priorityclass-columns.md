@@ -1,6 +1,6 @@
 # `get pdb` / `get priorityclass` print only NAME and AGE
 
-Status: needs-triage
+Status: ready-for-agent
 
 `lib/kubectl/printers.ts` has no columns for either. Real kubectl: PDB shows MIN AVAILABLE / MAX UNAVAILABLE / ALLOWED DISRUPTIONS; PriorityClass shows VALUE / GLOBAL-DEFAULT / PREEMPTIONPOLICY. `describe priorityclass` also omits Value, GlobalDefault, PreemptionPolicy, Description.
 

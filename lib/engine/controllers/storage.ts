@@ -12,6 +12,9 @@ import { SELECTED_NODE } from "./scheduler";
 export const PVC_PROTECTION = "kubernetes.io/pvc-protection";
 export const PV_PROTECTION = "kubernetes.io/pv-protection";
 const PROVISION_MS = 1500;
+/** persistentvolume-controller's resync period: unprovisionable claims are retried this often. */
+const RESYNC_MS = 15_000;
+const LOCAL_PATH = "rancher.io/local-path";
 
 export const ACCESS_SHORT: Record<string, string> = { ReadWriteOnce: "RWO", ReadOnlyMany: "ROX", ReadWriteMany: "RWX", ReadWriteOncePod: "RWOP" };
 
@@ -124,10 +127,32 @@ export function runStorage(cluster: Cluster): void {
   }
 }
 
+/**
+ * Only kind's local-path provisioner is installed. Any other provisioner is
+ * waited for forever, as on a real cluster where it isn't running: the claim
+ * stays Pending and ExternalProvisioning repeats each resync. A
+ * `kubernetes.io/` name with no in-tree plugin fails outright
+ * (pv_controller.go findProvisionablePlugin / provisionClaimOperation).
+ */
 function provision(cluster: Cluster, pvc: PersistentVolumeClaim, sc: StorageClass, node: string | undefined): void {
   const now = cluster.now;
   const key = `provision/${pvc.metadata.uid}`;
   const ns = pvc.metadata.namespace!;
+  if (sc.provisioner !== LOCAL_PATH) {
+    if (cluster.state.timers[key] !== undefined && now - cluster.state.timers[key] < RESYNC_MS) return;
+    cluster.state.timers[key] = now;
+    if (sc.provisioner.startsWith("kubernetes.io/")) {
+      cluster.record(pvc, "Warning", "ProvisioningFailed", `no volume plugin matched name: ${sc.provisioner}`, "persistentvolume-controller");
+      return;
+    }
+    if (!pvc.metadata.annotations?.["volume.kubernetes.io/storage-provisioner"]) {
+      cluster.update(pvc, (x) => {
+        x.metadata.annotations = { ...(x.metadata.annotations ?? {}), "volume.beta.kubernetes.io/storage-provisioner": sc.provisioner, "volume.kubernetes.io/storage-provisioner": sc.provisioner };
+      });
+    }
+    cluster.record(pvc, "Normal", "ExternalProvisioning", `Waiting for a volume to be created either by the external provisioner '${sc.provisioner}' or manually by the system administrator. If volume creation is delayed, please verify that the provisioner is running and correctly registered.`, "persistentvolume-controller");
+    return;
+  }
   if (cluster.state.timers[key] === undefined) {
     cluster.state.timers[key] = now + PROVISION_MS;
     cluster.update(pvc, (x) => {
@@ -140,23 +165,18 @@ function provision(cluster: Cluster, pvc: PersistentVolumeClaim, sc: StorageClas
   if (now < cluster.state.timers[key]) return;
   delete cluster.state.timers[key];
   const name = `pvc-${pvc.metadata.uid}`;
-  const local = sc.provisioner === "rancher.io/local-path";
   const pv = cluster.create<PersistentVolume>({
     apiVersion: "v1",
     kind: "PersistentVolume",
-    metadata: { name, annotations: { "pv.kubernetes.io/provisioned-by": sc.provisioner, ...(local && node ? { "local.path.provisioner/selected-node": node } : {}) } },
+    metadata: { name, annotations: { "pv.kubernetes.io/provisioned-by": sc.provisioner, ...(node ? { "local.path.provisioner/selected-node": node } : {}) } },
     spec: {
       capacity: { storage: pvc.spec?.resources?.requests?.storage ?? "1Gi" },
       accessModes: pvc.spec?.accessModes ?? ["ReadWriteOnce"],
       persistentVolumeReclaimPolicy: sc.reclaimPolicy ?? "Delete",
       storageClassName: sc.metadata.name,
       volumeMode: "Filesystem",
-      ...(local
-        ? {
-            hostPath: { path: `/var/local-path-provisioner/${name}_${ns}_${pvc.metadata.name}`, type: "DirectoryOrCreate" },
-            ...(node ? { nodeAffinity: { required: { nodeSelectorTerms: [{ matchExpressions: [{ key: "kubernetes.io/hostname", operator: "In", values: [node] }] }] } } } : {}),
-          }
-        : {}),
+      hostPath: { path: `/var/local-path-provisioner/${name}_${ns}_${pvc.metadata.name}`, type: "DirectoryOrCreate" },
+      ...(node ? { nodeAffinity: { required: { nodeSelectorTerms: [{ matchExpressions: [{ key: "kubernetes.io/hostname", operator: "In", values: [node] }] }] } } } : {}),
     },
     status: { phase: "Available" },
   } as unknown as PersistentVolume);

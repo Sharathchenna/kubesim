@@ -53,6 +53,8 @@ export interface KubectlContext {
   namespace: string;
   /** The Learner's virtual files (Editor buffers, redirected output). */
   files?: Record<string, string>;
+  /** Re-running a streaming command the terminal is still showing, not a fresh one. */
+  live?: boolean;
 }
 
 export interface CommandResult {
@@ -1652,14 +1654,73 @@ function cmdCordon(s: Session, on: boolean): Res {
   return partialRes(p);
 }
 
+const DRAIN_RETRY_MS = 5000;
+
+/** A drain still waiting on evictions its PodDisruptionBudgets refused, and the nodes after it. */
+interface DrainRun {
+  p: Partial;
+  node: string;
+  pending: Pod[];
+  rest: string[];
+  next: number;
+  started: number;
+}
+const drainRuns = new WeakMap<Cluster, Map<string, DrainRun>>();
+
+/** Go's time.Duration.String() for whole milliseconds: 5s, 1m0s, 1h30m0s. */
+function goDurationString(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const h = Math.floor(ms / 3_600_000);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  return `${h ? `${h}h${m}m` : m ? `${m}m` : ""}${(ms % 60_000) / 1000}s`;
+}
+
+/**
+ * kubectl drain. A Pod its PodDisruptionBudget can't spare is retried every 5s
+ * (drain.go evictPods), so the command keeps streaming until the budget allows it,
+ * --timeout runs out, or Ctrl+C. Nodes after a blocked one wait their turn.
+ */
 function cmdDrain(s: Session): Res {
   const { a } = s;
-  const p: Partial = { out: [], errs: [] };
-  for (const node of nodesArg(s, "drain")) {
+  const c = s.ctx.cluster;
+  const runs = drainRuns.get(c) ?? drainRuns.set(c, new Map()).get(c)!;
+  const timeout = goDuration(sflag(a, "--timeout"), 0);
+  const prev = s.ctx.live ? runs.get(s.line) : undefined;
+  runs.delete(s.line);
+  const p: Partial = prev?.p ?? { out: [], errs: [] };
+  const nodes = prev ? prev.rest : nodesArg(s, "drain");
+  if (prev) {
+    const { node } = prev;
+    if (timeout && c.now - prev.started >= timeout) {
+      const why = `drain did not complete within ${goDurationString(timeout)}`;
+      p.errs.push([`There are pending pods in node "${node}" when an error occurred: ${why}`, ...prev.pending.map((x) => `pod/${x.metadata.name}`), `error: unable to drain node "${node}" due to error: ${why}, continuing command...`, "There are pending nodes to be drained:", ` ${node}`, `error: ${why}`].join("\n"));
+      return partialRes(p);
+    }
+    if (c.now < prev.next) {
+      runs.set(s.line, prev);
+      return { ...partialRes(p), watch: s.line };
+    }
+    const lines: string[] = [];
+    const pending = A.evictPods(c, prev.pending, lines);
+    c.tick(0);
+    if (!pending.length) lines.push(`node/${node} drained`);
+    p.out[p.out.length - 1] += "\n" + lines.join("\n");
+    if (pending.length) {
+      runs.set(s.line, { ...prev, pending, next: c.now + DRAIN_RETRY_MS });
+      return { ...partialRes(p), watch: s.line };
+    }
+  }
+  for (const [i, node] of nodes.entries()) {
     can(s, "patch", kindOf("Node"), undefined, node);
     // Dry runs drain a throwaway copy, then mark what would have happened.
-    const target = s.dry === "none" ? s.ctx.cluster : (s.sandbox ??= new Cluster(s.ctx.cluster.snapshot()));
-    const r = A.drain(target, node, { ignoreDaemonSets: bflag(a, "--ignore-daemonsets"), deleteEmptyDir: bflag(a, "--delete-emptydir-data") || bflag(a, "--delete-local-data"), force: bflag(a, "--force") });
+    const target = s.dry === "none" ? c : (s.sandbox ??= new Cluster(c.snapshot()));
+    const r = A.drain(target, node, {
+      ignoreDaemonSets: bflag(a, "--ignore-daemonsets"),
+      deleteEmptyDir: bflag(a, "--delete-emptydir-data") || bflag(a, "--delete-local-data"),
+      force: bflag(a, "--force"),
+      disableEviction: bflag(a, "--disable-eviction"),
+      dryRun: s.dry !== "none",
+    });
     let text = r.out;
     if (s.dry !== "none") {
       text = text
@@ -1670,6 +1731,10 @@ function cmdDrain(s: Session): Res {
     }
     if (r.ok) p.out.push(text);
     else p.errs.push(text);
+    if (r.blocked.length) {
+      runs.set(s.line, { p, node, pending: r.blocked, rest: nodes.slice(i + 1), next: c.now + DRAIN_RETRY_MS, started: c.now });
+      return { ...partialRes(p), watch: s.line };
+    }
   }
   return partialRes(p);
 }

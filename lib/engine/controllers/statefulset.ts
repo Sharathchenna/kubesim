@@ -7,7 +7,7 @@
 
 import { controllerOf, isPodReady, isPodTerminal, type Cluster } from "../cluster";
 import type { ControllerRevision, PersistentVolumeClaim, Pod, PodTemplateSpec, StatefulSet } from "../types";
-import { clone } from "../util";
+import { clone, matchesSelector } from "../util";
 import { ownerRef } from "./replicaset";
 import { templateHash } from "./deployment";
 
@@ -129,9 +129,28 @@ function reconcileClaimOwners(cluster: Cluster, sts: StatefulSet, want: number, 
   }
 }
 
+/**
+ * Adopts what a StatefulSet deleted with --cascade=orphan left behind: ControllerRevisions
+ * and Pods (named <sts>-<ordinal>) that match the selector and have no controller
+ * (stateful_set.go ClaimPods, ClaimControllerRevisions).
+ */
+function adoptOrphans(cluster: Cluster, sts: StatefulSet): void {
+  const ns = sts.metadata.namespace!;
+  const sel = sts.spec!.selector;
+  const adopt = <T extends ControllerRevision | Pod>(o: T) => {
+    if (controllerOf(o) || o.metadata.deletionTimestamp !== undefined || !matchesSelector(o.metadata.labels, sel)) return;
+    cluster.update(o, (d) => {
+      d.metadata.ownerReferences = [...(d.metadata.ownerReferences ?? []), ownerRef(sts)];
+    });
+  };
+  for (const r of cluster.list<ControllerRevision>("ControllerRevision", ns)) adopt(r);
+  for (const p of cluster.list<Pod>("Pod", ns)) if (ordinalOf(sts, p) >= 0 && !isPodTerminal(p)) adopt(p);
+}
+
 export function runStatefulSets(cluster: Cluster): void {
   for (const sts of cluster.list<StatefulSet>("StatefulSet")) {
     if (sts.metadata.deletionTimestamp !== undefined) continue;
+    adoptOrphans(cluster, sts);
     const ns = sts.metadata.namespace!;
     const want = sts.spec!.replicas ?? 1;
     const updateRev = stsRevision(sts);

@@ -401,7 +401,7 @@ export class SimStore {
     let changed = false;
     for (const t of this.term) {
       if (!t.live) continue;
-      const r = runKubectl(this.ctx(), t.live);
+      const r = runKubectl({ ...this.ctx(), live: true }, t.live);
       if (r.out !== t.out || r.ok !== t.ok) changed = true;
       t.out = r.out;
       t.ok = r.ok;

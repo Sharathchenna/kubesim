@@ -30,6 +30,7 @@ import {
   type RoleBinding,
   type Service,
   type StatefulSet,
+  type StorageClass,
 } from "@/lib/engine";
 import * as A from "@/lib/sim/actions";
 import type { SimStore } from "@/lib/sim/useSimulation";
@@ -672,6 +673,7 @@ function PvcInspector({ c, onSelect, pvc }: P & { pvc: PersistentVolumeClaim }) 
   const ns = pvc.metadata.namespace;
   const pv = pvc.spec?.volumeName ? (c.raw("PersistentVolume", undefined, pvc.spec.volumeName) as unknown as PersistentVolume | undefined) : undefined;
   const node = pv?.spec?.nodeAffinity?.required?.nodeSelectorTerms?.[0]?.matchExpressions?.[0]?.values?.[0];
+  const sc = pvc.spec?.storageClassName ? (c.raw("StorageClass", undefined, pvc.spec.storageClassName) as unknown as StorageClass | undefined) : undefined;
   const users = usedBy(c, ns, (p) => (p.spec?.volumes ?? []).some((v) => v.persistentVolumeClaim?.claimName === pvc.metadata.name));
   const phase = pvc.metadata.deletionTimestamp !== undefined ? "Terminating" : (pvc.status?.phase ?? "Pending");
   return (
@@ -680,7 +682,15 @@ function PvcInspector({ c, onSelect, pvc }: P & { pvc: PersistentVolumeClaim }) 
       <div className="p-4">
         <Explain>
           A claim asks for storage; a PersistentVolume provides it.{" "}
-          {pvc.spec?.storageClassName ? (
+          {pvc.spec?.storageClassName && !pv && !sc ? (
+            <>
+              The <b>{pvc.spec.storageClassName}</b> StorageClass doesn&apos;t exist, so nothing will create a volume for it: it stays Pending until that class is created or a matching PersistentVolume appears.
+            </>
+          ) : pvc.spec?.storageClassName && !pv && sc && sc.provisioner !== "rancher.io/local-path" ? (
+            <>
+              The <b>{pvc.spec.storageClassName}</b> StorageClass uses the provisioner <b>{sc.provisioner}</b>, which isn&apos;t running in this cluster (only <b>rancher.io/local-path</b> is), so it stays Pending until someone creates a matching PersistentVolume.
+            </>
+          ) : pvc.spec?.storageClassName ? (
             <>
               The <b>{pvc.spec.storageClassName}</b> StorageClass creates volumes on demand{node ? `. This one lives on ${node}, so Pods using it always land there.` : phase === "Pending" ? ", and waits for the first Pod that uses the claim." : "."}
             </>

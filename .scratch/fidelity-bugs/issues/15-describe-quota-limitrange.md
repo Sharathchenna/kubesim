@@ -1,6 +1,6 @@
 # `describe resourcequota` / `limitrange` print no tables
 
-Status: needs-triage
+Status: ready-for-agent
 
 No Used/Hard table for quotas, no limits table for LimitRanges; `get quota` has no REQUEST/LIMIT columns.
 

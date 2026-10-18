@@ -1,6 +1,6 @@
 # Images have no default USER
 
-Status: needs-triage
+Status: ready-for-agent
 
 Every simulated image runs as root. Images that are non-root in reality (e.g. `registry.k8s.io/pause`) would be refused under `runAsNonRoot` here but allowed by a real kubelet.
 

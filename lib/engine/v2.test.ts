@@ -1,7 +1,7 @@
 // Behaviour pins for the v2 object set: probes, resources, config, storage,
 // batch, autoscaling, ingress, network policy and RBAC.
 import { describe, expect, test } from "bun:test";
-import { Cluster, addNode, authorize, userFor, isPodReady, request, type Role, type RoleBinding, type Endpoints, type Job, type KubeEvent, type Node, type PersistentVolumeClaim, type Pod, type Deployment } from "./index";
+import { Cluster, addNode, type AnyObject, authorize, userFor, isPodReady, request, type Role, type RoleBinding, type Endpoints, type Job, type KubeEvent, type Node, type PersistentVolumeClaim, type Pod, type Deployment } from "./index";
 import { runKubectl, applyYaml } from "@/lib/kubectl/kubectl";
 
 const k = (c: Cluster, line: string, ns = "default") => runKubectl({ cluster: c, namespace: ns, files: {} }, line);
@@ -372,9 +372,69 @@ spec:
     apply(c, `apiVersion: v1\nkind: PersistentVolumeClaim\nmetadata: {name: data}\nspec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}`);
     expect(until(c, () => c.get<Pod>("Pod", "default", "p").status?.phase === "Running", 30_000)).toBe(true);
   });
+  test("a StorageClass whose provisioner isn't installed leaves its claims Pending instead of crashing", () => {
+    const c = new Cluster();
+    apply(
+      c,
+      `apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: fast}
+provisioner: ebs.csi.aws.com
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata: {name: manual}
+provisioner: kubernetes.io/no-provisioner
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: ebs}
+spec: {storageClassName: fast, accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: local}
+spec: {storageClassName: manual, accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}`,
+    );
+    expect(() => c.advance(60_000)).not.toThrow();
+    expect(c.list<PersistentVolumeClaim>("PersistentVolumeClaim").map((p) => p.status?.phase ?? "Pending")).toEqual(["Pending", "Pending"]);
+    expect(c.list("PersistentVolume")).toEqual([]);
+    const ext = events(c, "ExternalProvisioning");
+    expect(ext.length).toBe(1);
+    expect(ext[0].count).toBeGreaterThan(1);
+    expect(ext[0].message).toContain("external provisioner 'ebs.csi.aws.com'");
+    expect(events(c, "ProvisioningFailed")[0].message).toBe("no volume plugin matched name: kubernetes.io/no-provisioner");
+    expect(k(c, "kubectl get pvc ebs -o yaml").out).toContain("volume.kubernetes.io/storage-provisioner: ebs.csi.aws.com");
+  });
 });
 
 describe("statefulsets", () => {
+  test("re-creating a StatefulSet deleted with --cascade=orphan adopts its Pods and revision", () => {
+    const c = new Cluster();
+    const sts = `apiVersion: apps/v1
+kind: StatefulSet
+metadata: {name: db}
+spec:
+  serviceName: db
+  replicas: 2
+  selector: {matchLabels: {app: db}}
+  template:
+    metadata: {labels: {app: db}}
+    spec: {containers: [{name: db, image: nginx}]}`;
+    apply(c, sts);
+    c.advance(20_000);
+    const before = pods(c, byApp("db")).map((p) => p.metadata.uid).sort();
+    expect(before.length).toBe(2);
+    k(c, "kubectl delete statefulset db --cascade=orphan");
+    c.advance(1_000);
+    apply(c, sts);
+    expect(() => c.advance(20_000)).not.toThrow();
+    const owner = c.get<AnyObject>("StatefulSet", "default", "db").metadata.uid;
+    expect(pods(c, byApp("db")).map((p) => p.metadata.uid).sort()).toEqual(before);
+    expect(pods(c, byApp("db")).every((p) => p.metadata.ownerReferences?.[0]?.uid === owner)).toBe(true);
+    expect(k(c, "kubectl get controllerrevisions").out.trim().split("\n").length).toBe(2);
+  });
+
   const STS = `apiVersion: v1
 kind: Service
 metadata: {name: nginx, labels: {app: nginx}}
@@ -451,6 +511,73 @@ describe("daemonsets", () => {
     expect(ok.out).toMatch(/^node\/worker-1 already cordoned\nWarning: ignoring DaemonSet-managed Pods: kube-system\/kube-proxy-\S+\nevicting pod /);
     expect(ok.out).toMatch(/\npod\/web-\S+ evicted\n/);
     expect(ok.out.endsWith("node/worker-1 drained")).toBe(true);
+  });
+});
+
+describe("drain and disruption budgets", () => {
+  /** Re-runs a streaming command the way the terminal does, until it stops streaming. */
+  const follow = (c: Cluster, line: string, maxMs = 60_000) => {
+    let r = runKubectl({ cluster: c, namespace: "default", files: {}, live: true }, line);
+    for (let t = 0; r.watch && t < maxMs; t += 1000) {
+      c.advance(1000);
+      r = runKubectl({ cluster: c, namespace: "default", files: {}, live: true }, line);
+    }
+    return r;
+  };
+  /** Two web Pods, both on worker-1, under a budget that can't spare either. */
+  const setup = () => {
+    const c = new Cluster();
+    k(c, "kubectl cordon worker-2");
+    k(c, "kubectl create deployment web --image=nginx --replicas=2");
+    apply(c, `apiVersion: policy/v1\nkind: PodDisruptionBudget\nmetadata: {name: web}\nspec: {minAvailable: 2, selector: {matchLabels: {app: web}}}`);
+    c.advance(5_000);
+    k(c, "kubectl uncordon worker-2");
+    c.advance(15_000);
+    expect(pods(c, byApp("web")).map((p) => p.spec?.nodeName)).toEqual(["worker-1", "worker-1"]);
+    return c;
+  };
+  const DRAIN = "kubectl drain worker-1 --ignore-daemonsets";
+
+  test("a budget that can't spare a Pod blocks the drain, which retries until it can", () => {
+    const c = setup();
+    const r = k(c, DRAIN);
+    expect(r.ok).toBe(true);
+    expect(r.watch).toBe(DRAIN);
+    expect(r.out).toMatch(/error when evicting pods\/"web-\S+" -n "default" \(will retry after 5s\): Cannot evict pod as it would violate the pod's disruption budget\./);
+    expect(r.out).not.toContain("drained");
+    expect(pods(c, byApp("web")).length).toBe(2);
+    // One more replica lands on worker-2; once it's Ready the budget can spare one.
+    k(c, "kubectl scale deployment web --replicas=3");
+    const last = follow(c, DRAIN);
+    expect(last.watch).toBeUndefined();
+    expect(last.out.endsWith("node/worker-1 drained")).toBe(true);
+    expect(last.out).toMatch(/\npod\/web-\S+ evicted\n/);
+    expect(pods(c, byApp("web")).every((p) => p.spec?.nodeName === "worker-2" || p.metadata.deletionTimestamp)).toBe(true);
+  });
+
+  test("--timeout gives up with kubectl's error", () => {
+    const c = setup();
+    const line = `${DRAIN} --timeout=30s`;
+    k(c, line);
+    const last = follow(c, line);
+    expect(last.ok).toBe(false);
+    expect(last.out).toMatch(/There are pending pods in node "worker-1" when an error occurred: drain did not complete within 30s\npod\/web-\S+\n/);
+    expect(last.out.endsWith("error: drain did not complete within 30s")).toBe(true);
+  });
+
+  test("--disable-eviction deletes past the budget", () => {
+    const c = setup();
+    const r = k(c, `${DRAIN} --disable-eviction`);
+    expect(r.watch).toBeUndefined();
+    expect(r.out).toMatch(/\npod\/web-\S+ deleted\npod\/web-\S+ deleted\nnode\/worker-1 drained$/);
+  });
+
+  test("a fresh run starts over instead of resuming an interrupted one", () => {
+    const c = setup();
+    k(c, DRAIN);
+    c.advance(6_000);
+    const again = k(c, DRAIN);
+    expect(again.out.startsWith("node/worker-1 already cordoned")).toBe(true);
   });
 });
 

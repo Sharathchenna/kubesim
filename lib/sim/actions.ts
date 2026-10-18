@@ -2,6 +2,7 @@
 // kubectl command a Learner would type to do the same thing.
 
 import { ApiError, Cluster, addNode, execEnv, killNode, kindByName, recoverNode, runArgv, type Deployment, type Node, type Pod, type ReplicaSet, type StatefulSet } from "@/lib/engine";
+import { evictPod } from "@/lib/engine/policy";
 import { genDeployment, genExpose, genPod } from "@/lib/kubectl/generators";
 
 export type ActionResult = { cmd: string; out: string; ok: boolean };
@@ -135,17 +136,60 @@ export interface DrainOptions {
   ignoreDaemonSets?: boolean;
   deleteEmptyDir?: boolean;
   force?: boolean;
+  /** --disable-eviction: delete Pods directly, bypassing PodDisruptionBudgets. */
+  disableEviction?: boolean;
+  /** --dry-run: nothing is sent to the Eviction API, so no budget is checked. */
+  dryRun?: boolean;
+}
+
+export interface DrainResult extends ActionResult {
+  /** Pods a PodDisruptionBudget kept on the Node: kubectl drain retries them every 5s and isn't done until they go. */
+  blocked: Pod[];
+}
+
+const podId = (p: Pod) => `${p.metadata.namespace}/${p.metadata.name}`;
+
+/**
+ * Evicts Pods the way kubectl drain does (drain.go evictPods): each goes through the
+ * Eviction API, which refuses a Pod its PodDisruptionBudget can't spare; drain prints
+ * the refusal and retries it 5s later. A Pod that is already gone counts as done.
+ * Returns the refused Pods. With disableEviction the Pods are deleted instead.
+ */
+export function evictPods(c: Cluster, pods: Pod[], out: string[], disableEviction = false): Pod[] {
+  const live = pods.flatMap((p) => {
+    const cur = c.raw("Pod", p.metadata.namespace, p.metadata.name) as unknown as Pod | undefined;
+    return cur && cur.metadata.uid === p.metadata.uid && cur.metadata.deletionTimestamp === undefined ? [cur] : [];
+  });
+  if (disableEviction) {
+    for (const p of live) c.deleteObject(p);
+    for (const p of live) out.push(`pod/${p.metadata.name} deleted`);
+    return [];
+  }
+  for (const p of live) out.push(`evicting pod ${podId(p)}`);
+  const blocked: Pod[] = [];
+  const evicted: Pod[] = [];
+  for (const p of live) {
+    const r = evictPod(c, p);
+    if (r.ok) evicted.push(p);
+    else {
+      blocked.push(p);
+      out.push(`error when evicting pods/"${p.metadata.name}" -n "${p.metadata.namespace}" (will retry after 5s): ${r.message}`);
+    }
+  }
+  for (const p of evicted) out.push(`pod/${p.metadata.name} evicted`);
+  return blocked;
 }
 
 /** kubectl drain: cordon, then evict every Pod that may be evicted (staging/src/k8s.io/kubectl/pkg/drain). */
-export function drain(c: Cluster, node: string, opts: DrainOptions = { ignoreDaemonSets: true, deleteEmptyDir: true }): ActionResult {
-  const flags = [opts.ignoreDaemonSets ? " --ignore-daemonsets" : "", opts.deleteEmptyDir ? " --delete-emptydir-data" : "", opts.force ? " --force" : ""].join("");
-  return attempt(`kubectl drain ${node}${flags}`, () => {
+export function drain(c: Cluster, node: string, opts: DrainOptions = { ignoreDaemonSets: true, deleteEmptyDir: true }): DrainResult {
+  const flags = [opts.ignoreDaemonSets ? " --ignore-daemonsets" : "", opts.deleteEmptyDir ? " --delete-emptydir-data" : "", opts.force ? " --force" : "", opts.disableEviction ? " --disable-eviction" : ""].join("");
+  let blocked: Pod[] = [];
+  const r = attempt(`kubectl drain ${node}${flags}`, () => {
     c.get<Node>("Node", undefined, node);
     const out = [cordon(c, node, true).out];
     const pods = c.list<Pod>("Pod").filter((p) => p.spec?.nodeName === node && p.metadata.deletionTimestamp === undefined);
     const owner = (p: Pod) => p.metadata.ownerReferences?.find((o) => o.controller);
-    const id = (p: Pod) => `${p.metadata.namespace}/${p.metadata.name}`;
+    const id = podId;
     const mirror = pods.filter((p) => p.metadata.annotations?.["kubernetes.io/config.source"] === "file");
     const ds = pods.filter((p) => owner(p)?.kind === "DaemonSet");
     const bare = pods.filter((p) => !owner(p) && !mirror.includes(p));
@@ -166,15 +210,15 @@ export function drain(c: Cluster, node: string, opts: DrainOptions = { ignoreDae
     ];
     if (warnings.length) out.push(`Warning: ${warnings.join("; ")}`);
     const evict = pods.filter((p) => !ds.includes(p) && !mirror.includes(p));
-    for (const p of evict) out.push(`evicting pod ${id(p)}`);
-    for (const p of evict) {
-      c.deleteObject(p);
-      out.push(`pod/${p.metadata.name} evicted`);
-    }
+    if (opts.dryRun) {
+      for (const p of evict) out.push(`evicting pod ${id(p)}`);
+      for (const p of evict) c.deleteObject(p);
+    } else blocked = evictPods(c, evict, out, opts.disableEviction);
     c.tick(0);
-    out.push(`node/${node} drained`);
+    if (!blocked.length) out.push(`node/${node} drained`);
     return out.join("\n");
   });
+  return { ...r, blocked };
 }
 
 export function chaosKill(c: Cluster, node: string): ActionResult {

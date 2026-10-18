@@ -1,6 +1,6 @@
 # kubectl cosmetic differences
 
-Status: needs-triage
+Status: ready-for-agent
 
 - `--show-labels` prints labels in insertion order; real kubectl sorts them.
 - `describe svc`: `Internal Traffic Policy` and `Events` lines are misaligned.
