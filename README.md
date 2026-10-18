@@ -34,7 +34,7 @@ bun lib/lessons/gen-meta.ts  # regenerates the index pages' Lesson/Challenge/exa
 
 ### Deploying
 
-`bun run build` writes a plain static site to `out/`; upload it to any static host. Set `NEXT_PUBLIC_SITE_URL` at build time to the site's public origin, with no trailing slash (for example `NEXT_PUBLIC_SITE_URL=https://kubesim.example.org bun run build`). Canonical URLs, the sitemap, `robots.txt` and the social cards are built from it. It defaults to `https://kubesim.vercel.app` (see `lib/site.ts`).
+`bun run build` writes a plain static site to `out/`; upload it to any static host. Set `NEXT_PUBLIC_SITE_URL` at build time to the site's public origin, with no trailing slash (for example `NEXT_PUBLIC_SITE_URL=https://kubesim.example.org bun run build`). Canonical URLs, the sitemap, `robots.txt` and the social cards are built from it. It defaults to `https://kubesim-six.vercel.app` (see `lib/site.ts`).
 
 ## How it works
 

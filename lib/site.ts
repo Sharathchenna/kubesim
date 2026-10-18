@@ -4,7 +4,7 @@
 
 import type { Metadata } from "next";
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://kubesim.vercel.app").replace(/\/+$/, "");
+export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://kubesim-six.vercel.app").replace(/\/+$/, "");
 export const SITE_NAME = "kubesim";
 export const SITE_TITLE = "kubesim · learn Kubernetes in your browser";
 export const SITE_DESCRIPTION = "A simulated Kubernetes cluster you can break, fix and watch, running entirely in your browser. Free, open source, nothing to install.";
