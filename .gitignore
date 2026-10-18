@@ -50,3 +50,7 @@ next-env.d.ts
 # local tool output
 /.archify/
 /.shoot.mjs
+# one-off audit logs (findings are fixed in the code)
+/.scratch/fact-check/
+# promo film workspace (kept locally, not part of the site)
+/videos/

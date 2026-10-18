@@ -1,5 +1,5 @@
 // The home page's hero: an isometric twin of the Cluster View (same geometry
-// as the promo film, videos/src/videos/kubesim-film/iso.tsx). One Pod is
+// as the promo film's isometric scenes). One Pod is
 // deleted and its ReplicaSet creates a replacement, on a 12 s CSS loop, while
 // a Service keeps sending traffic to the healthy ones. (Not a crash loop: a
 // crashing container is restarted in place by the kubelet, and the ReplicaSet
