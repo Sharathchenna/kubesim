@@ -52,13 +52,19 @@ export interface Scene {
   steps: Step[];
 }
 
+// Drawn like a blueprint: ink lines on paper. Kinds are told apart by a faint
+// ink fill; colour is kept for health only (green running, amber starting, red failing).
+const INK = "#172340";
+const PAPER = "#fbfaf6";
+const SOFT = "#5a6680";
+const LINE = "rgba(23,35,64,.32)";
 const TONES: Record<Tone, { fill: string; stroke: string; text: string; sub: string; on: string }> = {
-  slate: { fill: "#ffffff", stroke: "#e2e8f0", text: "#0f172a", sub: "#64748b", on: "#0f172a" },
-  violet: { fill: "#f5f3ff", stroke: "#ddd6fe", text: "#4c1d95", sub: "#7c3aed", on: "#7c3aed" },
-  blue: { fill: "#eff6ff", stroke: "#bfdbfe", text: "#1e3a8a", sub: "#2563eb", on: "#2563eb" },
-  green: { fill: "#f0fdf4", stroke: "#bbf7d0", text: "#14532d", sub: "#16a34a", on: "#16a34a" },
-  amber: { fill: "#fffbeb", stroke: "#fde68a", text: "#78350f", sub: "#b45309", on: "#d97706" },
-  red: { fill: "#fef2f2", stroke: "#fecaca", text: "#7f1d1d", sub: "#dc2626", on: "#dc2626" },
+  slate: { fill: PAPER, stroke: LINE, text: INK, sub: SOFT, on: INK },
+  violet: { fill: "rgba(23,35,64,.06)", stroke: LINE, text: INK, sub: SOFT, on: INK },
+  blue: { fill: "rgba(23,35,64,.04)", stroke: LINE, text: INK, sub: SOFT, on: INK },
+  green: { fill: PAPER, stroke: "rgba(21,128,61,.55)", text: INK, sub: "#15803d", on: "#15803d" },
+  amber: { fill: PAPER, stroke: "rgba(180,83,9,.55)", text: INK, sub: "#b45309", on: "#b45309" },
+  red: { fill: PAPER, stroke: "rgba(185,28,28,.55)", text: INK, sub: "#b91c1c", on: "#b91c1c" },
 };
 
 type Pt = { x: number; y: number };
@@ -114,7 +120,7 @@ function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?
               const t = TONES[b.tone ?? "slate"];
               return (
                 <g key={b.id} className="ill-t" opacity={lit(b.id) ? 1 : 0.4}>
-                  <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={14} fill={b.tone && b.tone !== "slate" ? t.fill : "#f8fafc"} fillOpacity={0.6} stroke={on.has(b.id) ? t.on : t.stroke} strokeDasharray="5 4" />
+                  <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={b.tone && b.tone !== "slate" ? t.fill : "rgba(23,35,64,.025)"} stroke={on.has(b.id) ? t.on : t.stroke} strokeDasharray="5 4" />
                   <text x={b.x + 12} y={b.y + 18} fill={t.sub} style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em" }}>
                     {b.label.toUpperCase()}
                   </text>
@@ -129,17 +135,17 @@ function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?
             const active = on.has(e.id);
             return (
               <g key={e.id} className="ill-t" opacity={lit(e.id) ? 1 : 0.3}>
-                <path id={`${pre}-${e.id}`} d={d} fill="none" stroke={active ? "#2563eb" : "#cbd5e1"} strokeWidth={active ? 1.8 : 1.2} markerEnd={`url(#arr-${pre})`} />
+                <path id={`${pre}-${e.id}`} d={d} fill="none" stroke={active ? INK : LINE} strokeWidth={active ? 1.8 : 1.2} markerEnd={`url(#arr-${pre})`} />
                 {e.label && (
                   <g>
-                    <rect x={mid.x - e.label.length * 3 - 6} y={mid.y - 9} width={e.label.length * 6 + 12} height={18} rx={9} fill="#fff" stroke={active ? "#bfdbfe" : "#e2e8f0"} />
-                    <text x={mid.x} y={mid.y + 3.5} textAnchor="middle" fill={active ? "#1d4ed8" : "#64748b"} style={{ fontSize: 10, fontFamily: "var(--font-geist-mono)" }}>
+                    <rect x={mid.x - e.label.length * 3 - 6} y={mid.y - 9} width={e.label.length * 6 + 12} height={18} fill={PAPER} stroke={active ? INK : LINE} />
+                    <text x={mid.x} y={mid.y + 3.5} textAnchor="middle" fill={active ? INK : SOFT} style={{ fontSize: 10, fontFamily: "var(--font-geist-mono)" }}>
                       {e.label}
                     </text>
                   </g>
                 )}
                 {flow.has(e.id) && (
-                  <circle key={`${i}-${e.id}`} className="ill-packet" r={4.5} fill="#2563eb" stroke="#fff" strokeWidth={1.5}>
+                  <circle key={`${i}-${e.id}`} className="ill-packet" r={4.5} fill={INK} stroke={PAPER} strokeWidth={1.5}>
                     <animateMotion dur="1.6s" repeatCount="indefinite" rotate="auto">
                       <mpath href={`#${pre}-${e.id}`} />
                     </animateMotion>
@@ -157,16 +163,16 @@ function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?
               const isOff = off.has(b.id);
               return (
                 <g key={b.id} className="ill-t" opacity={lit(b.id) ? 1 : 0.35}>
-                  <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={10} fill={isOff ? "#f8fafc" : t.fill} stroke={active ? t.on : t.stroke} strokeWidth={active ? 1.8 : 1} />
-                  <text x={b.x + b.w / 2} y={b.y + (b.sub ? b.h / 2 - 2 : b.h / 2 + 4)} textAnchor="middle" fill={isOff ? "#94a3b8" : t.text} style={{ fontSize: 12, fontWeight: 600 }}>
+                  <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={isOff ? PAPER : t.fill} stroke={active ? t.on : t.stroke} strokeWidth={active ? 1.8 : 1} />
+                  <text x={b.x + b.w / 2} y={b.y + (b.sub ? b.h / 2 - 2 : b.h / 2 + 4)} textAnchor="middle" fill={isOff ? "rgba(23,35,64,.4)" : t.text} style={{ fontSize: 12, fontWeight: 600 }}>
                     {b.label}
                   </text>
                   {b.sub && (
-                    <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 13} textAnchor="middle" fill={isOff ? "#94a3b8" : t.sub} style={{ fontSize: 10 }}>
+                    <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 13} textAnchor="middle" fill={isOff ? "rgba(23,35,64,.4)" : t.sub} style={{ fontSize: 10 }}>
                       {b.sub}
                     </text>
                   )}
-                  {isOff && <path d={`M${b.x + b.w - 16},${b.y + 8} l8,8 M${b.x + b.w - 8},${b.y + 8} l-8,8`} stroke="#dc2626" strokeWidth={1.6} strokeLinecap="round" />}
+                  {isOff && <path d={`M${b.x + b.w - 16},${b.y + 8} l8,8 M${b.x + b.w - 8},${b.y + 8} l-8,8`} stroke="#b91c1c" strokeWidth={1.6} strokeLinecap="round" />}
                 </g>
               );
             })}
@@ -174,52 +180,72 @@ function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?
   );
 }
 
-export function Illustration({ scene }: { scene: Scene }) {
+/** Faint ink dot grid on paper behind the drawing. */
+const DOTS: React.CSSProperties = { backgroundImage: "radial-gradient(circle, rgba(23,35,64,.13) 1px, transparent 1.2px)", backgroundSize: "18px 18px" };
+
+/** A Concept Illustration inside a lesson step: collapsed to one ruled row until the learner asks for it. */
+export function Illustration({ scene, defaultOpen = false }: { scene: Scene; /** Start expanded (e.g. on a page that is all diagrams). */ defaultOpen?: boolean }) {
+  const [shown, setShown] = useState(defaultOpen);
   const [i, setI] = useState(0);
   const [big, setBig] = useState(false);
   const step = scene.steps[i];
+  const n = scene.steps.length;
+  const bodyId = `${useId()}-diagram`;
   const controls = (
     <div className="ml-auto flex shrink-0 gap-1.5">
-      <button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0} className="h-7 rounded-lg border border-slate-200 bg-white px-2.5 text-[12px] font-medium text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.04)] hover:bg-slate-50 disabled:opacity-40">
+      <button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0} className="h-7 border border-ink/30 bg-paper px-2.5 text-[12.5px] text-ink transition-colors hover:border-ink disabled:opacity-40 disabled:hover:border-ink/30">
         ← Prev
       </button>
-      <button onClick={() => setI(i === scene.steps.length - 1 ? 0 : i + 1)} className="h-7 rounded-lg border border-slate-900 bg-slate-900 px-2.5 text-[12px] font-medium text-white hover:bg-slate-800">
-        {i === scene.steps.length - 1 ? "Replay" : "Next →"}
+      <button onClick={() => setI(i === n - 1 ? 0 : i + 1)} className="h-7 border border-ink bg-ink px-2.5 text-[12.5px] text-paper transition-colors hover:bg-ink/90">
+        {i === n - 1 ? "Replay" : "Next →"}
       </button>
     </div>
   );
   const caption = (
     <div key={i} className="cv-fade min-w-[240px] flex-1">
-      <div className="text-[13.5px] font-semibold text-slate-900">{step.title}</div>
-      <p className="mt-0.5 text-[13px] leading-relaxed text-slate-600">{step.text}</p>
+      <div className="text-[13.5px] font-medium text-ink">{step.title}</div>
+      <p className="mt-0.5 text-[13px] leading-relaxed text-ink/85">{step.text}</p>
     </div>
   );
 
   return (
-    <figure className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,.04)]">
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-4 py-2.5">
-        <figcaption className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Concept · {scene.title}</figcaption>
-        <span className="ml-auto font-mono text-[11px] tabular-nums text-slate-500">
-          {i + 1}/{scene.steps.length}
-        </span>
-        <button onClick={() => setBig(true)} className="min-h-6 rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50" aria-label={`Enlarge the ${scene.title} illustration`} title="Enlarge">
-          ⤢ Enlarge
+    <figure className="border-y border-ink/25 text-ink" aria-label={`Diagram: ${scene.title}`}>
+      <div className="flex items-center">
+        <button type="button" onClick={() => setShown(!shown)} aria-expanded={shown} aria-controls={bodyId} className="flex min-w-0 flex-1 items-baseline gap-2 px-1 py-2 text-left transition-colors hover:bg-ink/[0.04]">
+          <span className="min-w-0 flex-1 text-[13.5px]">
+            <span className="text-ink-soft">Diagram:</span> <span className="font-medium">{scene.title}</span> <span className="text-ink-soft">· {n} slides</span>
+          </span>
+          <span className="shrink-0 text-[12.5px] text-ink underline underline-offset-4">{shown ? "Hide" : "Show"}</span>
         </button>
+        {shown && (
+          <>
+            <span className="ml-3 font-mono text-[11px] tabular-nums text-ink-soft">
+              {i + 1}/{n}
+            </span>
+            <button onClick={() => setBig(true)} className="ml-2 min-h-6 border border-ink/30 bg-paper px-1.5 py-0.5 text-[11.5px] text-ink transition-colors hover:border-ink" aria-label={`Enlarge the ${scene.title} illustration`} title="Enlarge">
+              ⤢ Enlarge
+            </button>
+          </>
+        )}
       </div>
-      {/* Tapping the drawing opens it large: in a narrow column its labels are too small to read. */}
-      <button type="button" onClick={() => setBig(true)} className="canvas-dots block w-full cursor-zoom-in" style={{ backgroundSize: "18px 18px" }} aria-label={`Enlarge the ${scene.title} illustration`}>
-        <SceneSvg scene={scene} i={i} />
-      </button>
-      <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-slate-100 px-4 py-3">
-        {caption}
-        {controls}
-      </div>
+      {shown && (
+        <div id={bodyId} className="border-t border-ink/15">
+          {/* Tapping the drawing opens it large: in a narrow column its labels are too small to read. */}
+          <button type="button" onClick={() => setBig(true)} className="block w-full cursor-zoom-in bg-paper" style={DOTS} aria-label={`Enlarge the ${scene.title} illustration`}>
+            <SceneSvg scene={scene} i={i} />
+          </button>
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-ink/15 px-1 py-3">
+            {caption}
+            {controls}
+          </div>
+        </div>
+      )}
       {big && (
         <Lightbox title={`Concept · ${scene.title}`} onClose={() => setBig(false)}>
-          <div className="canvas-dots min-h-0 flex-1 overflow-auto" style={{ backgroundSize: "18px 18px" }}>
+          <div className="min-h-0 flex-1 overflow-auto bg-paper" style={DOTS}>
             <SceneSvg scene={scene} i={i} className="mx-auto block h-full max-h-[70vh] w-full" />
           </div>
-          <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-slate-100 px-5 py-4">
+          <div className="flex flex-wrap items-end gap-x-4 gap-y-2 border-t border-ink/15 px-5 py-4">
             {caption}
             {controls}
           </div>
@@ -243,11 +269,11 @@ function Lightbox({ title, onClose, children }: { title: string; onClose: () => 
       onClose={onClose}
       onClick={(e) => e.target === e.currentTarget && onClose()}
       aria-label={title}
-      className="m-auto flex h-[min(92vh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white p-0 shadow-2xl backdrop:bg-slate-900/40 [&:not([open])]:hidden"
+      className="font-sheet m-auto flex h-[min(92vh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden border-[1.5px] border-ink bg-paper p-0 text-ink backdrop:bg-ink/40 [&:not([open])]:hidden"
     >
-      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-3">
-        <div className="text-[12px] font-semibold uppercase tracking-[0.08em] text-slate-500">{title}</div>
-        <button onClick={onClose} className="rounded-md px-2 py-1 text-[13px] font-medium text-slate-600 hover:bg-slate-100" autoFocus>
+      <div className="flex items-center justify-between border-b-[1.5px] border-ink px-5 py-3">
+        <div className="text-[14px] font-medium">{title}</div>
+        <button onClick={onClose} className="border border-ink/30 bg-paper px-2 py-0.5 text-[13px] text-ink transition-colors hover:border-ink" autoFocus>
           Close
         </button>
       </div>

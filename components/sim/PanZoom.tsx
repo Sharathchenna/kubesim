@@ -34,13 +34,6 @@ const MIN_FIT = 0.8;
 /** The floor when the diagram is too wide for the visible canvas: below this, Nodes lose their details. */
 const MIN_FIT_WIDE = 0.6;
 
-export interface MiniRect {
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  kind: string;
-}
 
 const GRID = 24;
 const GRID_MAJOR = GRID * 4;
@@ -53,7 +46,6 @@ export function PanZoom({
   onBackgroundClick,
   inset,
   onZoom,
-  minimap,
   captureWheel = true,
 }: {
   bounds: Bounds;
@@ -64,7 +56,6 @@ export function PanZoom({
   onBackgroundClick?: () => void;
   inset?: Inset;
   onZoom?: (k: number) => void;
-  minimap?: MiniRect[];
   /** Zoom with the plain mouse wheel. Off for canvases embedded in a scrolling page: there only pinch / Ctrl+wheel zooms. */
   captureWheel?: boolean;
 }) {
@@ -194,7 +185,7 @@ export function PanZoom({
     <div
       ref={wrap}
       data-drop="canvas"
-      className={`cv-root canvas-grid relative h-full w-full touch-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/40 ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
+      className={`cv-root canvas-grid relative h-full w-full touch-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal/50 ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
       tabIndex={0}
       role="region"
       aria-label="Cluster View. Arrow keys pan, plus and minus zoom, 0 fits everything; Tab moves between objects."
@@ -288,90 +279,31 @@ export function PanZoom({
         </g>
       </svg>
 
-      <div data-overlay="zoom" className="absolute bottom-4 right-4 flex items-center gap-0.5 rounded-xl border border-slate-200 bg-white/95 p-1 shadow-[0_1px_2px_rgba(15,23,42,.04),0_4px_16px_rgba(15,23,42,.06)] backdrop-blur" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      <div data-overlay="zoom" className="font-sheet absolute bottom-4 right-4 flex items-center border border-ink/30 bg-paper" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
         <IconBtn label="Zoom out" onClick={() => zoomCenter(1 / 1.25)}>
           <path d="M5 10h10" />
         </IconBtn>
-        <button onClick={() => zoomCenter(1 / v.k)} className="w-12 rounded-lg py-1 text-center font-mono text-[11px] text-slate-600 hover:bg-slate-100" title="Zoom to 100%" aria-label={`Zoom ${Math.round(v.k * 100)}%, reset to 100%`}>
+        <button onClick={() => zoomCenter(1 / v.k)} className="h-8 w-12 border-x border-ink/15 text-center font-mono text-[11px] text-ink-soft hover:bg-ink/[0.05] hover:text-ink" title="Zoom to 100%" aria-label={`Zoom ${Math.round(v.k * 100)}%, reset to 100%`}>
           {Math.round(v.k * 100)}%
         </button>
         <IconBtn label="Zoom in" onClick={() => zoomCenter(1.25)}>
           <path d="M5 10h10M10 5v10" />
         </IconBtn>
-        <div className="mx-1 h-5 w-px bg-slate-200" />
+        <span className="h-8 w-px bg-ink/15" />
         <IconBtn label="Fit to screen" onClick={() => fit()}>
           <path d="M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4" />
         </IconBtn>
       </div>
-      {minimap && view && size.w > 0 && (
-        <Minimap
-          rects={minimap}
-          bounds={bounds}
-          view={v}
-          size={size}
-          onJump={(wx, wy) => {
-            touched.current = true;
-            setAnimating(true);
-            setView((cur) => (cur ? { ...cur, x: size.w / 2 - wx * cur.k, y: size.h / 2 - wy * cur.k } : cur));
-          }}
-        />
-      )}
     </div>
   );
 }
 
 function IconBtn({ children, label, onClick }: { children: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button onClick={onClick} title={label} aria-label={label} className="grid h-7 w-7 place-items-center rounded-lg text-slate-600 hover:bg-slate-100">
-      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+    <button onClick={onClick} title={label} aria-label={label} className="grid h-8 w-8 place-items-center text-ink hover:bg-ink/[0.05]">
+      <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="square">
         {children}
       </svg>
     </button>
-  );
-}
-
-/** Overview of the whole diagram with the visible area outlined. Only shown when something is off-screen. */
-function Minimap({ rects, bounds: b, view: v, size, onJump }: { rects: MiniRect[]; bounds: Bounds; view: View; size: { w: number; h: number }; onJump: (wx: number, wy: number) => void }) {
-  const vis = { x: -v.x / v.k, y: -v.y / v.k, w: size.w / v.k, h: size.h / v.k };
-  const overflows = b.x < vis.x - 1 || b.y < vis.y - 1 || b.x + b.w > vis.x + vis.w + 1 || b.y + b.h > vis.y + vis.h + 1;
-  // On a short canvas the map would cover the diagram it summarises.
-  if (!overflows || !rects.length || size.h < 560 || size.w < 900) return null;
-  const s = Math.min(168 / b.w, 104 / b.h);
-  const W = b.w * s;
-  const H = b.h * s;
-  // The visible area, clipped to the map.
-  const vx = Math.max(0, (vis.x - b.x) * s);
-  const vy = Math.max(0, (vis.y - b.y) * s);
-  const vw = Math.min(W, (vis.x + vis.w - b.x) * s) - vx;
-  const vh = Math.min(H, (vis.y + vis.h - b.y) * s) - vy;
-  const jump = (e: React.PointerEvent<HTMLDivElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    onJump(b.x + (e.clientX - r.left) / s, b.y + (e.clientY - r.top) / s);
-  };
-  return (
-    <div
-      data-overlay="minimap"
-      className="absolute bottom-16 right-4 z-10 hidden rounded-xl border border-slate-200 bg-white/95 p-2 shadow-[0_1px_2px_rgba(15,23,42,.04),0_4px_16px_rgba(15,23,42,.06)] backdrop-blur lg:block"
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
-      onDoubleClick={(e) => e.stopPropagation()}
-    >
-      <div
-        role="img"
-        aria-label="Minimap: click to move the view there"
-        className="relative cursor-pointer"
-        style={{ width: W, height: H }}
-        onPointerDown={(e) => {
-          e.currentTarget.setPointerCapture(e.pointerId);
-          jump(e);
-        }}
-        onPointerMove={(e) => e.buttons === 1 && jump(e)}
-      >
-        {rects.map((r, i) => (
-          <div key={i} data-kind={r.kind} className="cv-minimap-node" style={{ left: (r.x - b.x) * s, top: (r.y - b.y) * s, width: Math.max(2, r.w * s), height: Math.max(2, r.h * s) }} />
-        ))}
-        {vw > 0 && vh > 0 && <div className="absolute rounded-[3px] border-[1.5px] border-blue-600 bg-blue-600/10" style={{ left: vx, top: vy, width: vw, height: vh }} />}
-      </div>
-    </div>
   );
 }

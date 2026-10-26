@@ -23,23 +23,23 @@ export default function TryIt({ active = true }: { active?: boolean }) {
   const sim = useSimulation({ setup, warmupMs: 15_000, seed: 3, onStart: (s) => s.exec("kubectl get pods") }, active);
   const [sel, setSel] = useState<Selection>(null);
   const c = sim.cluster;
-  if (!c) return <div className="grid h-full place-items-center text-[13px] text-slate-500">Starting a cluster…</div>;
+  if (!c) return <div className="grid h-full place-items-center text-[14px] text-ink-soft">Starting a cluster…</div>;
   const victim = c.list<Pod>("Pod", "default").find((p) => p.metadata.labels?.app === "web" && !p.metadata.deletionTimestamp);
   const chips = [
+    [victim ? `kubectl delete pod ${victim.metadata.name}` : "kubectl get pods", "Delete a Pod"],
     ["kubectl get pods -o wide", "List the Pods"],
-    [victim ? `kubectl delete pod ${victim.metadata.name}` : "kubectl get pods", "Delete one"],
     ["kubectl scale deployment web --replicas=5", "Scale to 5"],
     ["curl http://web", "Send a request"],
   ];
   return (
     <div className="grid h-full min-h-0 md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:grid-rows-1">
-      <div className="relative hidden min-h-[300px] border-b border-slate-200/80 md:block lg:border-b-0 lg:border-r">
+      <div className="relative hidden min-h-[300px] border-b border-ink/20 md:block lg:border-b-0 lg:border-r">
         <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} captureWheel={false} />
       </div>
-      <div className="flex min-h-0 flex-col bg-white">
-        <div className="flex flex-wrap gap-1.5 border-b border-slate-100 p-3">
+      <div className="flex min-h-0 flex-col bg-paper">
+        <div className="flex flex-wrap gap-1.5 border-b border-ink/15 p-3">
           {chips.map(([cmd, label]) => (
-            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-mono text-[11.5px] text-slate-700 transition hover:border-slate-300 hover:bg-white">
+            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="border border-ink/30 bg-paper px-2.5 py-1 font-mono text-[11.5px] text-ink transition-colors hover:border-ink">
               {label}
             </button>
           ))}

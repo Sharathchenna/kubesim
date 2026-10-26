@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
+import { Geist, Geist_Mono, IBM_Plex_Sans_Condensed } from "next/font/google";
 import "./globals.css";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL, THEME_COLOR } from "@/lib/site";
 
@@ -13,12 +13,11 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-/** Display face for page headlines; the app itself stays in Geist. */
-const instrument = Instrument_Serif({
+/** The drafting face for the home and index pages; the app itself stays in Geist. */
+const plexCondensed = IBM_Plex_Sans_Condensed({
   variable: "--font-display",
   subsets: ["latin"],
-  weight: "400",
-  style: ["normal", "italic"],
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
@@ -40,7 +39,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${instrument.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${plexCondensed.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

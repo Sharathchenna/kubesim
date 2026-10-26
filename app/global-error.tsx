@@ -6,7 +6,7 @@
 export default function GlobalError({ retry }: { error: Error & { digest?: string }; retry: () => void }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", background: "#f7f8fa", color: "#0f172a" }}>
+      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif", background: "#fbfaf6", color: "#172340" }}>
         <title>Something went wrong · kubesim</title>
         <main style={{ maxWidth: 560, margin: "0 auto", padding: "20vh 24px", textAlign: "center" }}>
           <h1 style={{ fontSize: 28, margin: 0 }}>kubesim hit a bug and stopped</h1>

@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kubesim home page: four redesign directions</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+<style>
+  /* ------------------------------------------------------------ the document itself (deliberately plain) */
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.55 "IBM Plex Sans", system-ui, sans-serif; color: #1b1b1b; background: #e9e9e6; }
+  .doc-bar { position: sticky; top: 0; z-index: 10; background: #1b1b1b; color: #eee; display: flex; flex-wrap: wrap; gap: 0; align-items: stretch; }
+  .doc-bar h1 { font-size: 13px; font-weight: 500; margin: 0; padding: 12px 18px; border-right: 1px solid #333; }
+  .doc-bar button { all: unset; cursor: pointer; padding: 12px 16px; font-size: 13px; color: #aaa; border-right: 1px solid #333; }
+  .doc-bar button[aria-selected="true"] { color: #fff; background: #333; }
+  .panel { display: none; }
+  .panel.on { display: block; }
+  .brief { max-width: 1240px; margin: 0 auto; padding: 32px 24px 24px; display: grid; grid-template-columns: 1.1fr 1fr; gap: 40px; }
+  .brief h2 { font-size: 26px; font-weight: 500; margin: 0 0 6px; }
+  .brief .tag { font-size: 13px; color: #666; margin: 0 0 14px; }
+  .brief h3 { font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #555; margin: 18px 0 6px; }
+  .brief ul { margin: 0; padding-left: 18px; }
+  .brief li { margin: 3px 0; }
+  .brief .spec { font-size: 13.5px; }
+  .brief .spec td { padding: 3px 12px 3px 0; vertical-align: top; }
+  .brief .spec td:first-child { color: #666; white-space: nowrap; }
+  .swatch { display: inline-block; width: 12px; height: 12px; border: 1px solid #0003; vertical-align: -1px; margin-right: 4px; }
+  .frame { max-width: 1280px; margin: 0 auto 64px; padding: 0 20px; }
+  .frame > .label { font-size: 12px; color: #666; padding: 0 0 8px; }
+  .page { background: #fff; border: 1px solid #c9c9c4; overflow: hidden; }
+  .prose { max-width: 860px; margin: 0 auto; padding: 36px 24px 80px; }
+  .prose h2 { font-size: 26px; font-weight: 500; margin: 0 0 8px; }
+  .prose h3 { font-size: 17px; font-weight: 600; margin: 32px 0 8px; }
+  .prose code { font-family: "IBM Plex Mono", monospace; font-size: .88em; background: #0000000d; padding: 1px 4px; }
+  .prose table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  .prose th, .prose td { text-align: left; border-bottom: 1px solid #d4d4cf; padding: 8px 10px 8px 0; vertical-align: top; }
+  .prose th { font-weight: 600; font-size: 12.5px; color: #555; }
+  .prose ol > li { margin: 10px 0; }
+  .prose .muted { color: #666; }
+  .callout { background: #fff; border: 1px solid #c9c9c4; padding: 16px 20px; margin: 20px 0; }
+  @media (max-width: 900px) { .brief { grid-template-columns: 1fr; } }
+
+  /* ============================================================ A. man page */
+  .A { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14.5px; line-height: 1.6; color: #141414; background: #fdfdfb; }
+  .A a { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .A a:hover { background: #141414; color: #fdfdfb; text-decoration: none; }
+  .A-run { display: flex; justify-content: space-between; padding: 14px 40px; border-bottom: 1px solid #141414; font-size: 13px; }
+  .A-run nav a { margin-left: 22px; }
+  .A-body { max-width: 980px; padding: 40px 40px 0; }
+  .A h2 { font-size: 14.5px; font-weight: 600; margin: 44px 0 10px; letter-spacing: .02em; }
+  .A h2:first-child { margin-top: 0; }
+  .A .ind { padding-left: 7ch; }
+  .A .big { font-size: 34px; line-height: 1.2; font-weight: 500; letter-spacing: -.01em; margin: 0 0 18px; max-width: 26ch; }
+  .A p { margin: 0 0 12px; max-width: 72ch; }
+  .A .term { border: 1px solid #141414; margin: 22px 0 8px; }
+  .A .term pre { margin: 0; padding: 16px 18px; font: inherit; font-size: 13px; line-height: 1.55; white-space: pre; overflow-x: auto; }
+  .A .term .in { border-top: 1px solid #141414; padding: 10px 18px; display: flex; gap: 10px; }
+  .A .cursor { display: inline-block; width: .6em; background: #141414; animation: A-b 1s steps(1) infinite; }
+  @keyframes A-b { 50% { opacity: 0; } }
+  .A .bad { color: #b3261e; font-weight: 500; }
+  .A .dim { color: #6b6b66; }
+  .A table { border-collapse: collapse; width: 100%; max-width: 900px; }
+  .A td { padding: 3px 3ch 3px 0; vertical-align: top; }
+  .A td:first-child { white-space: nowrap; }
+  .A .foot { display: flex; justify-content: space-between; padding: 14px 40px; border-top: 1px solid #141414; margin-top: 56px; font-size: 13px; }
+
+  /* ============================================================ B. field manual */
+  .B { background: #f3efe6; color: #1d1b17; font-family: "Newsreader", Georgia, serif; font-size: 19px; line-height: 1.55; }
+  .B a { color: #2a5bd7; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  .B .sans { font-family: "IBM Plex Sans", system-ui, sans-serif; }
+  .B-top { display: flex; justify-content: space-between; align-items: baseline; padding: 20px 56px; border-bottom: 1px solid #1d1b17; font-family: "IBM Plex Sans", sans-serif; font-size: 14px; }
+  .B-top b { font-weight: 600; font-size: 15px; }
+  .B-top nav a { color: #1d1b17; text-decoration: none; margin-left: 26px; }
+  .B-hero { display: grid; grid-template-columns: 1.25fr 1fr; gap: 72px; padding: 72px 56px 64px; border-bottom: 1px solid #1d1b17; }
+  .B h1 { font-weight: 400; font-size: 64px; line-height: 1.04; letter-spacing: -.015em; margin: 0 0 28px; }
+  .B .lede { font-size: 22px; line-height: 1.5; max-width: 30em; margin: 0 0 30px; }
+  .B .begin { font-family: "IBM Plex Sans", sans-serif; font-size: 15px; display: flex; gap: 28px; align-items: baseline; }
+  .B .begin a.primary { background: #1d1b17; color: #f3efe6; text-decoration: none; padding: 12px 18px; }
+  .B .toc h4 { font-family: "IBM Plex Sans", sans-serif; font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; margin: 6px 0 16px; }
+  .B .toc ol { list-style: none; padding: 0; margin: 0; counter-reset: ch; }
+  .B .toc li { counter-increment: ch; display: grid; grid-template-columns: 2.2em 1fr auto; gap: 4px 10px; padding: 11px 0; border-top: 1px solid #1d1b1733; }
+  .B .toc li::before { content: counter(ch, upper-roman) "."; color: #6d675b; }
+  .B .toc .t { font-size: 19px; }
+  .B .toc .n { font-family: "IBM Plex Sans", sans-serif; font-size: 13px; color: #6d675b; align-self: baseline; }
+  .B .toc .s { grid-column: 2 / 4; font-size: 15px; color: #6d675b; font-style: italic; }
+  .B-fig { display: grid; grid-template-columns: 1fr 260px; gap: 48px; padding: 64px 56px; border-bottom: 1px solid #1d1b17; }
+  .B figure { margin: 0; }
+  .B figcaption { font-size: 16px; margin-top: 14px; }
+  .B .margin { font-size: 15px; line-height: 1.5; color: #4b463c; border-top: 1px solid #1d1b17; padding-top: 12px; }
+  .B .margin p { margin: 0 0 14px; }
+  .B .margin sup, .B figcaption sup { font-family: "IBM Plex Sans", sans-serif; font-size: 11px; color: #2a5bd7; }
+  .B-three { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 56px; border-bottom: 1px solid #1d1b17; }
+  .B-three > div { padding: 40px 32px 48px 0; }
+  .B-three > div + div { padding-left: 32px; border-left: 1px solid #1d1b1733; }
+  .B-three h3 { font-weight: 400; font-size: 30px; line-height: 1.15; margin: 0 0 12px; }
+  .B-three p { font-size: 17px; margin: 0 0 14px; }
+  .B-three ul { font-size: 16px; padding: 0; list-style: none; margin: 0 0 18px; }
+  .B-three li { padding: 5px 0; border-top: 1px solid #1d1b1722; display: flex; justify-content: space-between; }
+  .B-three li span { font-family: "IBM Plex Sans", sans-serif; font-size: 12px; color: #6d675b; }
+  .B-col { padding: 28px 56px 36px; font-family: "IBM Plex Sans", sans-serif; font-size: 13px; color: #4b463c; display: flex; justify-content: space-between; gap: 40px; }
+
+  /* ============================================================ C. control room */
+  .C { font-family: "Geist", system-ui, sans-serif; font-size: 14px; color: #1c1c1a; background: #f5f5f3; }
+  .C .mono { font-family: "Geist Mono", ui-monospace, monospace; }
+  .C a { color: inherit; }
+  .C-strip { display: flex; align-items: center; gap: 18px; padding: 0 16px; height: 48px; background: #fff; border-bottom: 1px solid #e2e2de; }
+  .C-strip b { font-weight: 600; }
+  .C-strip .say { color: #55554f; }
+  .C-strip .go { margin-left: auto; display: flex; gap: 8px; }
+  .C-btn { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 1px solid #d6d6d1; background: #fff; border-radius: 6px; font-size: 13px; text-decoration: none; }
+  .C-btn.pri { background: #1c1c1a; color: #fff; border-color: #1c1c1a; }
+  .C-app { display: grid; grid-template-columns: 196px 1fr 300px; height: 640px; }
+  .C-rail { border-right: 1px solid #e2e2de; background: #fafaf8; padding: 12px 8px; font-size: 13px; }
+  .C-rail .h { font-size: 11.5px; color: #8a8a83; padding: 14px 8px 6px; }
+  .C-rail a { display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 5px; text-decoration: none; color: #3a3a36; }
+  .C-rail a.cur { background: #ebebe7; color: #1c1c1a; font-weight: 500; }
+  .C-rail a span { color: #8a8a83; font-size: 12px; }
+  .C-main { display: grid; grid-template-rows: 1fr 290px; min-width: 0; }
+  .C-view { position: relative; padding: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-content: start;
+    background-color: #f5f5f3; background-image: linear-gradient(#e9e9e5 1px, transparent 1px), linear-gradient(90deg, #e9e9e5 1px, transparent 1px); background-size: 24px 24px; }
+  .C-node { background: #fff; border: 1px solid #d6d6d1; border-radius: 6px; padding: 10px 12px 12px; }
+  .C-node .nh { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 10px; }
+  .C-node .nh span { color: #8a8a83; }
+  .C-pods { display: flex; flex-wrap: wrap; gap: 8px; }
+  .C-pod { width: calc(50% - 4px); border: 1px solid #d6d6d1; border-radius: 4px; padding: 6px 8px; font-size: 11.5px; line-height: 1.35; }
+  .C-pod .st { display: flex; align-items: center; gap: 6px; color: #55554f; }
+  .C-pod .st i { width: 7px; height: 7px; border-radius: 50%; background: #2f9e44; display: inline-block; }
+  .C-pod.sys { background: #fafaf8; color: #77776f; }
+  .C-pod.bad { border-color: #e03131; background: #fff5f5; }
+  .C-pod.bad .st i { background: none; width: 7px; height: 7px; border-radius: 0; background: #e03131; }
+  .C-pod.new { border-color: #1c7ed6; border-style: dashed; }
+  .C-pod.new .st i { background: none; border: 1.5px solid #1c7ed6; }
+  .C-svc { grid-column: 1 / 4; display: flex; align-items: center; gap: 10px; font-size: 12px; color: #55554f; }
+  .C-svc .box { border: 1px solid #d6d6d1; background: #fff; border-radius: 4px; padding: 5px 10px; color: #1c1c1a; }
+  .C-hint { position: absolute; right: 18px; bottom: 14px; background: #1c1c1a; color: #fff; font-size: 12.5px; padding: 8px 10px; border-radius: 6px; max-width: 280px; line-height: 1.4; }
+  .C-term { background: #141413; color: #d9d9d4; border-top: 1px solid #e2e2de; display: grid; grid-template-rows: 1fr auto auto; min-height: 0; }
+  .C-term pre { min-height: 0; margin: 0; padding: 12px 16px; font: 12.5px/1.55 "Geist Mono", monospace; overflow: auto; white-space: pre; }
+  .C-term .p { color: #8a8a83; }
+  .C-term .c { color: #fff; }
+  .C-term .r { color: #ff8787; }
+  .C-chips { display: flex; gap: 6px; padding: 0 16px 8px; flex-wrap: wrap; }
+  .C-chips span { font: 12px "Geist Mono", monospace; border: 1px solid #3a3a36; color: #bdbdb6; padding: 3px 8px; border-radius: 4px; }
+  .C-in { border-top: 1px solid #2c2c29; padding: 10px 16px; font: 13px "Geist Mono", monospace; color: #fff; }
+  .C-ev { border-left: 1px solid #e2e2de; background: #fff; display: flex; flex-direction: column; min-height: 0; }
+  .C-ev .h { padding: 12px 14px; border-bottom: 1px solid #e2e2de; font-size: 12.5px; font-weight: 500; display: flex; justify-content: space-between; }
+  .C-ev .h span { color: #8a8a83; font-weight: 400; }
+  .C-ev ol { list-style: none; margin: 0; padding: 0; overflow: auto; font-size: 12.5px; }
+  .C-ev li { padding: 9px 14px; border-bottom: 1px solid #efefeb; line-height: 1.4; }
+  .C-ev li .m { display: flex; justify-content: space-between; color: #8a8a83; font-size: 11.5px; margin-bottom: 2px; }
+  .C-ev li.w .m b { color: #e03131; }
+  .C-ev li .why { margin-top: 5px; color: #55554f; font-size: 12px; border-left: 2px solid #d6d6d1; padding-left: 8px; }
+  .C-index { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 0; background: #fff; border-top: 1px solid #e2e2de; }
+  .C-index > div { padding: 28px 28px 32px; }
+  .C-index > div + div { border-left: 1px solid #e2e2de; }
+  .C-index h3 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  .C-index .sub { color: #77776f; font-size: 13px; margin: 0 0 16px; }
+  .C-index table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .C-index td { padding: 7px 0; border-top: 1px solid #efefeb; vertical-align: top; }
+  .C-index td.k { color: #8a8a83; width: 2.6em; font-family: "Geist Mono", monospace; font-size: 12px; }
+  .C-index td.r { text-align: right; color: #8a8a83; white-space: nowrap; }
+  .C-pill { font-size: 11px; border: 1px solid #d6d6d1; border-radius: 3px; padding: 0 5px; color: #55554f; }
+  .C-foot { display: flex; justify-content: space-between; padding: 16px 28px; border-top: 1px solid #e2e2de; color: #77776f; font-size: 12.5px; background: #fafaf8; }
+
+  /* ============================================================ D. blueprint */
+  .D { font-family: "IBM Plex Sans Condensed", "IBM Plex Sans", sans-serif; color: #172340; background: #fbfaf6; font-size: 15px; }
+  .D .mono { font-family: "IBM Plex Mono", monospace; }
+  .D a { color: inherit; }
+  .D-top { display: flex; align-items: center; padding: 0 40px; height: 56px; border-bottom: 1.5px solid #172340; font-size: 14px; }
+  .D-top b { font-weight: 600; letter-spacing: .02em; }
+  .D-top nav { margin-left: auto; display: flex; gap: 28px; }
+  .D-top nav a { text-decoration: none; }
+  .D-sheet { margin: 28px 40px 0; border: 1.5px solid #172340; position: relative;
+    background-image: linear-gradient(#17234012 1px, transparent 1px), linear-gradient(90deg, #17234012 1px, transparent 1px); background-size: 16px 16px; }
+  .D-head { display: grid; grid-template-columns: 1fr auto; border-bottom: 1.5px solid #172340; background: #fbfaf6; }
+  .D-head h1 { margin: 0; padding: 22px 26px; font-weight: 500; font-size: 40px; line-height: 1.1; letter-spacing: -.01em; }
+  .D-head .cta { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 0 26px; border-left: 1.5px solid #172340; font-size: 14px; }
+  .D-head .cta a { display: block; text-decoration: none; padding: 8px 14px; border: 1.5px solid #172340; text-align: center; }
+  .D-head .cta a.pri { background: #172340; color: #fbfaf6; }
+  .D svg { display: block; width: 100%; height: auto; }
+  .D-notes { display: grid; grid-template-columns: repeat(5, 1fr); border-top: 1.5px solid #172340; background: #fbfaf6; }
+  .D-notes > div { padding: 14px 16px 18px; font-size: 13.5px; line-height: 1.45; }
+  .D-notes > div + div { border-left: 1px solid #17234040; }
+  .D-notes .n { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 1.5px solid #172340; border-radius: 50%; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+  .D-notes .n.hot { border-color: #d9480f; color: #d9480f; }
+  .D-notes code { font-family: "IBM Plex Mono", monospace; font-size: 12px; }
+  .D-block { position: absolute; right: -1.5px; bottom: -1.5px; }
+  .D-rows { margin: 40px 40px 0; display: grid; grid-template-columns: 180px 1fr; border-top: 1.5px solid #172340; }
+  .D-rows > .lab { padding: 18px 0; font-weight: 600; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid #17234040; }
+  .D-rows > .val { padding: 18px 0; border-bottom: 1px solid #17234040; display: grid; grid-template-columns: repeat(4, 1fr); gap: 0 28px; font-size: 14.5px; }
+  .D-rows .val div { padding: 2px 0; }
+  .D-rows .val small { display: block; color: #5a6680; font-size: 12.5px; }
+  .D-title { margin: 40px 40px 32px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; border: 1.5px solid #172340; font-size: 12.5px; }
+  .D-title > div { padding: 8px 12px; }
+  .D-title > div + div { border-left: 1px solid #172340; }
+  .D-title small { display: block; color: #5a6680; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+
+<div class="doc-bar" role="tablist">
+  <h1>kubesim home page · redesign directions</h1>
+  <button role="tab" data-p="why">Why it reads as vibecoded</button>
+  <button role="tab" data-p="a">A · Manual page</button>
+  <button role="tab" data-p="b">B · Field manual</button>
+  <button role="tab" data-p="c">C · Control room</button>
+  <button role="tab" data-p="d">D · Blueprint</button>
+  <button role="tab" data-p="rec">Recommendation</button>
+</div>
+
+<!-- ================================================================== WHY -->
+<section class="panel" id="why">
+  <div class="prose">
+    <h2>Why the current home page reads as vibecoded</h2>
+    <p class="muted">It isn't one problem. The page stacks almost every pattern that AI-generated landing pages share, so even good content reads as a template. Everything below is in <code>app/page.tsx</code> and <code>app/globals.css</code>.</p>
+    <table>
+      <tr><th>Pattern</th><th>Where</th><th>Why it gives it away</th></tr>
+      <tr><td>Tiny uppercase mono "eyebrow" above every heading</td><td><code>&lt;Eyebrow&gt;</code>, 8 uses</td><td>The single most common tell of 2024–26 landing pages. It labels things the heading already says.</td></tr>
+      <tr><td>Serif headline with one italic, coloured word</td><td>"cluster you can <em>see</em>", "<em>six minutes</em> away"</td><td>Instrument Serif + italic accent is the default "tasteful" hero of generated sites.</td></tr>
+      <tr><td>Blurred colour blobs + dot grid + noise grain</td><td><code>.bg-field</code></td><td>Three radial gradients (blue, violet, teal) is the stock AI background. The grain was added "so it doesn't look like a template", which is itself the template.</td></tr>
+      <tr><td>Bento grid of rounded-3xl cards with hover shadows</td><td>"Five ways in"</td><td>Bento with one big card and four small ones is the default feature section.</td></tr>
+      <tr><td>Stats strip (19 · 30 · 2 · 11)</td><td>Hero</td><td>Counts with thin dividers mimic SaaS "trusted by" bars; "2 practice exams" isn't a boast.</td></tr>
+      <tr><td>Fake macOS window chrome, pulsing "live" and "waiting" dots</td><td>Try it, Lessons card</td><td>Decoration pretending to be status. Three grey dots on a browser tab inside a browser.</td></tr>
+      <tr><td>Punchy fragment headlines</td><td>"This isn't a video." "Learn it, break it, prove it." "Down to the RESTARTS column." "Your cluster to break."</td><td>Rule-of-three and "This isn't X" are signature LLM copy moves.</td></tr>
+      <tr><td>Decorative isometric illustration as the hero</td><td><code>HeroCluster</code></td><td>The real, working cluster is below the fold; the top of the page shows a drawing of it.</td></tr>
+      <tr><td>Same CTA pair twice, centred closing CTA</td><td>Hero + closing</td><td>Landing-page skeleton: hero → features → proof → CTA → footer.</td></tr>
+      <tr><td>Arrow that nudges right on hover, everywhere</td><td><code>&lt;Arrow&gt;</code></td><td>Micro-interaction on every link flattens them all into "call to action".</td></tr>
+    </table>
+    <div class="callout"><b>The fix isn't a new coat of paint.</b> Each direction below drops the landing-page skeleton entirely and picks <em>one</em> idea that only kubesim could have. They share four rules: one typeface family plus one mono, one accent colour used only for meaning, no decoration that isn't information, and copy written as plain statements.</div>
+    <p class="muted">All text, counts and terminal output in the mockups are real: 19 lessons in 7 tracks, 30 challenges, 2 practice exams, 11 explainers, and output produced by the engine with <code>seed: 42</code>.</p>
+  </div>
+</section>
+
+<!-- ================================================================== A -->
+<section class="panel" id="a">
+  <div class="brief">
+    <div>
+      <h2>A · Manual page</h2>
+      <p class="tag">The site reads like <code>man kubesim</code>. One monospace font, black on white, no images.</p>
+      <h3>The idea</h3>
+      <p>People come here to learn a CLI. Treat the home page as the tool's documentation: NAME, SYNOPSIS, DESCRIPTION, then the curriculum as a plain table. The only "visual" is a real terminal with a real prompt, so the first thing a visitor can do is type.</p>
+      <h3>What goes away</h3>
+      <ul><li>Every illustration, gradient, card, shadow and rounded corner</li><li>The serif display font</li><li>The isometric hero (the real Cluster View is one click away)</li></ul>
+    </div>
+    <div>
+      <h3>Spec</h3>
+      <table class="spec">
+        <tr><td>Type</td><td>IBM Plex Mono only, 14.5 / 1.6. One size for body, one for the opening line.</td></tr>
+        <tr><td>Colour</td><td><span class="swatch" style="background:#fdfdfb"></span>paper <span class="swatch" style="background:#141414"></span>ink <span class="swatch" style="background:#b3261e"></span>errors only</td></tr>
+        <tr><td>Links</td><td>Underlined; inverted block on hover, like a terminal selection</td></tr>
+        <tr><td>Build cost</td><td>Lowest. Mostly deleting code.</td></tr>
+      </table>
+      <h3>Risks</h3>
+      <ul><li>Cold for absolute beginners who've never seen a terminal.</li><li>Hides the visual Cluster View, the thing that makes kubesim different from a doc site.</li></ul>
+    </div>
+  </div>
+  <div class="frame"><div class="label">Desktop, 1280 wide, first two screens</div>
+  <div class="page A">
+    <div class="A-run"><span>KUBESIM(1)</span><span>Kubernetes, simulated in the browser</span><nav><a href="#">lessons</a><a href="#">challenges</a><a href="#">exams</a><a href="#">sandbox</a><a href="#">source</a></nav></div>
+    <div class="A-body">
+      <h2>NAME</h2>
+      <div class="ind">
+        <p class="big">kubesim — a Kubernetes cluster that runs in your browser, for learning.</p>
+        <p>Three Nodes, a control plane and real <a href="#">kubectl</a>, simulated in this tab. Nothing to install, no account, no cloud bill. Modelled on Kubernetes v1.37.</p>
+        <div class="term">
+<pre><span class="dim">$</span> kubectl get pods
+NAME                   READY   STATUS             RESTARTS      AGE
+<span class="bad">crashy                 0/1     CrashLoopBackOff   6 (50s ago)   6m20s</span>
+web-855b456667-24r6j   1/1     Running            0             6m19s
+web-855b456667-67cn8   1/1     Running            0             6m19s
+web-855b456667-nl89k   1/1     Running            0             6m19s
+<span class="dim">$</span> kubectl delete pod web-855b456667-24r6j
+pod "web-855b456667-24r6j" deleted from default namespace
+<span class="dim">$</span> kubectl get pods -l app=web
+NAME                   READY   STATUS    RESTARTS   AGE
+web-855b456667-67cn8   1/1     Running   0          6m24s
+web-855b456667-nl89k   1/1     Running   0          6m24s
+web-855b456667-zbdbf   1/1     Running   0          4s</pre>
+          <div class="in"><span class="dim">$</span><span>kubectl describe pod crashy<span class="cursor">&nbsp;</span></span></div>
+        </div>
+        <p class="dim">This prompt is live. Try <a href="#">kubectl logs crashy --previous</a> or <a href="#">kubectl drain worker-1</a>.</p>
+      </div>
+
+      <h2>SYNOPSIS</h2>
+      <div class="ind">
+        <table>
+          <tr><td><a href="#">kubesim learn</a></td><td>19 lessons, each a short list of steps that check themselves as you type.</td></tr>
+          <tr><td><a href="#">kubesim challenges</a></td><td>30 broken clusters. You get a symptom, not instructions.</td></tr>
+          <tr><td><a href="#">kubesim exams</a></td><td>2 timed practice exams in the style of the CKAD and CKA, graded from cluster state.</td></tr>
+          <tr><td><a href="#">kubesim explainers</a></td><td>11 narrated replays: self-healing, rollouts, a Node dying.</td></tr>
+          <tr><td><a href="#">kubesim sandbox</a></td><td>An empty cluster, the Cluster View, and nobody grading you.</td></tr>
+        </table>
+      </div>
+
+      <h2>LESSONS</h2>
+      <div class="ind">
+        <table>
+          <tr><td>01 foundations</td><td>First Pod, YAML, ReplicaSets, Services, Namespaces</td></tr>
+          <tr><td>02 workloads</td><td>Deployments, Rollouts, Health checks, Jobs</td></tr>
+          <tr><td>03 config</td><td>Resources, ConfigMaps</td></tr>
+          <tr><td>04 networking</td><td>Ingress, NetworkPolicy</td></tr>
+          <tr><td>05 storage</td><td>Volumes, StatefulSets</td></tr>
+          <tr><td>06 operations</td><td>Troubleshooting, Scheduling, Autoscaling</td></tr>
+          <tr><td>07 security</td><td>RBAC</td></tr>
+        </table>
+        <p style="margin-top:12px">Start with <a href="#">01 first-pod</a>. It takes about six minutes.</p>
+      </div>
+
+      <h2>BUGS</h2>
+      <div class="ind"><p>It's a simulation. Back-off timings, events, scheduler reasons and kubectl output follow real Kubernetes defaults and are pinned by tests against a real kind cluster, but some corners are simpler. Report differences at <a href="#">github.com/Sharathchenna/kubesim</a>.</p></div>
+    </div>
+    <div class="A-run foot" style="border-bottom:0"><span>kubesim 1.0.0</span><span>MIT · Kubernetes® is a trademark of The Linux Foundation</span><span>KUBESIM(1)</span></div>
+  </div></div>
+</section>
+
+<!-- ================================================================== B -->
+<section class="panel" id="b">
+  <div class="brief">
+    <div>
+      <h2>B · Field manual</h2>
+      <p class="tag">An illustrated technical book. The table of contents is the hero.</p>
+      <h3>The idea</h3>
+      <p>kubesim is a course, so let the home page look like the first spread of a well-made book: a title, a short preface, and the contents. Figures are captioned and numbered; the claims about fidelity go in margin notes beside them, where a textbook would put them. Warm paper and a real text face make it feel written, not generated.</p>
+      <h3>What goes away</h3>
+      <ul><li>Cards, the bento grid, the stats strip, the gradient field</li><li>Instrument Serif's italic accent; the serif is used for <em>reading</em>, in roman</li><li>The closing CTA section (the contents already is the CTA)</li></ul>
+    </div>
+    <div>
+      <h3>Spec</h3>
+      <table class="spec">
+        <tr><td>Type</td><td>Newsreader (text serif) for headings and body; IBM Plex Sans for UI labels and buttons</td></tr>
+        <tr><td>Colour</td><td><span class="swatch" style="background:#f3efe6"></span>paper <span class="swatch" style="background:#1d1b17"></span>ink <span class="swatch" style="background:#2a5bd7"></span>links only</td></tr>
+        <tr><td>Structure</td><td>Hairline rules instead of boxes; roman numerals for tracks; figure numbers</td></tr>
+        <tr><td>Build cost</td><td>Medium. Needs a flat 2D figure (could reuse the Cluster View's renderer, frozen).</td></tr>
+      </table>
+      <h3>Risks</h3>
+      <ul><li>Reads as "course", less as "tool". The sandbox gets less weight.</li><li>Needs typographic discipline everywhere else on the site, or the home page will feel like a different product.</li></ul>
+    </div>
+  </div>
+  <div class="frame"><div class="label">Desktop, 1280 wide</div>
+  <div class="page B">
+    <div class="B-top"><b>kubesim</b><nav><a href="#">Lessons</a><a href="#">Challenges</a><a href="#">Exams</a><a href="#">Explainers</a><a href="#">Sandbox</a></nav></div>
+    <div class="B-hero">
+      <div>
+        <h1>Kubernetes, learned on a cluster you can break.</h1>
+        <p class="lede">kubesim simulates a three-Node Kubernetes cluster in your browser. You type real kubectl, the control plane reacts as it would on a real cluster, and each lesson explains what just happened and why.</p>
+        <div class="begin"><a class="primary" href="#">Begin with chapter I</a><a href="#">or open an empty cluster</a></div>
+        <p class="sans" style="font-size:13.5px;color:#6d675b;margin-top:22px">Free and open source. Nothing to install, no account.</p>
+      </div>
+      <div class="toc">
+        <h4>Contents</h4>
+        <ol>
+          <li><span class="t">Foundations</span><span class="n">5 lessons</span><span class="s">First Pod, YAML, ReplicaSets, Services, Namespaces</span></li>
+          <li><span class="t">Workloads</span><span class="n">4</span><span class="s">Deployments, Rollouts, Health checks, Jobs</span></li>
+          <li><span class="t">Configuration</span><span class="n">2</span><span class="s">Resources, ConfigMaps</span></li>
+          <li><span class="t">Networking</span><span class="n">2</span><span class="s">Ingress, NetworkPolicy</span></li>
+          <li><span class="t">Storage</span><span class="n">2</span><span class="s">Volumes, StatefulSets</span></li>
+          <li><span class="t">Operations</span><span class="n">3</span><span class="s">Troubleshooting, Scheduling, Autoscaling</span></li>
+          <li><span class="t">Security</span><span class="n">1</span><span class="s">RBAC</span></li>
+        </ol>
+      </div>
+    </div>
+    <div class="B-fig">
+      <figure>
+        <svg viewBox="0 0 760 300" role="img" aria-label="Three nodes; one deleted Pod replaced on another node" style="width:100%">
+          <g font-family="IBM Plex Sans, sans-serif" font-size="12" fill="#1d1b17">
+            <g fill="none" stroke="#1d1b17" stroke-width="1.2">
+              <rect x="10" y="40" width="230" height="210"/><rect x="265" y="40" width="230" height="210"/><rect x="520" y="40" width="230" height="210"/>
+            </g>
+            <g fill="#6d675b"><text x="20" y="240">control-plane</text><text x="275" y="240">worker-1</text><text x="530" y="240">worker-2</text></g>
+            <g fill="none" stroke="#1d1b17" stroke-width="1"><rect x="28" y="62" width="194" height="30"/><rect x="28" y="102" width="194" height="30"/><rect x="28" y="142" width="194" height="30"/><rect x="28" y="182" width="194" height="30"/></g>
+            <text x="38" y="81">kube-apiserver</text><text x="38" y="121">kube-scheduler</text><text x="38" y="161">kube-controller-manager</text><text x="38" y="201">etcd</text>
+            <g stroke="#1d1b17" stroke-width="1"><rect x="285" y="62" width="88" height="56" fill="#fff"/><rect x="385" y="62" width="88" height="56" fill="#dfe7fb" stroke="#2a5bd7"/></g>
+            <text x="295" y="85">web-…67cn8</text><text x="295" y="103" fill="#6d675b">Running</text>
+            <text x="395" y="85" fill="#2a5bd7">web-…zbdbf</text><text x="395" y="103" fill="#2a5bd7">new, 4s</text>
+            <rect x="540" y="62" width="88" height="56" fill="none" stroke="#1d1b17" stroke-dasharray="4 3"/><text x="550" y="85" fill="#6d675b">web-…24r6j</text><text x="550" y="103" fill="#6d675b">deleted</text>
+            <rect x="640" y="62" width="88" height="56" fill="#fff" stroke="#1d1b17"/><text x="650" y="85">web-…nl89k</text><text x="650" y="103" fill="#6d675b">Running</text>
+            <rect x="540" y="130" width="88" height="56" fill="#fbe3e1" stroke="#b3261e"/><text x="550" y="153" fill="#b3261e">crashy</text><text x="550" y="171" fill="#b3261e">BackOff ×6</text>
+            <path d="M584 62 C 584 10, 430 10, 430 58" fill="none" stroke="#2a5bd7" stroke-width="1.2" marker-end="url(#Bar)"/>
+            <defs><marker id="Bar" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0L8 4L0 8z" fill="#2a5bd7"/></marker></defs>
+            <text x="470" y="14" fill="#2a5bd7" font-style="italic" font-family="Newsreader, serif" font-size="14">ReplicaSet makes a replacement¹</text>
+          </g>
+        </svg>
+        <figcaption><i>Fig. 1.</i> A Pod is deleted on worker-2. The ReplicaSet sees two of three replicas and creates a third; the scheduler puts it on worker-1. Meanwhile <i>crashy</i> is restarted in place by the kubelet, not replaced².</figcaption>
+      </figure>
+      <aside class="margin">
+        <p><sup>1</sup> Within about a second, as the controller's informer would on a real cluster.</p>
+        <p><sup>2</sup> Back-off doubles from 10 s to a 5-minute cap, the kubelet's real defaults. The RESTARTS column reads "6 (50s ago)" for the same reason it would on yours.</p>
+        <p>Every behaviour is written up from the Kubernetes source and checked against a real kind cluster.</p>
+      </aside>
+    </div>
+    <div class="B-three">
+      <div><h3>Challenges</h3><p>A cluster is broken. You get the symptom a user would report and find the cause yourself.</p>
+        <ul><li>The site is down<span>easy</span></li><li>Connection refused<span>easy</span></li><li>The database won't stay up<span>medium</span></li><li>Pending forever<span>medium</span></li></ul><a class="sans" style="font-size:14px" href="#">All 30 challenges</a></div>
+      <div><h3>Practice exams</h3><p>Timed tasks in the style of the CKAD and CKA, graded from the cluster's state, with solutions afterwards.</p>
+        <ul><li>CKAD-style practice exam<span>12 tasks · 60 min</span></li><li>CKA-style practice exam<span>10 tasks · 60 min</span></li></ul><a class="sans" style="font-size:14px" href="#">Take an exam</a></div>
+      <div><h3>Explainers</h3><p>Narrated replays you watch rather than type: the cluster acts, the captions say why.</p>
+        <ul><li>How self-healing works</li><li>When a Node dies</li><li>CrashLoopBackOff</li><li>Readiness vs liveness</li></ul><a class="sans" style="font-size:14px" href="#">All 11 explainers</a></div>
+    </div>
+    <div class="B-col"><span>kubesim 1.0.0 · MIT licence · <a href="#">source</a></span><span>Kubernetes® is a registered trademark of The Linux Foundation. CKAD™ and CKA™ are trademarks of The Linux Foundation; these exams are unofficial.</span></div>
+  </div></div>
+</section>
+
+<!-- ================================================================== C -->
+<section class="panel" id="c">
+  <div class="brief">
+    <div>
+      <h2>C · Control room</h2>
+      <p class="tag">The home page <em>is</em> a running cluster. Marketing is one sentence above it.</p>
+      <h3>The idea</h3>
+      <p>Today the best thing on the page, the live cluster, sits below a drawing of itself. Flip it: the first screen is the actual app (Cluster View, terminal, event stream) with a single line of explanation and suggested commands. The site's navigation becomes the app's left rail. Below the fold is a dense index of everything to do, laid out like a tool's file list rather than marketing cards.</p>
+      <p>The event stream does the teaching: each event can carry a one-line "why" in plain English, which is the thing kubesim does that a real cluster doesn't.</p>
+      <h3>What goes away</h3>
+      <ul><li>The hero, the isometric illustration and the stats</li><li>All section headlines and eyebrows</li><li>The fidelity section (its claim is proven by the screen itself; keep one line and a link)</li></ul>
+    </div>
+    <div>
+      <h3>Spec</h3>
+      <table class="spec">
+        <tr><td>Type</td><td>Geist + Geist Mono (already loaded; the fonts weren't the problem)</td></tr>
+        <tr><td>Colour</td><td><span class="swatch" style="background:#f5f5f3"></span>canvas <span class="swatch" style="background:#1c1c1a"></span>ink <span class="swatch" style="background:#2f9e44"></span><span class="swatch" style="background:#e03131"></span><span class="swatch" style="background:#1c7ed6"></span>status only, matching the Cluster View's tokens</td></tr>
+        <tr><td>Shape</td><td>6 px radius max, 1 px borders, no shadows</td></tr>
+        <tr><td>Build cost</td><td>Medium-high. Reuses <code>TryIt</code>, Cluster View and the terminal; needs a server-rendered static first frame so the page isn't blank before JS.</td></tr>
+      </table>
+      <h3>Risks</h3>
+      <ul><li>Performance: the engine boots above the fold. Ship the SSR'd snapshot first, start the clock on first interaction.</li><li>Mobile: three panes don't fit. On phones, show the terminal and a compact node list; the Cluster View goes behind a tab.</li><li>First-time visitors need the one-line explanation to be very clear.</li></ul>
+    </div>
+  </div>
+  <div class="frame"><div class="label">Desktop, 1280 wide. The whole first screen is the product.</div>
+  <div class="page C">
+    <div class="C-strip">
+      <b>kubesim</b>
+      <span class="say">A Kubernetes cluster, simulated in this tab. It's running now: try a command below, or start the course.</span>
+      <span class="go"><a class="C-btn" href="#">GitHub</a><a class="C-btn pri" href="#">Start lesson 1</a></span>
+    </div>
+    <div class="C-app">
+      <nav class="C-rail">
+        <a class="cur" href="#">Cluster <span>live</span></a>
+        <div class="h">Learn</div>
+        <a href="#">Lessons <span>19</span></a>
+        <a href="#">Challenges <span>30</span></a>
+        <a href="#">Practice exams <span>2</span></a>
+        <a href="#">Explainers <span>11</span></a>
+        <a href="#">Concepts</a>
+        <div class="h">You</div>
+        <a href="#">Progress <span>0 / 19</span></a>
+        <div class="h">Cluster</div>
+        <a href="#">Reset</a>
+        <a href="#">Open full screen</a>
+      </nav>
+      <div class="C-main">
+        <div class="C-view">
+          <div class="C-node"><div class="nh mono"><b>control-plane</b><span>Ready</span></div>
+            <div class="C-pods"><div class="C-pod sys mono">kube-apiserver</div><div class="C-pod sys mono">scheduler</div><div class="C-pod sys mono">controller-mgr</div><div class="C-pod sys mono">etcd</div></div></div>
+          <div class="C-node"><div class="nh mono"><b>worker-1</b><span>Ready</span></div>
+            <div class="C-pods"><div class="C-pod mono">web-…67cn8<div class="st"><i></i>Running</div></div><div class="C-pod new mono">web-…zbdbf<div class="st"><i></i>New · 4s</div></div></div></div>
+          <div class="C-node"><div class="nh mono"><b>worker-2</b><span>Ready</span></div>
+            <div class="C-pods"><div class="C-pod mono">web-…nl89k<div class="st"><i></i>Running</div></div><div class="C-pod bad mono">crashy<div class="st"><i></i>BackOff ×6</div></div></div></div>
+          <div class="C-svc mono"><span class="box">svc/web</span> → 3 endpoints · <span class="box">deploy/web</span> 3/3 · <span class="box">rs/web-855b456667</span> 3/3</div>
+          <div class="C-hint">You deleted web-…24r6j. Its ReplicaSet noticed it had 2 of 3 and made a replacement on worker-1.</div>
+        </div>
+        <div class="C-term">
+<pre><span class="p">$</span> <span class="c">kubectl get pods</span>
+NAME                   READY   STATUS             RESTARTS      AGE
+<span class="r">crashy                 0/1     CrashLoopBackOff   6 (50s ago)   6m20s</span>
+web-855b456667-24r6j   1/1     Running            0             6m19s
+web-855b456667-67cn8   1/1     Running            0             6m19s
+web-855b456667-nl89k   1/1     Running            0             6m19s
+<span class="p">$</span> <span class="c">kubectl delete pod web-855b456667-24r6j</span>
+pod "web-855b456667-24r6j" deleted from default namespace</pre>
+          <div class="C-chips"><span>kubectl logs crashy --previous</span><span>kubectl drain worker-1 --ignore-daemonsets</span><span>kubectl scale deploy web --replicas=6</span><span>kubectl get events</span></div>
+          <div class="C-in"><span style="color:#8a8a83">$</span> kubectl describe pod crashy▍</div>
+        </div>
+      </div>
+      <aside class="C-ev">
+        <div class="h">Events <span>default</span></div>
+        <ol>
+          <li><div class="m"><b>SuccessfulCreate</b><span>4s</span></div>Created pod: web-855b456667-zbdbf<div class="why">The ReplicaSet wants 3 Pods and saw 2.</div></li>
+          <li><div class="m"><b>Scheduled</b><span>4s</span></div>Assigned default/web-…zbdbf to worker-1<div class="why">worker-1 had fewer Pods, so the scheduler scored it higher.</div></li>
+          <li><div class="m"><b>Killing</b><span>5s</span></div>Stopping container nginx</li>
+          <li class="w"><div class="m"><b>BackOff</b><span>49s</span></div>Back-off restarting failed container crashy<div class="why">It exits with code 1. The kubelet waits 10s, 20s, 40s… up to 5 min between restarts.</div></li>
+          <li><div class="m"><b>Started</b><span>52s</span></div>Container started</li>
+          <li><div class="m"><b>Pulled</b><span>6m</span></div>Successfully pulled image "busybox" in 0.854s</li>
+        </ol>
+      </aside>
+    </div>
+    <div class="C-index">
+      <div><h3>Lessons</h3><p class="sub">Seven tracks. Steps check themselves as you type.</p>
+        <table>
+          <tr><td class="k">01</td><td>Foundations<br><span style="color:#8a8a83">First Pod, YAML, ReplicaSets, Services, Namespaces</span></td><td class="r">5</td></tr>
+          <tr><td class="k">02</td><td>Workloads<br><span style="color:#8a8a83">Deployments, Rollouts, Health checks, Jobs</span></td><td class="r">4</td></tr>
+          <tr><td class="k">03</td><td>Configuration</td><td class="r">2</td></tr>
+          <tr><td class="k">04</td><td>Networking</td><td class="r">2</td></tr>
+          <tr><td class="k">05</td><td>Storage</td><td class="r">2</td></tr>
+          <tr><td class="k">06</td><td>Operations</td><td class="r">3</td></tr>
+          <tr><td class="k">07</td><td>Security</td><td class="r">1</td></tr>
+        </table></div>
+      <div><h3>Challenges</h3><p class="sub">Something is broken. Find out what.</p>
+        <table>
+          <tr><td>The site is down</td><td class="r"><span class="C-pill">easy</span></td></tr>
+          <tr><td>Connection refused</td><td class="r"><span class="C-pill">easy</span></td></tr>
+          <tr><td>Stuck before it starts</td><td class="r"><span class="C-pill">easy</span></td></tr>
+          <tr><td>The database won't stay up</td><td class="r"><span class="C-pill">medium</span></td></tr>
+          <tr><td>Health checks gone wrong</td><td class="r"><span class="C-pill">medium</span></td></tr>
+          <tr><td>Pending forever</td><td class="r"><span class="C-pill">medium</span></td></tr>
+          <tr><td style="color:#8a8a83">24 more</td><td></td></tr>
+        </table></div>
+      <div><h3>Exams and explainers</h3><p class="sub">Timed practice, or sit back and watch.</p>
+        <table>
+          <tr><td>CKAD-style practice exam</td><td class="r">12 tasks · 60 min</td></tr>
+          <tr><td>CKA-style practice exam</td><td class="r">10 tasks · 60 min</td></tr>
+          <tr><td>How self-healing works</td><td class="r">explainer</td></tr>
+          <tr><td>When a Node dies</td><td class="r">explainer</td></tr>
+          <tr><td>CrashLoopBackOff</td><td class="r">explainer</td></tr>
+          <tr><td style="color:#8a8a83">8 more explainers</td><td></td></tr>
+        </table></div>
+    </div>
+    <div class="C-foot"><span>Modelled on Kubernetes v1.37 and checked against a real kind cluster. <a href="#">What's simulated</a></span><span>MIT · Kubernetes® is a trademark of The Linux Foundation</span></div>
+  </div></div>
+</section>
+
+<!-- ================================================================== D -->
+<section class="panel" id="d">
+  <div class="brief">
+    <div>
+      <h2>D · Blueprint</h2>
+      <p class="tag">An engineering drawing of one thing happening, annotated step by step.</p>
+      <h3>The idea</h3>
+      <p>Replace the decorative isometric hero with an explanatory one. The first screen is a single technical drawing of the cluster at the moment a Pod is deleted, with numbered callouts tracing the request from <code>kubectl</code> through the API server, controller, scheduler and kubelet. A visitor learns something real before they click anything. The drawing can animate through the five steps and be scrubbed.</p>
+      <p>The rest of the site borrows the drawing's language: title blocks, numbered callouts, ruled tables.</p>
+      <h3>What goes away</h3>
+      <ul><li>Colour blobs, cards, the serif display font, the stats strip</li><li>Rounded corners (everything is drafted: square, 1.5 px ink)</li></ul>
+    </div>
+    <div>
+      <h3>Spec</h3>
+      <table class="spec">
+        <tr><td>Type</td><td>IBM Plex Sans Condensed for labels and text, IBM Plex Mono for commands</td></tr>
+        <tr><td>Colour</td><td><span class="swatch" style="background:#fbfaf6"></span>paper <span class="swatch" style="background:#172340"></span>drafting ink <span class="swatch" style="background:#d9480f"></span>the one thing that changed</td></tr>
+        <tr><td>Grid</td><td>16 px drafting grid, only inside the drawing sheet</td></tr>
+        <tr><td>Build cost</td><td>Medium. The drawing is hand-made SVG; the step animation is CSS. Each explainer could get its own sheet later.</td></tr>
+      </table>
+      <h3>Risks</h3>
+      <ul><li>Detailed drawings get busy fast; it has to show one story only.</li><li>The live cluster is a click away rather than on the page.</li></ul>
+    </div>
+  </div>
+  <div class="frame"><div class="label">Desktop, 1280 wide</div>
+  <div class="page D">
+    <div class="D-top"><b>KUBESIM</b><nav><a href="#">Lessons</a><a href="#">Challenges</a><a href="#">Exams</a><a href="#">Explainers</a><a href="#">Sandbox</a></nav></div>
+    <div class="D-sheet">
+      <div class="D-head">
+        <h1>What happens when you delete a Pod.<br><span style="font-weight:400;color:#5a6680;font-size:26px">kubesim simulates a Kubernetes cluster in your browser, so you can watch every step.</span></h1>
+        <div class="cta"><a class="pri" href="#">Try it yourself — lesson 1</a><a href="#">Open an empty cluster</a></div>
+      </div>
+      <svg viewBox="0 0 1200 430" role="img" aria-label="Annotated drawing of a Pod deletion flowing through the control plane">
+        <defs>
+          <marker id="Da" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 1L9 5L0 9" fill="none" stroke="#172340" stroke-width="1.5"/></marker>
+          <marker id="Dh" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 1L9 5L0 9" fill="none" stroke="#d9480f" stroke-width="1.5"/></marker>
+        </defs>
+        <g font-family="IBM Plex Sans Condensed, sans-serif" font-size="14" fill="#172340" stroke-width="1.5">
+          <!-- kubectl -->
+          <rect x="40" y="36" width="330" height="40" fill="#fbfaf6" stroke="#172340"/>
+          <text x="54" y="61" font-family="IBM Plex Mono, monospace" font-size="13">$ kubectl delete pod web-…24r6j</text>
+          <!-- control plane -->
+          <rect x="40" y="130" width="330" height="260" fill="#fbfaf6" stroke="#172340"/>
+          <text x="40" y="412" font-size="12" letter-spacing="1.5">NODE · CONTROL-PLANE</text>
+          <rect x="64" y="154" width="282" height="40" fill="none" stroke="#172340"/><text x="78" y="179">kube-apiserver</text>
+          <rect x="64" y="214" width="130" height="40" fill="none" stroke="#172340"/><text x="76" y="239">etcd</text>
+          <rect x="216" y="214" width="130" height="40" fill="none" stroke="#d9480f"/><text x="226" y="239" fill="#d9480f">replicaset ctrl</text>
+          <rect x="64" y="274" width="282" height="40" fill="none" stroke="#172340"/><text x="78" y="299">kube-scheduler</text>
+          <!-- workers -->
+          <rect x="470" y="130" width="300" height="260" fill="#fbfaf6" stroke="#172340"/>
+          <text x="470" y="412" font-size="12" letter-spacing="1.5">NODE · WORKER-1</text>
+          <rect x="860" y="130" width="300" height="260" fill="#fbfaf6" stroke="#172340"/>
+          <text x="860" y="412" font-size="12" letter-spacing="1.5">NODE · WORKER-2</text>
+          <rect x="494" y="320" width="252" height="46" fill="none" stroke="#172340" stroke-dasharray="2 3"/><text x="506" y="348" font-size="13">kubelet</text>
+          <rect x="884" y="320" width="252" height="46" fill="none" stroke="#172340" stroke-dasharray="2 3"/><text x="896" y="348" font-size="13">kubelet</text>
+          <!-- pods -->
+          <rect x="494" y="160" width="110" height="64" fill="#fbfaf6" stroke="#172340"/><text x="504" y="186" font-family="IBM Plex Mono, monospace" font-size="12">web-…67cn8</text><text x="504" y="206" font-size="12" fill="#5a6680">Running</text>
+          <rect x="626" y="160" width="120" height="64" fill="#fdebe2" stroke="#d9480f" stroke-width="2"/><text x="636" y="186" font-family="IBM Plex Mono, monospace" font-size="12" fill="#d9480f">web-…zbdbf</text><text x="636" y="206" font-size="12" fill="#d9480f">new · 4s</text>
+          <rect x="884" y="160" width="120" height="64" fill="none" stroke="#172340" stroke-dasharray="5 4"/><text x="894" y="186" font-family="IBM Plex Mono, monospace" font-size="12" fill="#5a6680">web-…24r6j</text><text x="894" y="206" font-size="12" fill="#5a6680">deleted</text>
+          <rect x="1026" y="160" width="110" height="64" fill="#fbfaf6" stroke="#172340"/><text x="1036" y="186" font-family="IBM Plex Mono, monospace" font-size="12">web-…nl89k</text><text x="1036" y="206" font-size="12" fill="#5a6680">Running</text>
+          <!-- flows -->
+          <path d="M205 76 V150" fill="none" stroke="#172340" marker-end="url(#Da)"/>
+          <path d="M346 174 C 600 90, 860 90, 944 156" fill="none" stroke="#172340" stroke-dasharray="6 4" marker-end="url(#Da)"/>
+          <path d="M281 194 V210" fill="none" stroke="#d9480f" marker-end="url(#Dh)"/>
+          <path d="M205 274 V258" fill="none" stroke="#172340"/>
+          <path d="M346 294 C 470 294, 560 270, 620 224" fill="none" stroke="#d9480f" marker-end="url(#Dh)"/>
+          <path d="M686 320 V228" fill="none" stroke="#d9480f" marker-end="url(#Dh)"/>
+          <!-- callouts -->
+          <g font-size="12" font-weight="600" text-anchor="middle">
+            <circle cx="224" cy="110" r="12" fill="#fbfaf6" stroke="#172340"/><text x="224" y="114">1</text>
+            <circle cx="650" cy="88" r="12" fill="#fbfaf6" stroke="#172340"/><text x="650" y="92">2</text>
+            <circle cx="300" cy="202" r="12" fill="#fbfaf6" stroke="#d9480f"/><text x="300" y="206" fill="#d9480f">3</text>
+            <circle cx="470" cy="282" r="12" fill="#fbfaf6" stroke="#d9480f"/><text x="470" y="286" fill="#d9480f">4</text>
+            <circle cx="706" cy="276" r="12" fill="#fbfaf6" stroke="#d9480f"/><text x="706" y="280" fill="#d9480f">5</text>
+          </g>
+        </g>
+      </svg>
+      <div class="D-notes">
+        <div><span class="n">1</span><br><code>kubectl</code> sends a DELETE to the API server, which marks the Pod for deletion in etcd.</div>
+        <div><span class="n">2</span><br>The kubelet on worker-2 sees it, stops the container, and the Pod is gone.</div>
+        <div><span class="n hot">3</span><br>The ReplicaSet controller counts 2 Pods but wants 3, so it creates a new one with no Node yet.</div>
+        <div><span class="n hot">4</span><br>The scheduler scores the Nodes and binds the new Pod to worker-1, which had more room.</div>
+        <div><span class="n hot">5</span><br>The kubelet on worker-1 starts the container. <code>kubectl get pods</code> shows it with AGE 4s.</div>
+      </div>
+    </div>
+    <div class="D-rows">
+      <div class="lab">Learn</div>
+      <div class="val"><div>Foundations<small>5 lessons</small></div><div>Workloads<small>4 lessons</small></div><div>Configuration · Networking<small>4 lessons</small></div><div>Storage · Operations · Security<small>6 lessons</small></div></div>
+      <div class="lab">Practise</div>
+      <div class="val"><div>Challenges<small>30 broken clusters</small></div><div>CKAD-style exam<small>12 tasks · 60 min</small></div><div>CKA-style exam<small>10 tasks · 60 min</small></div><div>Sandbox<small>An empty cluster</small></div></div>
+      <div class="lab">Watch</div>
+      <div class="val"><div>How self-healing works</div><div>Rolling update</div><div>When a Node dies</div><div>8 more explainers</div></div>
+    </div>
+    <div class="D-title">
+      <div><small>Project</small>kubesim — a Kubernetes cluster simulated in the browser</div>
+      <div><small>Modelled on</small>Kubernetes v1.37</div>
+      <div><small>Checked against</small>kind v0.33</div>
+      <div><small>Licence</small>MIT</div>
+      <div><small>Rev</small>1.0.0</div>
+    </div>
+  </div></div>
+</section>
+
+<!-- ================================================================== REC -->
+<section class="panel" id="rec">
+  <div class="prose">
+    <h2>Recommendation: C, with A's restraint below the fold</h2>
+    <p><b>Go with C (Control room).</b> kubesim's one advantage over every Kubernetes tutorial is that the cluster is real enough to touch, and it's free. C is the only direction where that's the first thing anyone sees, and you already have <code>TryIt</code>, the Cluster View and the terminal, so it's mostly rearranging rather than drawing. It also can't be mistaken for a template, because a template doesn't contain a working cluster.</p>
+    <p>Keep everything under the first screen as plain as A: tables and lists, no cards, no section slogans.</p>
+    <h3>Steal from the others</h3>
+    <ul>
+      <li><b>From D:</b> the annotated five-step drawing is excellent explainer material. Use it as the header of the "How self-healing works" explainer, or as the static fallback for C on mobile.</li>
+      <li><b>From B:</b> the margin-note way of stating fidelity ("Back-off doubles from 10 s to a 5-minute cap, the kubelet's real defaults") is more convincing than a "Modelled on v1.37" section. Put those lines in C's event "why" annotations.</li>
+      <li><b>From A:</b> link style and copy voice. Say what a thing is, in one sentence.</li>
+    </ul>
+    <h3>Rules for whichever you choose</h3>
+    <ol>
+      <li>No eyebrow labels. If a heading needs a label to make sense, rewrite the heading.</li>
+      <li>One accent colour, and it means something (status, or a link). No decorative gradients, blobs, grain or glow.</li>
+      <li>No fake chrome: no traffic-light dots, no pulsing dots that don't reflect real state.</li>
+      <li>No cards for navigation. Use lists and tables; they hold more and read faster.</li>
+      <li>Copy is plain statements. No "This isn't a video", no rule-of-three slogans, no italic accent word.</li>
+      <li>One primary action per screen.</li>
+    </ol>
+    <h3>Rough plan for C</h3>
+    <ol>
+      <li>Server-render a static snapshot of the seeded cluster (nodes, pods, last few events, terminal scrollback) so the first paint is the cluster with no JS.</li>
+      <li>Hydrate <code>TryIt</code> into that layout; start the clock on first interaction or after it's visible for a second.</li>
+      <li>Add an optional one-line <code>why</code> to events the engine emits (SuccessfulCreate, Scheduled, BackOff, Killing, FailedScheduling). This is also useful inside lessons.</li>
+      <li>Replace the bento, fidelity and closing sections with the three-column index.</li>
+      <li>Mobile: terminal plus a compact node/pod list; Cluster View behind a tab.</li>
+      <li>Remove <code>.bg-field</code>, <code>HeroCluster</code>, <code>Eyebrow</code> and <code>Arrow</code> once nothing uses them.</li>
+    </ol>
+  </div>
+</section>
+
+<script>
+  const tabs = [...document.querySelectorAll('[role=tab]')];
+  function show(id) {
+    for (const t of tabs) t.setAttribute('aria-selected', String(t.dataset.p === id));
+    for (const p of document.querySelectorAll('.panel')) p.classList.toggle('on', p.id === id);
+    history.replaceState(null, '', '#' + id);
+    window.scrollTo(0, 0);
+  }
+  tabs.forEach(t => t.addEventListener('click', () => show(t.dataset.p)));
+  show((location.hash || '#why').slice(1));
+</script>
+</body>
+</html>

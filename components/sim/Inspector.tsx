@@ -43,32 +43,35 @@ import type { LogEntry } from "@/lib/sim/useSimulation";
 
 type Sim = SimStore;
 
+/** Dot colour for objects with no health of their own (ConfigMaps, policies, bindings, autoscalers): ink-soft, not a status colour. */
+const NEUTRAL = "#5a6680";
+
 /** A label/value row. `hint` adds a short plain-English gloss under the label. */
 function KV({ k, v, hint }: { k: string; v: React.ReactNode; hint?: string }) {
   return (
     <div className="flex gap-3 py-1 text-[12.5px]">
-      <span className="w-24 shrink-0 text-slate-500">
+      <span className="w-24 shrink-0 text-ink-soft">
         {k}
-        {hint && <span className="block text-[10.5px] leading-snug text-slate-500/90">{hint}</span>}
+        {hint && <span className="block text-[10.5px] leading-snug text-ink-soft/80">{hint}</span>}
       </span>
-      <span className="min-w-0 break-all font-mono text-[12px] text-slate-800">{v}</span>
+      <span className="min-w-0 break-all font-mono text-[12px] text-ink">{v}</span>
     </div>
   );
 }
 
 function EventList({ events, now }: { events: KubeEvent[]; now: number }) {
-  if (!events.length) return <p className="text-[12.5px] text-slate-500">No events.</p>;
+  if (!events.length) return <p className="text-[12.5px] text-ink-soft">No events.</p>;
   return (
-    <ol className="relative flex flex-col gap-2.5 border-l border-slate-200 pl-3">
+    <ol className="relative flex flex-col gap-2.5 border-l border-ink/15 pl-3">
       {events.slice(-12).map((e) => (
         <li key={e.metadata.uid} className="relative text-[12px] leading-snug">
-          <span className="absolute -left-[16.5px] top-1.5 h-2 w-2 rounded-full border-2 border-white" style={{ background: e.type === "Warning" ? "#f59e0b" : "#94a3b8" }} />
+          <span className="absolute -left-[16.5px] top-1.5 h-2 w-2 rounded-full border-2 border-paper" style={{ background: e.type === "Warning" ? CAT_COLOR.starting : "rgba(23,35,64,.3)" }} />
           <div className="flex items-baseline gap-2">
-            <span className={`font-medium ${e.type === "Warning" ? "text-amber-700" : "text-slate-800"}`}>{e.reason}</span>
-            {e.count > 1 && <span className="text-[11px] text-slate-500">×{e.count}</span>}
-            <span className="ml-auto font-mono text-[10.5px] text-slate-500">{age(now - e.lastTimestamp)}</span>
+            <span className={`font-medium ${e.type === "Warning" ? "text-amber-700" : "text-ink"}`}>{e.reason}</span>
+            {e.count > 1 && <span className="text-[11px] text-ink-soft">×{e.count}</span>}
+            <span className="ml-auto font-mono text-[10.5px] text-ink-soft">{age(now - e.lastTimestamp)}</span>
           </div>
-          <div className="text-slate-500">{e.message}</div>
+          <div className="text-ink-soft">{e.message}</div>
         </li>
       ))}
     </ol>
@@ -77,11 +80,11 @@ function EventList({ events, now }: { events: KubeEvent[]; now: number }) {
 
 function InspectHeader({ kind, name, color, status, actions }: { kind: string; name: string; color: string; status: string; actions?: React.ReactNode }) {
   return (
-    <div className="border-b border-slate-100 p-4">
-      <div className="text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">{kind}</div>
-      <div className="mt-1 break-all font-mono text-[14px] font-medium text-slate-900">{name}</div>
+    <div className="border-b border-ink/15 p-4">
+      <div className="text-[12px] font-medium text-ink-soft">{kind}</div>
+      <div className="mt-1 break-all font-mono text-[14px] font-medium text-ink">{name}</div>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11.5px] font-medium text-slate-700">
+        <span className="inline-flex items-center gap-1.5 text-[12px] text-ink">
           <Dot color={color} />
           {status}
         </span>
@@ -93,7 +96,7 @@ function InspectHeader({ kind, name, color, status, actions }: { kind: string; n
 
 function Section({ title, children, right }: { title: string; children: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div className="border-t border-slate-100 p-4">
+    <div className="border-t border-ink/15 p-4">
       <Heading right={right}>{title}</Heading>
       {children}
     </div>
@@ -101,30 +104,30 @@ function Section({ title, children, right }: { title: string; children: React.Re
 }
 
 function Explain({ children }: { children: React.ReactNode }) {
-  return <p className="mb-3 rounded-lg bg-slate-50 p-2.5 text-[12px] leading-relaxed text-slate-600">{children}</p>;
+  return <p className="mb-3 border border-ink/20 bg-ink/[0.03] p-2.5 text-[12px] leading-relaxed text-ink">{children}</p>;
 }
 
 function Yaml({ obj }: { obj: AnyObject }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="border-t border-slate-100 p-4">
-      <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500 hover:text-slate-700" aria-expanded={open}>
+    <div className="border-t border-ink/15 p-4">
+      <button onClick={() => setOpen(!open)} className="flex w-full items-center justify-between text-[12px] font-medium text-ink-soft hover:text-ink" aria-expanded={open}>
         YAML <span className="font-mono">{open ? "−" : "+"}</span>
       </button>
-      {open && <pre className="mt-2 max-h-80 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2.5 font-mono text-[11px] leading-relaxed text-slate-700">{manifestFor(obj)}</pre>}
+      {open && <pre className="mt-2 max-h-80 overflow-auto border border-ink/15 bg-ink/[0.03] p-2.5 font-mono text-[11px] leading-relaxed text-ink">{manifestFor(obj)}</pre>}
     </div>
   );
 }
 
 function PodLinks({ pods, onSelect, note }: { pods: Pod[]; onSelect: (s: Selection) => void; note?: (p: Pod) => string }) {
-  if (!pods.length) return <p className="text-[12.5px] text-slate-500">None.</p>;
+  if (!pods.length) return <p className="text-[12.5px] text-ink-soft">None.</p>;
   return (
     <>
       {pods.map((p) => (
-        <button key={p.metadata.uid} onClick={() => onSelect({ kind: "pod", ns: p.metadata.namespace, name: p.metadata.name })} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-slate-50">
+        <button key={p.metadata.uid} onClick={() => onSelect({ kind: "pod", ns: p.metadata.namespace, name: p.metadata.name })} className="flex w-full items-center gap-2 px-1.5 py-1 text-left hover:bg-ink/[0.04]">
           <Dot color={CAT_COLOR[podCategory(p)]} />
-          <span className="truncate font-mono text-[11.5px] text-slate-700">{p.metadata.name}</span>
-          <span className="ml-auto shrink-0 text-[11px] text-slate-500">{note ? note(p) : podStatus(p)}</span>
+          <span className="truncate font-mono text-[11.5px] text-ink">{p.metadata.name}</span>
+          <span className="ml-auto shrink-0 text-[11px] text-ink-soft">{note ? note(p) : podStatus(p)}</span>
         </button>
       ))}
     </>
@@ -132,7 +135,7 @@ function PodLinks({ pods, onSelect, note }: { pods: Pod[]; onSelect: (s: Selecti
 }
 
 const Link = ({ onClick, children }: { onClick: () => void; children: React.ReactNode }) => (
-  <button className="text-blue-600 hover:underline" onClick={onClick}>
+  <button className="text-ink underline decoration-ink/30 underline-offset-2 hover:decoration-ink" onClick={onClick}>
     {children}
   </button>
 );
@@ -166,19 +169,14 @@ export function Inspector({ sim, c, sel, onSelect }: { sim: Sim; c: Cluster; sel
   if (!sel) {
     return (
       <div className="flex flex-col items-center p-10 text-center">
-        <div className="grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-500">
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
-            <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z M12 12l8-4.5 M12 12v9 M12 12L4 7.5" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <p className="mt-3 text-[13px] font-medium text-slate-700">Nothing selected</p>
-        <p className="mt-1 text-[12.5px] text-slate-500">Click anything on the canvas to inspect it: a Pod, Node, Service, workload, volume or policy.</p>
+        <p className="text-[13px] font-medium text-ink">Nothing selected</p>
+        <p className="mt-1 text-[12.5px] text-ink-soft">Click anything on the canvas to inspect it: a Pod, Node, Service, workload, volume or policy.</p>
       </div>
     );
   }
   const kind = RAW_KIND[sel.kind];
   const obj = c.raw(kind, sel.kind === "node" ? undefined : (sel.ns ?? "default"), sel.name);
-  if (!obj) return <p className="p-6 text-[13px] text-slate-500">{sel.name} no longer exists.</p>;
+  if (!obj) return <p className="p-6 text-[13px] text-ink-soft">{sel.name} no longer exists.</p>;
   const props = { sim, c, onSelect };
   const body = (() => {
     switch (sel.kind) {
@@ -261,10 +259,10 @@ function PodInspector({ sim, c, onSelect, p }: P & { p: Pod }) {
         {m && <KV k="Using" v={`CPU ${m.cpu}m${req.cpu ? ` of ${req.cpu}m requested` : ""} · memory ${Math.round(m.memory / 2 ** 20)}Mi`} />}
         {p.spec?.serviceAccountName && p.spec.serviceAccountName !== "default" && <KV k="ServiceAccount" v={p.spec.serviceAccountName} />}
         <KV k="Age" v={age(c.now - p.metadata.creationTimestamp)} />
-        {cs?.state.waiting?.message && <p className="mt-2 rounded-lg border border-red-100 bg-red-50 p-2 font-mono text-[11px] leading-snug text-red-700">{cs.state.waiting.message}</p>}
-        {cs?.lastState.terminated?.reason === "OOMKilled" && <p className="mt-2 rounded-lg border border-red-100 bg-red-50 p-2 text-[12px] leading-snug text-red-700">The last run went over its memory limit and was <b>OOMKilled</b> (exit code 137).</p>}
+        {cs?.state.waiting?.message && <p className="mt-2 border border-red-600/40 bg-red-50 p-2 font-mono text-[11px] leading-snug text-red-900">{cs.state.waiting.message}</p>}
+        {cs?.lastState.terminated?.reason === "OOMKilled" && <p className="mt-2 border border-red-600/40 bg-red-50 p-2 text-[12px] leading-snug text-red-900">The last run went over its memory limit and was <b>OOMKilled</b> (exit code 137).</p>}
         {policies.length > 0 && (
-          <p className="mt-2 rounded-lg border border-rose-100 bg-rose-50 p-2 text-[12px] leading-snug text-rose-800">
+          <p className="mt-2 border border-ink/20 bg-ink/[0.03] p-2 text-[12px] leading-snug text-ink">
             Isolated by {policies.length === 1 ? "NetworkPolicy" : "NetworkPolicies"}{" "}
             {[...new Set(policies.map((x) => x.metadata.name))].map((n, i) => (
               <span key={n}>
@@ -282,7 +280,7 @@ function PodInspector({ sim, c, onSelect, p }: P & { p: Pod }) {
           containers.length > 1 ? (
             <div className="flex gap-1">
               {containers.map((x) => (
-                <button key={x.name} onClick={() => setCname(x.name)} className={`rounded px-1.5 font-mono text-[10.5px] ${x.name === ct.name ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
+                <button key={x.name} onClick={() => setCname(x.name)} className={`border px-1.5 font-mono text-[10.5px] ${x.name === ct.name ? "border-ink bg-ink text-paper" : "border-ink/30 bg-paper text-ink-soft hover:border-ink hover:text-ink"}`}>
                   {x.name}
                 </button>
               ))}
@@ -330,7 +328,7 @@ function PodInspector({ sim, c, onSelect, p }: P & { p: Pod }) {
         )}
       </Section>
       <Section title={`Logs · ${ct.name}`}>
-        <pre className="max-h-52 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-2.5 font-mono text-[11px] leading-relaxed text-slate-700">
+        <pre className="max-h-52 overflow-auto whitespace-pre-wrap border border-ink/15 bg-ink/[0.03] p-2.5 font-mono text-[11px] leading-relaxed text-ink">
           {prev?.length ? `── previous run ──\n${prev.slice(-40).map((l) => l.text).join("\n")}\n── current ──\n` : ""}
           {logs.slice(-80).map((l) => l.text).join("\n") || "(no output yet)"}
         </pre>
@@ -353,7 +351,7 @@ function NodeInspector({ sim, c, onSelect, n }: P & { n: Node }) {
       <InspectHeader
         kind="Node"
         name={nm}
-        color={ready ? (up ? "#16a34a" : "#dc2626") : "#f59e0b"}
+        color={ready ? (up ? CAT_COLOR.ok : CAT_COLOR.bad) : CAT_COLOR.starting}
         status={ready ? (up ? (n.spec?.unschedulable ? "Ready, cordoned" : "Ready") : "No heartbeat") : "NotReady"}
         actions={
           <>
@@ -374,8 +372,8 @@ function NodeInspector({ sim, c, onSelect, n }: P & { n: Node }) {
       <Section title="Conditions">
         {n.status?.conditions.map((cd) => (
           <div key={cd.type} className="flex items-center justify-between py-1 text-[12.5px]">
-            <span className="text-slate-600">{cd.type}</span>
-            <span className={`font-mono text-[11.5px] ${cd.type === "Ready" ? (cd.status === "True" ? "text-green-700" : "text-amber-700") : "text-slate-500"}`}>{cd.status}</span>
+            <span className="text-ink-soft">{cd.type}</span>
+            <span className={`font-mono text-[11.5px] ${cd.type === "Ready" ? (cd.status === "True" ? "text-green-700" : "text-amber-700") : "text-ink-soft"}`}>{cd.status}</span>
           </div>
         ))}
       </Section>
@@ -397,7 +395,7 @@ function ServiceInspector({ sim, c, s }: P & { s: Service }) {
       <InspectHeader
         kind="Service"
         name={s.metadata.name}
-        color={ready.length ? "#2563eb" : "#dc2626"}
+        color={ready.length ? CAT_COLOR.ok : CAT_COLOR.bad}
         status={`${headless ? "headless" : s.spec?.type} · ${ready.length} endpoints`}
         actions={
           <>
@@ -413,7 +411,7 @@ function ServiceInspector({ sim, c, s }: P & { s: Service }) {
         <KV k="Ports" v={(s.spec?.ports ?? []).map((p) => `${p.port}${p.nodePort ? `:${p.nodePort}` : ""}/${p.protocol} → ${p.targetPort}`).join(", ")} />
         <KV k="Selector" v={Object.entries(s.spec?.selector ?? {}).map(([k, v]) => `${k}=${v}`).join(",")} />
         <KV k="DNS" v={`${s.metadata.name}.${s.metadata.namespace}.svc.cluster.local`} />
-        <KV k="Endpoints" v={ready.join(", ") || <span className="text-red-600">none</span>} />
+        <KV k="Endpoints" v={ready.join(", ") || <span className="text-red-700">none</span>} />
         {notReady.length > 0 && <KV k="Not ready" v={<span className="text-amber-700">{notReady.join(", ")}</span>} />}
       </div>
     </>
@@ -430,7 +428,7 @@ function DeploymentInspector({ sim, c, onSelect, d }: P & { d: Deployment }) {
   const hpa = c.list<HorizontalPodAutoscaler>("HorizontalPodAutoscaler", ns).find((h) => h.spec?.scaleTargetRef.kind === "Deployment" && h.spec.scaleTargetRef.name === d.metadata.name);
   return (
     <>
-      <InspectHeader kind="Deployment" name={d.metadata.name} color={(st.availableReplicas ?? 0) === want ? "#16a34a" : "#f59e0b"} status={`${st.readyReplicas ?? 0}/${want} ready`} actions={<><Btn onClick={() => sim.run((cl) => A.scale(cl, d.metadata.name, want + 1))}>Scale +1</Btn><Btn onClick={() => sim.run((cl) => A.rolloutUndo(cl, d.metadata.name, ns))} title="kubectl rollout undo: go back to the previous Pod template">Undo rollout</Btn></>} />
+      <InspectHeader kind="Deployment" name={d.metadata.name} color={(st.availableReplicas ?? 0) === want ? CAT_COLOR.ok : CAT_COLOR.starting} status={`${st.readyReplicas ?? 0}/${want} ready`} actions={<><Btn onClick={() => sim.run((cl) => A.scale(cl, d.metadata.name, want + 1))}>Scale +1</Btn><Btn onClick={() => sim.run((cl) => A.rolloutUndo(cl, d.metadata.name, ns))} title="kubectl rollout undo: go back to the previous Pod template">Undo rollout</Btn></>} />
       <div className="p-4">
         <Explain>A Deployment keeps <b>{want}</b> copies of a Pod template running. When the template changes, it creates a new ReplicaSet and shifts Pods over one step at a time.</Explain>
         <KV k="Image" v={d.spec?.template?.spec?.containers?.[0]?.image ?? "—"} />
@@ -444,10 +442,10 @@ function DeploymentInspector({ sim, c, onSelect, d }: P & { d: Deployment }) {
       </div>
       <Section title="ReplicaSets (revision history)">
         {rss.sort((a, b) => rev(b) - rev(a)).map((r) => (
-          <button key={r.metadata.uid} onClick={() => onSelect({ kind: "replicaset", ns, name: r.metadata.name })} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-slate-50">
-            <span className="rounded bg-slate-100 px-1.5 font-mono text-[10.5px] text-slate-600">rev {rev(r)}</span>
-            <span className="truncate font-mono text-[11.5px] text-slate-700">{r.metadata.name}</span>
-            <span className="ml-auto shrink-0 font-mono text-[11px] text-slate-500">{r.status?.readyReplicas ?? 0}/{r.spec?.replicas}</span>
+          <button key={r.metadata.uid} onClick={() => onSelect({ kind: "replicaset", ns, name: r.metadata.name })} className="flex w-full items-center gap-2 px-1.5 py-1.5 text-left hover:bg-ink/[0.04]">
+            <span className="w-11 shrink-0 font-mono text-[10.5px] text-ink-soft">rev {rev(r)}</span>
+            <span className="truncate font-mono text-[11.5px] text-ink">{r.metadata.name}</span>
+            <span className="ml-auto shrink-0 font-mono text-[11px] text-ink-soft">{r.status?.readyReplicas ?? 0}/{r.spec?.replicas}</span>
           </button>
         ))}
       </Section>
@@ -460,7 +458,7 @@ function ReplicaSetInspector({ c, onSelect, r }: P & { r: ReplicaSet }) {
   const owner = r.metadata.ownerReferences?.find((o) => o.controller);
   return (
     <>
-      <InspectHeader kind="ReplicaSet" name={r.metadata.name} color={(r.status?.readyReplicas ?? 0) === (r.spec?.replicas ?? 0) ? "#16a34a" : "#f59e0b"} status={`${r.status?.readyReplicas ?? 0}/${r.spec?.replicas} ready`} />
+      <InspectHeader kind="ReplicaSet" name={r.metadata.name} color={(r.status?.readyReplicas ?? 0) === (r.spec?.replicas ?? 0) ? CAT_COLOR.ok : CAT_COLOR.starting} status={`${r.status?.readyReplicas ?? 0}/${r.spec?.replicas} ready`} />
       <div className="p-4">
         <Explain>A ReplicaSet counts Pods matching its selector and creates or deletes Pods until the count equals <b>{r.spec?.replicas}</b>. That&apos;s what makes Pods self-heal.</Explain>
         <KV k="Owner" v={owner ? <Link onClick={() => onSelect({ kind: "deployment", ns, name: owner.name })}>{`${owner.kind}/${owner.name}`}</Link> : "—"} />
@@ -482,7 +480,7 @@ function StatefulSetInspector({ sim, c, onSelect, s }: P & { s: StatefulSet }) {
   const claims = c.list<PersistentVolumeClaim>("PersistentVolumeClaim", ns).filter((p) => (s.spec?.volumeClaimTemplates ?? []).some((v) => p.metadata.name.startsWith(`${v.metadata.name}-${s.metadata.name}-`)));
   return (
     <>
-      <InspectHeader kind="StatefulSet" name={s.metadata.name} color={(s.status?.readyReplicas ?? 0) === want ? "#16a34a" : "#f59e0b"} status={`${s.status?.readyReplicas ?? 0}/${want} ready`} actions={<><Btn onClick={() => sim.exec(`kubectl scale statefulset ${s.metadata.name} --replicas=${want + 1}${ns !== "default" ? ` -n ${ns}` : ""}`)}>Scale +1</Btn><Btn onClick={() => sim.exec(`kubectl scale statefulset ${s.metadata.name} --replicas=${Math.max(0, want - 1)}${ns !== "default" ? ` -n ${ns}` : ""}`)}>Scale −1</Btn></>} />
+      <InspectHeader kind="StatefulSet" name={s.metadata.name} color={(s.status?.readyReplicas ?? 0) === want ? CAT_COLOR.ok : CAT_COLOR.starting} status={`${s.status?.readyReplicas ?? 0}/${want} ready`} actions={<><Btn onClick={() => sim.exec(`kubectl scale statefulset ${s.metadata.name} --replicas=${want + 1}${ns !== "default" ? ` -n ${ns}` : ""}`)}>Scale +1</Btn><Btn onClick={() => sim.exec(`kubectl scale statefulset ${s.metadata.name} --replicas=${Math.max(0, want - 1)}${ns !== "default" ? ` -n ${ns}` : ""}`)}>Scale −1</Btn></>} />
       <div className="p-4">
         <Explain>Each Pod has a fixed name ({s.metadata.name}-0, -1, …), its own PersistentVolumeClaim, and a DNS name under the headless Service. With the default <b>{s.spec?.podManagementPolicy ?? "OrderedReady"}</b> policy they start in order, and scale down from the highest number.</Explain>
         <KV k="Image" v={s.spec?.template?.spec?.containers?.[0]?.image ?? "—"} />
@@ -496,10 +494,10 @@ function StatefulSetInspector({ sim, c, onSelect, s }: P & { s: StatefulSet }) {
       {claims.length > 0 && (
         <Section title={`Claims · ${claims.length}`}>
           {claims.map((p) => (
-            <button key={p.metadata.uid} onClick={() => onSelect({ kind: "pvc", ns, name: p.metadata.name })} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-slate-50">
-              <Dot color={p.status?.phase === "Bound" ? "#16a34a" : "#f59e0b"} />
-              <span className="truncate font-mono text-[11.5px] text-slate-700">{p.metadata.name}</span>
-              <span className="ml-auto shrink-0 text-[11px] text-slate-500">{p.status?.phase}</span>
+            <button key={p.metadata.uid} onClick={() => onSelect({ kind: "pvc", ns, name: p.metadata.name })} className="flex w-full items-center gap-2 px-1.5 py-1 text-left hover:bg-ink/[0.04]">
+              <Dot color={p.status?.phase === "Bound" ? CAT_COLOR.ok : CAT_COLOR.starting} />
+              <span className="truncate font-mono text-[11.5px] text-ink">{p.metadata.name}</span>
+              <span className="ml-auto shrink-0 text-[11px] text-ink-soft">{p.status?.phase}</span>
             </button>
           ))}
         </Section>
@@ -513,7 +511,7 @@ function DaemonSetInspector({ c, onSelect, d }: P & { d: DaemonSet }) {
   const st = d.status;
   return (
     <>
-      <InspectHeader kind="DaemonSet" name={d.metadata.name} color={(st?.numberReady ?? 0) === (st?.desiredNumberScheduled ?? 0) ? "#16a34a" : "#f59e0b"} status={`${st?.numberReady ?? 0}/${st?.desiredNumberScheduled ?? 0} nodes`} />
+      <InspectHeader kind="DaemonSet" name={d.metadata.name} color={(st?.numberReady ?? 0) === (st?.desiredNumberScheduled ?? 0) ? CAT_COLOR.ok : CAT_COLOR.starting} status={`${st?.numberReady ?? 0}/${st?.desiredNumberScheduled ?? 0} nodes`} />
       <div className="p-4">
         <Explain>A DaemonSet runs one Pod on every Node that matches it, and adds one when a Node joins. It tolerates cordoned and unreachable Nodes, which is why <b>kubectl drain</b> needs <b>--ignore-daemonsets</b>.</Explain>
         <KV k="Image" v={d.spec?.template?.spec?.containers?.[0]?.image ?? "—"} />
@@ -534,7 +532,7 @@ function JobInspector({ c, onSelect, j }: P & { j: Job }) {
   const owner = j.metadata.ownerReferences?.find((o) => o.controller);
   return (
     <>
-      <InspectHeader kind="Job" name={j.metadata.name} color={failed ? "#dc2626" : done ? "#16a34a" : "#f59e0b"} status={failed ? "Failed" : done ? "Complete" : "Running"} />
+      <InspectHeader kind="Job" name={j.metadata.name} color={failed ? CAT_COLOR.bad : done ? CAT_COLOR.ok : CAT_COLOR.starting} status={failed ? "Failed" : done ? "Complete" : "Running"} />
       <div className="p-4">
         <Explain>A Job runs Pods until <b>{j.spec?.completions ?? 1}</b> of them succeed ({j.spec?.parallelism ?? 1} at a time). Failed Pods are replaced after a growing back-off, up to <b>{j.spec?.backoffLimit ?? 6}</b> retries.</Explain>
         {owner && <KV k="CronJob" v={<Link onClick={() => onSelect({ kind: "cronjob", ns: j.metadata.namespace, name: owner.name })}>{owner.name}</Link>} />}
@@ -560,7 +558,7 @@ function CronJobInspector({ sim, c, onSelect, cj }: P & { cj: CronJob }) {
       <InspectHeader
         kind="CronJob"
         name={cj.metadata.name}
-        color={cj.spec?.suspend ? "#94a3b8" : "#16a34a"}
+        color={cj.spec?.suspend ? CAT_COLOR.gone : CAT_COLOR.ok}
         status={cj.spec?.suspend ? "suspended" : cj.spec!.schedule}
         actions={
           <>
@@ -576,15 +574,15 @@ function CronJobInspector({ sim, c, onSelect, cj }: P & { cj: CronJob }) {
         <KV k="Active" v={cj.status?.active?.length ?? 0} />
       </div>
       <Section title={`Jobs · ${jobs.length}`}>
-        {jobs.length === 0 && <p className="text-[12.5px] text-slate-500">No Jobs yet.</p>}
+        {jobs.length === 0 && <p className="text-[12.5px] text-ink-soft">No Jobs yet.</p>}
         {jobs.map((j) => {
           const done = (j.status?.conditions ?? []).some((x) => x.type === "Complete" && x.status === "True");
           const failed = (j.status?.conditions ?? []).some((x) => x.type === "Failed" && x.status === "True");
           return (
-            <button key={j.metadata.uid} onClick={() => onSelect({ kind: "job", ns, name: j.metadata.name })} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1 text-left hover:bg-slate-50">
-              <Dot color={failed ? "#dc2626" : done ? "#16a34a" : "#f59e0b"} />
-              <span className="truncate font-mono text-[11.5px] text-slate-700">{j.metadata.name}</span>
-              <span className="ml-auto shrink-0 text-[11px] text-slate-500">{failed ? "Failed" : done ? "Complete" : "Running"}</span>
+            <button key={j.metadata.uid} onClick={() => onSelect({ kind: "job", ns, name: j.metadata.name })} className="flex w-full items-center gap-2 px-1.5 py-1 text-left hover:bg-ink/[0.04]">
+              <Dot color={failed ? CAT_COLOR.bad : done ? CAT_COLOR.ok : CAT_COLOR.starting} />
+              <span className="truncate font-mono text-[11.5px] text-ink">{j.metadata.name}</span>
+              <span className="ml-auto shrink-0 text-[11px] text-ink-soft">{failed ? "Failed" : done ? "Complete" : "Running"}</span>
             </button>
           );
         })}
@@ -600,7 +598,7 @@ function IngressInspector({ sim, c, onSelect, ing }: P & { ing: Ingress }) {
   const curlFor = (host: string | undefined, path: string) => (host ? `curl -H 'Host: ${host}' http://localhost${path.replace(/\*$/, "")}` : `curl http://localhost${path}`);
   return (
     <>
-      <InspectHeader kind="Ingress" name={ing.metadata.name} color={addr ? "#7c3aed" : "#f59e0b"} status={addr ? `address ${addr}` : "waiting for the controller"} actions={rules[0] ? <Btn onClick={() => sim.exec(curlFor(rules[0].host, rules[0].path))} title="Send a test request through this Ingress">curl</Btn> : undefined} />
+      <InspectHeader kind="Ingress" name={ing.metadata.name} color={addr ? CAT_COLOR.ok : CAT_COLOR.starting} status={addr ? `address ${addr}` : "waiting for the controller"} actions={rules[0] ? <Btn onClick={() => sim.exec(curlFor(rules[0].host, rules[0].path))} title="Send a test request through this Ingress">curl</Btn> : undefined} />
       <div className="p-4">
         <Explain>The ingress-nginx controller routes HTTP from outside the cluster to Services by host and path. From the terminal, <b>curl http://localhost/…</b> (or a rule&apos;s hostname) goes through it.</Explain>
         <KV k="Class" v={ing.spec?.ingressClassName ?? "—"} />
@@ -613,12 +611,12 @@ function IngressInspector({ sim, c, onSelect, ing }: P & { ing: Ingress }) {
           const svc = r.svc ? (c.raw("Service", ns, r.svc) as unknown as Service | undefined) : undefined;
           return (
             <div key={i} className="flex items-center gap-2 py-1 font-mono text-[11.5px]">
-              <span className="text-slate-500">{r.host ?? "*"}</span>
-              <span className="text-slate-800">{r.path}</span>
-              <span className="text-slate-300">{r.type}</span>
-              <span className="text-slate-500">→</span>
-              {svc ? <Link onClick={() => onSelect({ kind: "service", ns, name: svc.metadata.name })}>{`${r.svc}:${r.port}`}</Link> : <span className="text-red-600">{r.svc} (missing)</span>}
-              <button className="ml-auto rounded border border-slate-200 px-1.5 text-[10.5px] text-slate-500 hover:bg-slate-50" onClick={() => sim.exec(curlFor(r.host, r.path))}>
+              <span className="text-ink-soft">{r.host ?? "*"}</span>
+              <span className="text-ink">{r.path}</span>
+              <span className="text-ink/30">{r.type}</span>
+              <span className="text-ink/30">→</span>
+              {svc ? <Link onClick={() => onSelect({ kind: "service", ns, name: svc.metadata.name })}>{`${r.svc}:${r.port}`}</Link> : <span className="text-red-700">{r.svc} (missing)</span>}
+              <button className="ml-auto border border-ink/30 bg-paper px-1.5 text-[10.5px] text-ink hover:border-ink" onClick={() => sim.exec(curlFor(r.host, r.path))}>
                 curl
               </button>
             </div>
@@ -649,7 +647,7 @@ function ConfigInspector({ c, onSelect, o, secret }: P & { o: ConfigLike; secret
   };
   return (
     <>
-      <InspectHeader kind={secret ? "Secret" : "ConfigMap"} name={o.metadata.name} color={secret ? "#9333ea" : "#0891b2"} status={`${Object.keys(data).length} key${Object.keys(data).length === 1 ? "" : "s"}${secret ? ` · ${o.type ?? "Opaque"}` : ""}`} actions={secret ? <Btn onClick={() => setReveal(!reveal)}>{reveal ? "Hide" : "Decode"}</Btn> : undefined} />
+      <InspectHeader kind={secret ? "Secret" : "ConfigMap"} name={o.metadata.name} color={NEUTRAL} status={`${Object.keys(data).length} key${Object.keys(data).length === 1 ? "" : "s"}${secret ? ` · ${o.type ?? "Opaque"}` : ""}`} actions={secret ? <Btn onClick={() => setReveal(!reveal)}>{reveal ? "Hide" : "Decode"}</Btn> : undefined} />
       <div className="p-4">
         <Explain>
           {secret ? (
@@ -678,7 +676,7 @@ function PvcInspector({ c, onSelect, pvc }: P & { pvc: PersistentVolumeClaim }) 
   const phase = pvc.metadata.deletionTimestamp !== undefined ? "Terminating" : (pvc.status?.phase ?? "Pending");
   return (
     <>
-      <InspectHeader kind="PersistentVolumeClaim" name={pvc.metadata.name} color={phase === "Bound" ? "#16a34a" : "#f59e0b"} status={phase} />
+      <InspectHeader kind="PersistentVolumeClaim" name={pvc.metadata.name} color={phase === "Bound" ? CAT_COLOR.ok : CAT_COLOR.starting} status={phase} />
       <div className="p-4">
         <Explain>
           A claim asks for storage; a PersistentVolume provides it.{" "}
@@ -743,11 +741,11 @@ function NetPolInspector({ c, onSelect, np }: P & { np: NetworkPolicy }) {
   };
   return (
     <>
-      <InspectHeader kind="NetworkPolicy" name={np.metadata.name} color="#e11d48" status={types.join(" + ")} />
+      <InspectHeader kind="NetworkPolicy" name={np.metadata.name} color={NEUTRAL} status={types.join(" + ")} />
       <div className="p-4">
         <Explain>Pods this policy selects are <b>isolated</b>: only traffic allowed by some policy gets in{types.includes("Egress") ? " or out" : ""}. Other traffic is dropped, so clients see a timeout.{types.includes("Egress") ? " Egress rules must also allow DNS (UDP and TCP port 53), or name lookups fail." : ""}</Explain>
         <KV k="Selects" v={Object.entries(np.spec?.podSelector?.matchLabels ?? {}).map(([a, b]) => `${a}=${b}`).join(",") || "every Pod in the namespace"} />
-        <ul className="mt-2 list-disc pl-5 text-[12.5px] leading-relaxed text-slate-700">
+        <ul className="mt-2 list-disc pl-5 text-[12.5px] leading-relaxed text-ink">
           {rules("Ingress")}
           {rules("Egress")}
         </ul>
@@ -766,7 +764,7 @@ function HpaInspector({ c, onSelect, h }: P & { h: HorizontalPodAutoscaler }) {
   const target = h.spec!.scaleTargetRef;
   return (
     <>
-      <InspectHeader kind="HorizontalPodAutoscaler" name={h.metadata.name} color="#7c3aed" status={`${h.status?.currentReplicas ?? 0} → ${h.status?.desiredReplicas ?? 0} replicas`} />
+      <InspectHeader kind="HorizontalPodAutoscaler" name={h.metadata.name} color={NEUTRAL} status={`${h.status?.currentReplicas ?? 0} → ${h.status?.desiredReplicas ?? 0} replicas`} />
       <div className="p-4">
         <Explain>Every 15 seconds the HPA compares average CPU use to <b>{tgt}%</b> of the Pods&apos; CPU requests and sets the replica count to match. It scales up quickly and waits 5 minutes before scaling down.</Explain>
         <KV k="Target" v={target.kind === "Deployment" ? <Link onClick={() => onSelect({ kind: "deployment", ns, name: target.name })}>{`${target.kind}/${target.name}`}</Link> : `${target.kind}/${target.name}`} />
@@ -777,8 +775,8 @@ function HpaInspector({ c, onSelect, h }: P & { h: HorizontalPodAutoscaler }) {
       <Section title="Conditions">
         {(h.status?.conditions ?? []).map((cd) => (
           <div key={cd.type} className="py-1 text-[12px]">
-            <span className={`font-medium ${cd.status === "True" ? "text-slate-800" : "text-amber-700"}`}>{cd.type}</span> <span className="text-slate-500">{cd.reason}</span>
-            <div className="text-slate-500">{cd.message}</div>
+            <span className={`font-medium ${cd.status === "True" ? "text-ink" : "text-amber-700"}`}>{cd.type}</span> <span className="text-ink-soft">{cd.reason}</span>
+            <div className="text-ink-soft">{cd.message}</div>
           </div>
         ))}
       </Section>
@@ -790,18 +788,18 @@ function BindingInspector({ c, b }: P & { b: RoleBinding }) {
   const role = c.raw(b.roleRef.kind, b.roleRef.kind === "Role" ? b.metadata.namespace : undefined, b.roleRef.name) as unknown as Role | undefined;
   return (
     <>
-      <InspectHeader kind="RoleBinding" name={b.metadata.name} color="#475569" status={`${b.roleRef.kind}/${b.roleRef.name}`} />
+      <InspectHeader kind="RoleBinding" name={b.metadata.name} color={NEUTRAL} status={`${b.roleRef.kind}/${b.roleRef.name}`} />
       <div className="p-4">
         <Explain>A RoleBinding grants a Role&apos;s permissions to users, groups or ServiceAccounts, in namespace <b>{b.metadata.namespace}</b>. Try <b>kubectl auth can-i … --as=…</b> to check what someone may do.</Explain>
         <KV k="Subjects" v={<span className="whitespace-pre-line">{(b.subjects ?? []).map((s) => `${s.kind} ${s.kind === "ServiceAccount" ? `${s.namespace ?? b.metadata.namespace}/` : ""}${s.name}`).join("\n") || "—"}</span>} />
       </div>
       <Section title={`${b.roleRef.kind} ${b.roleRef.name}`}>
-        {!role && <p className="text-[12.5px] text-red-600">This role doesn&apos;t exist, so the binding grants nothing.</p>}
+        {!role && <p className="text-[12.5px] text-red-700">This role doesn&apos;t exist, so the binding grants nothing.</p>}
         {(role?.rules ?? []).slice(0, 12).map((r, i) => (
-          <div key={i} className="py-1 font-mono text-[11.5px] text-slate-700">
-            <span className="text-slate-900">{r.verbs.join(", ")}</span> <span className="text-slate-500">on</span> {(r.resources ?? r.nonResourceURLs ?? []).join(", ")}
-            {r.apiGroups && r.apiGroups.some((g) => g) ? <span className="text-slate-500"> ({r.apiGroups.filter(Boolean).join(", ")})</span> : null}
-            {r.resourceNames?.length ? <span className="text-slate-500"> named {r.resourceNames.join(", ")}</span> : null}
+          <div key={i} className="py-1 font-mono text-[11.5px] text-ink-soft">
+            <span className="text-ink">{r.verbs.join(", ")}</span> <span className="text-ink-soft/70">on</span> {(r.resources ?? r.nonResourceURLs ?? []).join(", ")}
+            {r.apiGroups && r.apiGroups.some((g) => g) ? <span className="text-ink-soft/70"> ({r.apiGroups.filter(Boolean).join(", ")})</span> : null}
+            {r.resourceNames?.length ? <span className="text-ink-soft/70"> named {r.resourceNames.join(", ")}</span> : null}
           </div>
         ))}
       </Section>
@@ -810,19 +808,19 @@ function BindingInspector({ c, b }: P & { b: RoleBinding }) {
 }
 
 export function CommandLog({ log }: { log: LogEntry[] }) {
-  if (!log.length) return <p className="py-2 text-[12.5px] text-slate-500">Every action runs the real kubectl command shown here, so you learn the CLI as you click.</p>;
+  if (!log.length) return <p className="py-2 text-[12.5px] text-ink-soft">Every action runs the real kubectl command shown here, so you learn the CLI as you click.</p>;
   return (
     <div className="flex flex-col gap-3 py-1">
       {log.map((l) => (
         <div key={l.id} className="font-mono text-[11.5px] leading-relaxed">
           <div className="flex gap-3">
-            <span className="w-10 shrink-0 text-slate-300">{clock(l.at)}</span>
+            <span className="w-10 shrink-0 text-ink/30">{clock(l.at)}</span>
             <span>
-              <span className="text-slate-500">$ </span>
-              <span className="text-slate-900">{l.cmd}</span>
+              <span className="text-ink-soft">$ </span>
+              <span className="text-ink">{l.cmd}</span>
             </span>
           </div>
-          <pre className={`whitespace-pre-wrap pl-[52px] ${l.ok ? "text-slate-500" : "text-red-600"}`}>{l.out}</pre>
+          <pre className={`whitespace-pre-wrap pl-[52px] ${l.ok ? "text-ink-soft" : "text-red-700"}`}>{l.out}</pre>
         </div>
       ))}
     </div>
@@ -849,14 +847,14 @@ const RESOURCE_KINDS: { kind: string; label: string }[] = [
 /** A live `kubectl get` for the namespace in view, one table per kind that has objects. */
 export function ResourceTable({ c, namespace = "default" }: { c: Cluster; namespace?: string }) {
   const ns = namespace === "*" ? "default" : namespace;
-  const th = "pb-1.5 pr-4 text-left text-[11px] font-medium uppercase tracking-[0.06em] text-slate-500";
+  const th = "pb-1.5 pr-4 text-left text-[11px] font-medium text-ink-soft";
   const sections = RESOURCE_KINDS.map(({ kind, label }) => {
     let objs = c.list(kind, ns);
     if (kind === "ConfigMap") objs = objs.filter((o) => o.metadata.name !== "kube-root-ca.crt");
     if (kind === "Service") objs = objs.filter((o) => o.metadata.name !== "kubernetes");
     return { kind, label, objs };
   }).filter((s) => s.objs.length);
-  if (!sections.length) return <div className="py-2 text-[12.5px] text-slate-500">No resources found in {ns} namespace.</div>;
+  if (!sections.length) return <div className="py-2 text-[12.5px] text-ink-soft">No resources found in {ns} namespace.</div>;
   return (
     <div className="flex flex-col gap-4 py-1">
       {sections.map(({ kind, label, objs }) => {
@@ -872,11 +870,11 @@ export function ResourceTable({ c, namespace = "default" }: { c: Cluster; namesp
                 ))}
               </tr>
             </thead>
-            <tbody className="text-slate-700">
+            <tbody className="text-ink">
               {rows.map((r, i) => (
-                <tr key={objs[i]?.metadata.uid ?? i} className="border-t border-slate-100">
+                <tr key={objs[i]?.metadata.uid ?? i} className="border-t border-ink/15">
                   {r.map((cell, j) => (
-                    <td key={j} className={`py-1 pr-4 ${j === 0 ? "" : "text-slate-500"}`}>
+                    <td key={j} className={`py-1 pr-4 ${j === 0 ? "" : "text-ink-soft"}`}>
                       {kind === "Pod" && j === 2 ? (
                         <span className="inline-flex items-center gap-1.5">
                           <Dot color={CAT_COLOR[podCategory(objs[i] as unknown as Pod)]} />
@@ -898,19 +896,19 @@ export function ResourceTable({ c, namespace = "default" }: { c: Cluster; namesp
 }
 
 export function EventsTable({ events, now }: { events: KubeEvent[]; now: number }) {
-  if (!events.length) return <p className="py-2 text-[12.5px] text-slate-500">No events yet.</p>;
+  if (!events.length) return <p className="py-2 text-[12.5px] text-ink-soft">No events yet.</p>;
   return (
     <div className="flex flex-col py-1 font-mono text-[11.5px]">
       {events.slice(0, 150).map((e) => (
-        <div key={e.metadata.uid} className="flex gap-3 border-t border-slate-100 py-1 first:border-0">
-          <span className="w-10 shrink-0 text-slate-500">{age(now - e.lastTimestamp)}</span>
-          <span className={`w-40 shrink-0 ${e.type === "Warning" ? "text-amber-700" : "text-slate-800"}`}>{e.reason}</span>
-          <span className="w-56 shrink-0 truncate text-slate-500">
+        <div key={e.metadata.uid} className="flex gap-3 border-t border-ink/15 py-1 first:border-0">
+          <span className="w-10 shrink-0 text-ink-soft">{age(now - e.lastTimestamp)}</span>
+          <span className={`w-40 shrink-0 ${e.type === "Warning" ? "text-amber-700" : "text-ink"}`}>{e.reason}</span>
+          <span className="w-56 shrink-0 truncate text-ink-soft">
             {e.involvedObject.kind.toLowerCase()}/{e.involvedObject.name}
           </span>
-          <span className="min-w-0 text-slate-600">
+          <span className="min-w-0 text-ink-soft">
             {e.message}
-            {e.count > 1 && <span className="text-slate-500"> ×{e.count}</span>}
+            {e.count > 1 && <span className="text-ink-soft/70"> ×{e.count}</span>}
           </span>
         </div>
       ))}

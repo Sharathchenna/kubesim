@@ -13,7 +13,7 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
   const pods = c.list<Pod>("Pod").filter((p) => ok(p.metadata.namespace));
   const nodes = c.list<Node>("Node");
   const pending = pods.filter((p) => !p.spec?.nodeName);
-  const item = "rounded px-1 text-left underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500";
+  const item = "px-1 text-left underline-offset-2 hover:underline hover:decoration-ink/40 focus-visible:outline-2 focus-visible:outline-signal";
   const workloads = [
     ...c.list<Deployment>("Deployment").filter((d) => ok(d.metadata.namespace)).map((d) => ({ kind: "deployment" as const, o: d, text: `Deployment ${d.metadata.name}: ${d.status?.readyReplicas ?? 0} of ${d.spec?.replicas ?? 1} ready, image ${(d.spec?.template?.spec?.containers?.[0]?.image ?? "")}` })),
     ...c.list<StatefulSet>("StatefulSet").filter((d) => ok(d.metadata.namespace)).map((d) => ({ kind: "statefulset" as const, o: d, text: `StatefulSet ${d.metadata.name}: ${d.status?.readyReplicas ?? 0} of ${d.spec?.replicas ?? 1} ready` })),
@@ -32,10 +32,10 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
     </li>
   );
   return (
-    <div className="h-full overflow-y-auto p-4 text-[13px] leading-relaxed text-slate-700">
-      <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">Cluster as text</h2>
+    <div className="h-full overflow-y-auto p-4 text-[13px] leading-relaxed text-ink">
+      <h2 className="text-[12px] font-medium text-ink-soft">Cluster as text</h2>
       <section aria-labelledby="ct-nodes" className="mt-3">
-        <h3 id="ct-nodes" className="font-semibold text-slate-900">
+        <h3 id="ct-nodes" className="font-semibold text-ink">
           Nodes ({nodes.length})
         </h3>
         <ul className="mt-1 flex flex-col gap-2">
@@ -57,7 +57,7 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
       </section>
       {pending.length > 0 && (
         <section aria-labelledby="ct-pending" className="mt-4">
-          <h3 id="ct-pending" className="font-semibold text-slate-900">
+          <h3 id="ct-pending" className="font-semibold text-ink">
             Waiting to be scheduled ({pending.length})
           </h3>
           <ul className="ml-4 list-disc pl-3">{pending.map(podItem)}</ul>
@@ -65,7 +65,7 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
       )}
       {workloads.length > 0 && (
         <section aria-labelledby="ct-work" className="mt-4">
-          <h3 id="ct-work" className="font-semibold text-slate-900">
+          <h3 id="ct-work" className="font-semibold text-ink">
             Workloads ({workloads.length})
           </h3>
           <ul className="ml-4 list-disc pl-3">
@@ -81,7 +81,7 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
       )}
       {services.length > 0 && (
         <section aria-labelledby="ct-svc" className="mt-4">
-          <h3 id="ct-svc" className="font-semibold text-slate-900">
+          <h3 id="ct-svc" className="font-semibold text-ink">
             Services ({services.length})
           </h3>
           <ul className="ml-4 list-disc pl-3">
@@ -101,7 +101,7 @@ export function ClusterText({ c, namespace, showSystem, onSelect }: { c: Cluster
       )}
       {ingresses.length > 0 && (
         <section aria-labelledby="ct-ing" className="mt-4">
-          <h3 id="ct-ing" className="font-semibold text-slate-900">
+          <h3 id="ct-ing" className="font-semibold text-ink">
             Ingresses ({ingresses.length})
           </h3>
           <ul className="ml-4 list-disc pl-3">

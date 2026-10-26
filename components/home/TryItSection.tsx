@@ -10,7 +10,7 @@ const TryIt = dynamic(() => import("./TryIt"), { ssr: false, loading: () => <Pla
 /** Boots the cluster when the section first comes near the screen, and only runs its clock while it's visible. */
 
 function Placeholder() {
-  return <div className="grid h-full place-items-center text-[13px] text-slate-500">Starting a cluster…</div>;
+  return <div className="grid h-full place-items-center text-[14px] text-ink-soft">Starting a cluster…</div>;
 }
 
 export function TryItSection() {
