@@ -4,7 +4,7 @@ import { run, setSpeed, watchErrors } from "./helpers";
 test("home page links to every way to learn", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("Learn Kubernetes");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("What happens when you delete a Pod");
   for (const name of ["Lessons", "Challenges", "Exams", "Explainers", "Sandbox", "Progress"]) {
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name })).toBeVisible();
   }

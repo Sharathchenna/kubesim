@@ -6,91 +6,56 @@
   --font-display: var(--font-display);
 }
 
-/* ---------- marketing surfaces (home and index pages) ---------- */
+/* Drafting colours for the home and index pages: paper, one ink, and one signal for the thing that changed. */
+@theme {
+  --color-paper: #fbfaf6;
+  --color-ink: #172340;
+  --color-ink-soft: #5a6680;
+  --color-signal: #d9480f;
+}
 
-/* The Cluster View's dot grid, fading out at the edges, over soft light. */
-.bg-field {
-  position: relative;
-  isolation: isolate;
-  background:
-    radial-gradient(60rem 36rem at 78% -6%, rgb(59 130 246 / 0.10), transparent 70%),
-    radial-gradient(44rem 30rem at 6% 18%, rgb(139 92 246 / 0.07), transparent 70%),
-    radial-gradient(50rem 30rem at 50% 108%, rgb(20 184 166 / 0.06), transparent 70%),
-    #f7f8fa;
-}
-.bg-field::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background-image: radial-gradient(#d3dae4 1px, transparent 1.2px);
-  background-size: 22px 22px;
-  mask-image: radial-gradient(ellipse 80% 70% at 50% 30%, #000 30%, transparent 85%);
-}
-/* Fine grain so large flat areas don't look like a template. */
-.bg-field::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.35;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.06  0 0 0 0 0.09  0 0 0 0 0.16  0 0 0 0.09 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+/* ---------- marketing surfaces (home and index pages), drawn like a technical drawing ---------- */
+
+/* The drafting grid behind a drawing. */
+.sheet-grid {
+  background-color: var(--color-paper);
+  background-image:
+    linear-gradient(rgb(23 35 64 / 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(23 35 64 / 0.07) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
 .font-display {
-  font-family: var(--font-display), ui-serif, Georgia, serif;
-  font-weight: 400;
-  letter-spacing: -0.005em;
+  font-family: var(--font-display), "Arial Narrow", system-ui, sans-serif;
+  font-weight: 500;
+  letter-spacing: -0.01em;
 }
+/* Body text on the drafting pages: the same condensed face, at reading weight. */
+.font-sheet { font-family: var(--font-display), "Arial Narrow", system-ui, sans-serif; }
 .text-balance { text-wrap: balance; }
 .text-pretty { text-wrap: pretty; }
 
-/* Hero cluster: a 12s self-healing loop. */
-@keyframes hc-pop { 0% { opacity: 0; transform: translateY(-18px) scale(.6); } 60% { opacity: 1; transform: translateY(1px) scale(1.03); } 100% { opacity: 1; transform: none; } }
-@keyframes hc-crash { 0%, 30% { opacity: 1; } 34% { opacity: 1; filter: saturate(1.4); } 40%, 46% { opacity: 1; } 52%, 100% { opacity: 0; } }
-@keyframes hc-red { 0%, 30% { opacity: 0; } 33%, 50% { opacity: 1; } 56%, 100% { opacity: 0; } }
-@keyframes hc-ghost { 0%, 50% { opacity: 0; } 54%, 60% { opacity: 1; } 66%, 100% { opacity: 0; } }
-@keyframes hc-reborn { 0%, 60% { opacity: 0; transform: translateY(-22px) scale(.6); } 66% { opacity: 1; transform: translateY(1px) scale(1.03); } 70%, 94% { opacity: 1; transform: none; } 100% { opacity: 1; } }
-@keyframes hc-chip { 0%, 32% { opacity: 0; transform: translateY(6px); } 36%, 54% { opacity: 1; transform: none; } 58%, 100% { opacity: 0; transform: translateY(-4px); } }
-@keyframes hc-chip2 { 0%, 58% { opacity: 0; transform: translateY(6px); } 63%, 88% { opacity: 1; transform: none; } 94%, 100% { opacity: 0; transform: translateY(-4px); } }
-@keyframes hc-packet { 0% { offset-distance: 0%; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { offset-distance: 100%; opacity: 0; } }
-@keyframes hc-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
-@keyframes hc-blink { 50% { opacity: .2; } }
-.hc-pop { transform-box: fill-box; transform-origin: 50% 100%; animation: hc-pop .8s cubic-bezier(0.22, 1, 0.36, 1) both; }
-.hc-crash { animation: hc-crash 12s linear infinite; }
-.hc-red { animation: hc-red 12s linear infinite; }
-.hc-ghost { animation: hc-ghost 12s linear infinite; }
-.hc-reborn { transform-box: fill-box; transform-origin: 50% 100%; animation: hc-reborn 12s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
-.hc-chip { animation: hc-chip 12s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
-.hc-chip2 { animation: hc-chip2 12s cubic-bezier(0.22, 1, 0.36, 1) infinite; }
-.hc-packet { animation: hc-packet 2.4s cubic-bezier(0.65, 0, 0.35, 1) infinite; }
-.hc-float { animation: hc-float 7s ease-in-out infinite; }
-.hc-blink { animation: hc-blink 1.2s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .hc-pop, .hc-reborn, .hc-float, .hc-packet, .hc-blink { animation: none; }
-  .hc-crash, .hc-red, .hc-ghost, .hc-chip, .hc-chip2 { animation: none; }
-  .hc-red, .hc-ghost, .hc-chip, .hc-chip2 { opacity: 0; }
-  .hc-packet { display: none; }
-}
+/* Home page drawing: each step's parts are dimmed until the walkthrough reaches them. */
+.bp-part { transition: opacity 0.35s ease; }
+.bp-stepping .bp-part { opacity: 0.18; }
+.bp-stepping .bp-part.bp-on { opacity: 1; }
 
 html,
 body {
-  background: #f7f8fa;
-  color: #0f172a;
+  background: #fbfaf6;
+  color: #172340;
   -webkit-font-smoothing: antialiased;
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
 /* Canvas: soft dotted grid that follows pan/zoom (position/size set inline). */
 .canvas-dots {
-  background-color: #f7f8fa;
-  background-image: radial-gradient(circle, #d5dae2 1px, transparent 1.2px);
+  background-color: #fbfaf6;
+  background-image: radial-gradient(circle, rgb(23 35 64 / 0.16) 1px, transparent 1.2px);
 }
 /* Cluster View grid: ruled, minor + major lines, following pan/zoom (size/position set inline). */
 .canvas-grid {
-  background-color: var(--cv-bg, #f7f8fa);
+  background-color: var(--cv-bg, #fbfaf6);
   background-image:
     linear-gradient(to right, var(--cv-grid, #eef1f5) 1px, transparent 1px),
     linear-gradient(to bottom, var(--cv-grid, #eef1f5) 1px, transparent 1px),
@@ -118,50 +83,44 @@ body {
    Health is shown by colour AND shape (disc ok, ring starting, square failing).
 --------------------------------------------------------------------------- */
 .cv-root {
-  --cv-bg: #f7f8fa;
-  --cv-surface: #ffffff;
-  --cv-grid: #eef1f5;
-  --cv-grid-major: #e2e7ee;
-  --cv-line: #cbd5e1;
-  --cv-line-2: #94a3b8;
-  --cv-line-3: #64748b;
-  --cv-hair: #eef2f6;
-  --cv-text: #0f172a;
-  --cv-dim: #475569;
-  --cv-faint: #94a3b8;
-  --cv-accent: #2563eb;
-  --cv-ok: #16a34a;
-  --cv-warn: #d97706;
-  --cv-danger: #dc2626;
-  --cv-muted: #94a3b8;
+  font-family: var(--font-display), "Arial Narrow", system-ui, sans-serif;
+  --cv-bg: #fbfaf6;
+  --cv-surface: #fffefb;
+  --cv-grid: rgb(23 35 64 / 0.045);
+  --cv-grid-major: rgb(23 35 64 / 0.08);
+  --cv-line: #b4b9c4;
+  --cv-line-2: #7c859a;
+  --cv-line-3: #172340;
+  --cv-hair: #e6e5df;
+  --cv-text: #172340;
+  --cv-dim: #3d4a66;
+  --cv-faint: #5a6680;
+  --cv-accent: #d9480f;
+  --cv-flow: #172340;
+  --cv-ok: #15803d;
+  --cv-warn: #b45309;
+  --cv-danger: #b91c1c;
+  --cv-muted: #8a93a6;
   --cv-ease-out: cubic-bezier(0.16, 0.84, 0.44, 1);
   --cv-fast: 120ms;
   --cv-base: 160ms;
 }
-[data-kind] { --k-fill: #fff; --k-stroke: #d5dce5; --k-tint: #f1f5f9; --k-ink: #334155; }
-[data-kind="deployment"], [data-kind="replicaset"] { --k-fill: #fbfbff; --k-stroke: #c7cff9; --k-tint: #eef0fe; --k-ink: #4338ca; }
-[data-kind="replicaset"] { --k-fill: #fff; }
-[data-kind="statefulset"] { --k-fill: #fbfefc; --k-stroke: #a7e3bd; --k-tint: #e7f8ee; --k-ink: #15803d; }
-[data-kind="daemonset"] { --k-fill: #fcfcfd; --k-stroke: #cfd6df; --k-tint: #eef2f6; --k-ink: #334155; }
-[data-kind="cronjob"], [data-kind="job"] { --k-fill: #fffcf8; --k-stroke: #f6c89a; --k-tint: #fff1e3; --k-ink: #c2410c; }
-[data-kind="node"] { --k-fill: #fff; --k-stroke: #d5dce5; --k-tint: #f1f5f9; --k-ink: #334155; }
-[data-kind="cp"] { --k-fill: #fdfcff; --k-stroke: #d9cffb; --k-tint: #f3effe; --k-ink: #6d28d9; }
-[data-kind="service"] { --k-fill: #fafcff; --k-stroke: #b6cdf6; --k-tint: #e8f0fe; --k-ink: #1d4ed8; }
-[data-kind="ingress"] { --k-fill: #fdfcff; --k-stroke: #d4c6fb; --k-tint: #f1ecfe; --k-ink: #6d28d9; }
-[data-kind="configmap"] { --k-stroke: #a5e3ee; --k-tint: #e3f7fb; --k-ink: #0e7490; }
-[data-kind="secret"] { --k-stroke: #dcc3f6; --k-tint: #f5ecfd; --k-ink: #7e22ce; }
-[data-kind="pvc"] { --k-stroke: #a7e3bd; --k-tint: #e7f8ee; --k-ink: #15803d; }
-[data-kind="networkpolicy"] { --k-stroke: #f7b6c1; --k-tint: #ffeef1; --k-ink: #be123c; }
-[data-kind="rolebinding"] { --k-stroke: #cfd6df; --k-tint: #eef2f6; --k-ink: #475569; }
-[data-kind="pod"] { --k-fill: #fff; --k-stroke: #dde3ea; }
+/* One drawing language: everything is ink on paper, told apart by its label and icon, not by colour.
+   Colour is kept for health (green, amber, red), the revision stripe on Pods, and the selection (signal). */
+[data-kind] { --k-fill: #fffefb; --k-stroke: #4a556f; --k-tint: #efeeea; --k-ink: #172340; }
+[data-kind="node"], [data-kind="cp"] { --k-stroke: #172340; }
+[data-kind="node"] > .cv-body, [data-kind="cp"] > .cv-body { stroke-width: 1.5px; }
+[data-kind="cp"] { --k-fill: #f6f5f0; }
+[data-kind="pod"] { --k-stroke: #a4abba; }
+[data-kind="configmap"], [data-kind="secret"], [data-kind="pvc"], [data-kind="networkpolicy"], [data-kind="rolebinding"] { --k-stroke: #a4abba; --k-ink: #3d4a66; }
 
 .cv-body { fill: var(--k-fill); stroke: var(--k-stroke); stroke-width: 1.25px; transition: stroke-width var(--cv-fast) ease; }
 .cv-obj { outline: none; }
 .cv-obj:hover > .cv-body { stroke-width: 2px; }
 .cv-obj:focus-visible > .cv-body { stroke: var(--cv-accent); stroke-width: 2px; }
-.cv-obj.is-bad > .cv-body { fill: #fef6f6; stroke: #f3b4b4; }
-.cv-obj.is-down > .cv-body { fill: #fef6f6; stroke: #f3b4b4; stroke-dasharray: 5 4; }
-.cv-obj.is-warn > .cv-body { stroke: #f4cf8f; }
+.cv-obj.is-bad > .cv-body { fill: #fdf2ef; stroke: #d98b80; }
+.cv-obj.is-down > .cv-body { fill: #fdf2ef; stroke: #d98b80; stroke-dasharray: 5 4; }
+.cv-obj.is-warn > .cv-body { stroke: #d9a55a; }
 .cv-obj.is-hot > .cv-body { stroke: var(--cv-line-3); }
 .cv-tint { fill: var(--k-tint); }
 .cv-ink { color: var(--k-ink); fill: var(--k-ink); }
@@ -170,7 +129,7 @@ body {
 .cv-sub { fill: var(--cv-faint); }
 .cv-dim { fill: var(--cv-dim); }
 .cv-mono { font-family: var(--font-geist-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.cv-label { fill: var(--cv-faint); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; }
+.cv-label { fill: var(--cv-faint); font-size: 11px; font-weight: 500; letter-spacing: 0.1em; }
 
 /* Selection: a separate accent ring with a gap, popping in. */
 @keyframes cv-ring-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
@@ -181,12 +140,12 @@ body {
 .cv-wire.is-hot { stroke: var(--cv-line-3); stroke-width: 1.6px; }
 .cv-arrow { fill: var(--cv-line); }
 .cv-arrow.is-hot { fill: var(--cv-line-3); }
-.cv-svc-wire { fill: none; stroke: #9fbcf2; stroke-width: 1.25px; }
-.cv-svc-wire.is-hot { stroke: var(--cv-accent); stroke-width: 1.8px; }
-.cv-svc-wire.is-notready { stroke: #f0a8a0; stroke-dasharray: 4 4; }
+.cv-svc-wire { fill: none; stroke: var(--cv-line); stroke-width: 1.25px; }
+.cv-svc-wire.is-hot { stroke: var(--cv-line-3); stroke-width: 1.8px; }
+.cv-svc-wire.is-notready { stroke: #d98b80; stroke-dasharray: 4 4; }
 /* Traffic: a dash pattern that flows toward the Pod while requests arrive. */
 @keyframes cv-flow { to { stroke-dashoffset: -12; } }
-.cv-flow { fill: none; stroke: var(--cv-accent); stroke-width: 1.5px; stroke-dasharray: 2 10; stroke-linecap: round; animation: cv-flow 0.6s linear infinite; opacity: 0.8; }
+.cv-flow { fill: none; stroke: var(--cv-flow); stroke-width: 1.5px; stroke-dasharray: 2 10; stroke-linecap: round; animation: cv-flow 0.6s linear infinite; opacity: 0.8; }
 
 /* Health marks */
 .cv-mark-ok { fill: var(--cv-ok); }
@@ -194,9 +153,6 @@ body {
 .cv-mark-bad { fill: var(--cv-danger); }
 .cv-mark-done { fill: var(--cv-muted); }
 .cv-mark-gone, .cv-mark-stale { fill: none; stroke: var(--cv-muted); stroke-width: 1.4px; stroke-dasharray: 2 2; }
-
-/* Minimap */
-.cv-minimap-node { position: absolute; border-radius: 1.5px; background: var(--k-stroke); }
 
 /* Concept Illustrations */
 .ill-t { transition: opacity 0.45s ease; }

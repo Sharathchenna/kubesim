@@ -9,7 +9,7 @@ function family(mono: boolean): string {
   const key = mono ? "mono" : "sans";
   if (families[key]) return families[key]!;
   if (typeof document === "undefined") return mono ? "monospace" : "sans-serif";
-  const v = getComputedStyle(document.documentElement).getPropertyValue(mono ? "--font-geist-mono" : "--font-geist-sans").trim();
+  const v = getComputedStyle(document.documentElement).getPropertyValue(mono ? "--font-geist-mono" : "--font-display").trim();
   families[key] = `${v ? `${v}, ` : ""}${mono ? "ui-monospace, monospace" : "ui-sans-serif, system-ui, sans-serif"}`;
   return families[key]!;
 }

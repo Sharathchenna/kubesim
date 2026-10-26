@@ -21,12 +21,12 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
     console.error("kubesim: the page crashed", error);
   }, [error]);
   return (
-    <main className="mx-auto flex min-h-dvh max-w-xl flex-col justify-center px-6 text-center">
-      <div className="font-mono text-[13px] text-slate-500">Error from kubesim (InternalError)</div>
-      <h1 className="mt-3 text-[28px] font-semibold tracking-tight text-slate-900">The simulator hit a bug and stopped</h1>
-      <p className="mt-3 text-[15px] leading-relaxed text-slate-600">Nothing you typed caused this. Try again; if it keeps happening, start with a fresh cluster (your Lesson and exam progress is kept).</p>
+    <main className="font-sheet mx-auto flex min-h-dvh max-w-xl flex-col justify-center px-6 text-center">
+      <div className="font-mono text-[13px] text-ink-soft">Error from kubesim (InternalError)</div>
+      <h1 className="font-display mt-3 text-[34px] leading-tight text-ink">The simulator hit a bug and stopped</h1>
+      <p className="mt-3 text-[16px] leading-relaxed text-ink-soft">Nothing you typed caused this. Try again; if it keeps happening, start with a fresh cluster (your Lesson and exam progress is kept).</p>
       <div className="mt-8 flex flex-wrap justify-center gap-3">
-        <button onClick={() => retry()} className="inline-flex h-10 items-center rounded-xl bg-slate-900 px-4 text-[13.5px] font-medium text-white hover:bg-slate-800">
+        <button onClick={() => retry()} className="inline-flex h-10 items-center border-[1.5px] border-ink bg-ink px-4 text-[15px] text-paper hover:border-signal hover:bg-signal">
           Try again
         </button>
         <button
@@ -34,11 +34,11 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
             clearSavedClusters();
             window.location.reload();
           }}
-          className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50"
+          className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] text-ink hover:bg-ink/5"
         >
           Start with a fresh cluster
         </button>
-        <Link href="/" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50">
+        <Link href="/" className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] text-ink hover:bg-ink/5">
           Home
         </Link>
       </div>

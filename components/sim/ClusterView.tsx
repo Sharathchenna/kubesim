@@ -47,7 +47,7 @@ const SIDE_W = 190;
 const SIDE_H = 40;
 
 /** Corner radius shared by every card (Nodes and Services add a little). */
-const R = 8;
+const R = 0;
 const ARROW = 6;
 
 const HUES = [221, 162, 262, 24, 330, 190, 142, 45];
@@ -475,18 +475,11 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   const detail = k >= 0.7 ? 2 : k >= 0.5 ? 1 : 0;
   // Service → Pod edges carrying requests right now, for the flow animation.
   const flowing = new Set(packets.filter((p) => p.serviceUid && !p.blocked).map((p) => `${p.serviceUid}/${p.podUid}`));
-  const minimap = [
-    ...topCards.map((t) => ({ x: t.x, y: Y_DEP, w: t.w, h: DEP_H, kind: t.kind })),
-    ...nodeBoxes.map((n) => ({ x: n.x, y: n.y, w: n.w, h: n.h, kind: n.node === cp ? "cp" : "node" })),
-    ...svcBoxes.map((s) => ({ x: s.x, y: s.y, w: SVC_W, h: SVC_H, kind: "service" })),
-    ...ingBoxes.map((s) => ({ x: s.x, y: s.y, w: ING_W, h: ING_H, kind: "ingress" })),
-    ...sideItems.map((s) => ({ x: sideX, y: s.y, w: SIDE_W, h: SIDE_H, kind: s.kind })),
-  ];
   const lane = new Map([...cardByUid.keys(), ...childBox.keys()].map((uid, i) => [uid, i % 5]));
   const cls = (...xs: (string | false | undefined)[]) => xs.filter(Boolean).join(" ");
 
   return (
-    <PanZoom bounds={bounds} mustFit={nodesArea} captureWheel={captureWheel} fitKey={`${perRow}:${ordered.length}:${topCards.length}:${services.length}:${ingresses.length}:${sideItems.length > 0}`} onBackgroundClick={() => onSelect(null)} inset={inset} onZoom={setK} minimap={minimap}>
+    <PanZoom bounds={bounds} mustFit={nodesArea} captureWheel={captureWheel} fitKey={`${perRow}:${ordered.length}:${topCards.length}:${services.length}:${ingresses.length}:${sideItems.length > 0}`} onBackgroundClick={() => onSelect(null)} inset={inset} onZoom={setK}>
       {/* section labels */}
       {detail > 0 && (
         <g className="cv-label">
@@ -544,7 +537,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         })}
         {[...ingEdges.values()].map((e) => {
           const h = selIng?.metadata.uid === e.ingUid || selSvc?.metadata.uid === e.svcUid;
-          return <path key={`i${e.ingUid}${e.svcUid}`} d={e.d} fill="none" stroke={h ? "#7c3aed" : "#c4b5fd"} strokeWidth={h ? 1.8 : 1.25} className="cv-edge" />;
+          return <path key={`i${e.ingUid}${e.svcUid}`} d={e.d} fill="none" stroke={h ? "var(--cv-line-3)" : "var(--cv-line)"} strokeWidth={h ? 1.8 : 1.25} className="cv-edge" />;
         })}
         {sideEdges.map((e) => (
           <path key={e.key} d={e.d} fill="none" stroke="var(--cv-line-3)" strokeOpacity={0.7} strokeWidth={1.3} strokeDasharray="5 4" />
@@ -572,8 +565,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             {...act({ kind, ns, name }, `${card.kindLabel} ${name}, ${card.status}`)}
           >
             <rect className="cv-body" x={x} y={Y_DEP} width={w} height={DEP_H} rx={R} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={Y_DEP - 3.5} width={w + 7} height={DEP_H + 7} rx={R + 3} />}
-            {dropKey && hl(dropKey) && <rect x={x - 3} y={Y_DEP - 3} width={w + 6} height={DEP_H + 6} rx={R + 3} fill="#2563eb" fillOpacity={0.06} stroke="#2563eb" strokeWidth={2} strokeDasharray="6 4" />}
+            {sel && <rect className="cv-ring" x={x - 3.5} y={Y_DEP - 3.5} width={w + 7} height={DEP_H + 7} rx={R} />}
+            {dropKey && hl(dropKey) && <rect x={x - 3} y={Y_DEP - 3} width={w + 6} height={DEP_H + 6} rx={R} fill="#172340" fillOpacity={0.04} stroke="#172340" strokeWidth={2} strokeDasharray="6 4" />}
             <KindIcon kind={kind} x={x + 12} y={Y_DEP + 16} />
             <text x={x + 48} y={detail ? Y_DEP + 26 : Y_DEP + 34} className="cv-title" style={{ fontSize: 13.5 }}>
               {fit(nsPrefix(ns) + name, w - 48 - (detail ? tagW + 20 : 14), 13.5, { weight: 600 })}
@@ -605,8 +598,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         return (
           <g key={obj.metadata.uid} data-kind={kind} className={cls("cv-obj cv-fade cursor-pointer", failed && "is-bad", hotChild(obj.metadata.uid) && !sel && "is-hot")} opacity={retired ? 0.55 : 1} style={{ transform: `translate(${x}px, ${y}px)`, transition: "transform .6s cubic-bezier(.22,1,.36,1)" }} onClick={click({ kind, ns: obj.metadata.namespace, name: obj.metadata.name })} {...act({ kind, ns: obj.metadata.namespace, name: obj.metadata.name }, label)}>
             <rect className="cv-body" width={RS_W} height={RS_H} rx={R} />
-            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={RS_W + 7} height={RS_H + 7} rx={R + 3} />}
-            <rect x={0} y={10} width={3} height={RS_H - 20} rx={1.5} fill={`hsl(${hue} 65% 55%)`} />
+            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={RS_W + 7} height={RS_H + 7} rx={R} />}
+            <rect x={0} y={10} width={3} height={RS_H - 20} fill={`hsl(${hue} 65% 55%)`} />
             <text x={14} y={detail ? 21 : 29} className="cv-title cv-mono" style={{ fontSize: 11.5 }}>
               {fit(obj.metadata.name, RS_W - 14 - rightW - 20, 11.5, { mono: true, weight: 600, keepEnd: true })}
               <title>{obj.metadata.name}</title>
@@ -626,7 +619,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
       {/* ------------ scheduler queue (only while Pods wait for a Node) */}
       {pending.length > 0 && (
         <g className="cv-fade">
-          <rect x={qx} y={Y_NODES} width={QUEUE_W} height={queueH} rx={R + 4} fill="#fffbeb" stroke="#f6d38a" strokeDasharray="5 4" />
+          <rect x={qx} y={Y_NODES} width={QUEUE_W} height={queueH} rx={R} fill="#fffbeb" stroke="#f6d38a" strokeDasharray="5 4" />
           <text x={qx + QUEUE_W / 2} y={Y_NODES + 24} textAnchor="middle" className="cv-title" style={{ fontSize: 12 }}>
             Scheduler
           </text>
@@ -662,10 +655,10 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         return (
           <g key={node.metadata.uid} data-kind={isCp ? "cp" : "node"} className={cls("cv-obj cv-fade cursor-pointer", down && "is-down", !down && tone === "warn" && "is-warn")} {...dnd(`node:${name}`)} onClick={click({ kind: "node", name })} {...act({ kind: "node", name }, `Node ${name}, ${status}, ${used} pods${showBars ? `, CPU requested ${Math.round((req.cpu / alloc.cpu) * 100)}%` : ""}`)}>
             <title>{`${name} · ${node.status?.addresses[0].address}`}</title>
-            <rect className="cv-body" x={x} y={y} width={NW} height={h} rx={R + 4} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={NW + 7} height={h + 7} rx={R + 7} />}
-            {cordoned && <rect x={x} y={y} width={NW} height={h} rx={R + 4} fill="url(#cv-hatch)" pointerEvents="none" />}
-            {hl(`node:${name}`) && <rect x={x - 4} y={y - 4} width={NW + 8} height={h + 8} rx={R + 8} fill="#2563eb" fillOpacity={0.05} stroke="#2563eb" strokeWidth={2} strokeDasharray="7 5" pointerEvents="none" />}
+            <rect className="cv-body" x={x} y={y} width={NW} height={h} rx={R} />
+            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={NW + 7} height={h + 7} rx={R} />}
+            {cordoned && <rect x={x} y={y} width={NW} height={h} rx={R} fill="url(#cv-hatch)" pointerEvents="none" />}
+            {hl(`node:${name}`) && <rect x={x - 4} y={y - 4} width={NW + 8} height={h + 8} rx={R} fill="#172340" fillOpacity={0.04} stroke="#172340" strokeWidth={2} strokeDasharray="7 5" pointerEvents="none" />}
             <line className="cv-hair" x1={x + 1} x2={x + NW - 1} y1={y + HEAD} y2={y + HEAD} />
             <KindIcon kind={isCp ? "cp" : "node"} x={x + 12} y={y + 16} />
             <text x={x + 48} y={y + 29} className="cv-title" style={{ fontSize: 14 }}>
@@ -763,10 +756,10 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             {...act({ kind: "pod", ns: pod.metadata.namespace, name: pod.metadata.name }, `Pod ${pod.metadata.name}, ${status}${nodeName ? `, on ${nodeName}` : ", not scheduled"}${r ? `, ${r} restarts` : ""}${isolated ? ", isolated by a NetworkPolicy" : ""}`)}
           >
             <title>{`${pod.metadata.name}\n${st}${pod.status?.podIP ? ` · ${pod.status.podIP}` : ""}${m ? `\nCPU ${m.cpu}m · memory ${Math.round(m.memory / 2 ** 20)}Mi` : ""}${isolated ? "\nIsolated by a NetworkPolicy" : ""}`}</title>
-            {hl(`pod:${pod.metadata.namespace}/${pod.metadata.name}`) && <rect x={-3} y={-3} width={CHIP_W + 6} height={CHIP_H + 6} rx={R + 3} fill="#dc2626" fillOpacity={0.08} stroke="#dc2626" strokeWidth={2} strokeDasharray="5 3" />}
+            {hl(`pod:${pod.metadata.namespace}/${pod.metadata.name}`) && <rect x={-3} y={-3} width={CHIP_W + 6} height={CHIP_H + 6} rx={R} fill="#dc2626" fillOpacity={0.08} stroke="#dc2626" strokeWidth={2} strokeDasharray="5 3" />}
             <rect className="cv-body" width={CHIP_W} height={CHIP_H} rx={R} strokeDasharray={cat === "starting" ? "4 3" : undefined} />
-            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={CHIP_W + 7} height={CHIP_H + 7} rx={R + 3} />}
-            <rect x={0} y={9} width={3} height={CHIP_H - 18} rx={1.5} fill={cat === "stale" || cat === "gone" ? "#cbd5e1" : `hsl(${hue} 65% 55%)`} />
+            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={CHIP_W + 7} height={CHIP_H + 7} rx={R} />}
+            <rect x={0} y={9} width={3} height={CHIP_H - 18} fill={cat === "stale" || cat === "gone" ? "#cbd5e1" : `hsl(${hue} 65% 55%)`} />
             {detail < 2 ? (
               <>
                 <Mark cat={cat} x={15} y={CHIP_H / 2} r={4.5} />
@@ -785,14 +778,14 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
                 <text x={21} y={36.5} fill={CAT[cat].text} style={{ fontSize: 9.5, fontWeight: 500 }}>
                   {fit(status, CHIP_W - 25 - icons, 9.5, { weight: 500 })}
                 </text>
-                {m && m.cpu > 0 && <rect x={6} y={CHIP_H - 4} width={Math.max(2, Math.min(1, m.cpu / Math.max(1, podRequests(pod.spec).cpu || 1000)) * (CHIP_W - 12))} height={2} rx={1} fill="#7c3aed" opacity={0.55} />}
+                {m && m.cpu > 0 && <rect x={6} y={CHIP_H - 4} width={Math.max(2, Math.min(1, m.cpu / Math.max(1, podRequests(pod.spec).cpu || 1000)) * (CHIP_W - 12))} height={2} fill="var(--cv-dim)" opacity={0.55} />}
                 {isolated && <Shield x={CHIP_W - 14} y={CHIP_H - 16} />}
                 {hasVol && <Cylinder x={CHIP_W - (isolated ? 27 : 14)} y={CHIP_H - 16} />}
               </>
             )}
             {r > 0 && detail > 0 && (
               <g>
-                <rect x={CHIP_W - 22} y={6} width={17} height={14} rx={7} fill="#fee2e2" />
+                <rect x={CHIP_W - 22} y={6} width={17} height={14} fill="#fee2e2" />
                 <text x={CHIP_W - 13.5} y={16} textAnchor="middle" fill="#b91c1c" style={{ fontSize: 9, fontWeight: 700 }}>
                   {r}
                 </text>
@@ -815,8 +808,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const tag = `${ready} ep`;
         return (
           <g key={s.metadata.uid} data-kind="service" className={cls("cv-obj cv-fade cursor-pointer", !ready && "is-warn", hot && "is-hot")} opacity={dragged("service", s.metadata.namespace, s.metadata.name) ? 0.45 : 1} {...dnd(`service:${s.metadata.namespace}/${s.metadata.name}`, { kind: "object", type: "service", ns: s.metadata.namespace ?? "default", name: s.metadata.name, label: `Service ${s.metadata.name}` })} onClick={click({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name })} {...act({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name }, `Service ${s.metadata.name}, ${headless ? "headless, " : ""}${ready} endpoints`)}>
-            <rect className="cv-body" x={x} y={y} width={SVC_W} height={SVC_H} rx={R + 2} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={SVC_W + 7} height={SVC_H + 7} rx={R + 5} />}
+            <rect className="cv-body" x={x} y={y} width={SVC_W} height={SVC_H} rx={R} />
+            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={SVC_W + 7} height={SVC_H + 7} rx={R} />}
             <KindIcon kind="service" x={x + 12} y={y + 19} />
             <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: 13.5 }}>
               {fit(nsPrefix(s.metadata.namespace) + s.metadata.name, SVC_W - 48 - tagWidth(tag) - 20, 13.5, { weight: 600 })}
@@ -839,8 +832,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const tag = addr ?? "no address";
         return (
           <g key={ing.metadata.uid} data-kind="ingress" className={cls("cv-obj cv-fade cursor-pointer", !addr && "is-warn")} onClick={click({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name })} {...act({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name }, `Ingress ${ing.metadata.name}, ${rules.length} rules${addr ? `, address ${addr}` : ", no address yet"}`)}>
-            <rect className="cv-body" x={x} y={y} width={ING_W} height={ING_H} rx={R + 2} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={ING_W + 7} height={ING_H + 7} rx={R + 5} />}
+            <rect className="cv-body" x={x} y={y} width={ING_W} height={ING_H} rx={R} />
+            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={ING_W + 7} height={ING_H + 7} rx={R} />}
             <KindIcon kind="ingress" x={x + 12} y={y + 19} />
             <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: 13.5 }}>
               {fit(nsPrefix(ing.metadata.namespace) + ing.metadata.name, ING_W - 48 - tagWidth(tag) - 20, 13.5, { weight: 600 })}
@@ -861,7 +854,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         return (
           <g key={it.uid} data-kind={it.kind} className={cls("cv-obj cv-fade cursor-pointer", it.warn && "is-warn")} onClick={click({ kind: it.kind, ns: it.ns, name: it.name })} {...act({ kind: it.kind, ns: it.ns, name: it.name }, `${it.sub.split(" · ")[0]} ${it.name}, ${it.sub}`)}>
             <rect className="cv-body" x={sideX} y={it.y} width={SIDE_W} height={SIDE_H} rx={R} />
-            {sel && <rect className="cv-ring" x={sideX - 3.5} y={it.y - 3.5} width={SIDE_W + 7} height={SIDE_H + 7} rx={R + 3} />}
+            {sel && <rect className="cv-ring" x={sideX - 3.5} y={it.y - 3.5} width={SIDE_W + 7} height={SIDE_H + 7} rx={R} />}
             <KindGlyph kind={it.kind} x={sideX + 10} y={it.y + 12} size={16} />
             <text x={sideX + 34} y={detail ? it.y + 17 : it.y + 24} className="cv-title cv-mono" style={{ fontSize: 11.5 }}>
               {fit(it.title, SIDE_W - 42, 11.5, { mono: true, weight: 600 })}
@@ -902,7 +895,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
           const fade = t0 > 0.85 ? (1 - t0) / 0.15 : 1;
           return (
             <g key={p.id} opacity={fade} className="cv-packet" aria-hidden="true">
-              <circle cx={pt.x} cy={pt.y} r={3.5} fill={p.ok ? "var(--cv-accent)" : "var(--cv-danger)"} stroke="#fff" strokeWidth={1.5} />
+              <circle cx={pt.x} cy={pt.y} r={3.5} fill={p.ok ? "var(--cv-flow)" : "var(--cv-danger)"} stroke="var(--cv-bg)" strokeWidth={1.5} />
               {p.blocked && t0 > 0.5 && <path d={`M${pt.x - 4},${pt.y - 12} l8,8 M${pt.x + 4},${pt.y - 12} l-8,8`} stroke="var(--cv-danger)" strokeWidth={1.8} strokeLinecap="round" />}
             </g>
           );
@@ -977,9 +970,9 @@ function Bar({ x, y, w, frac, usage, label }: { x: number; y: number; w: number;
       <text x={x} y={y + 4} className="cv-sub" style={{ fontSize: 9 }}>
         {label}
       </text>
-      <rect x={x + lw} y={y} width={w - lw} height={4} rx={2} fill="#eef2f6" />
-      <rect x={x + lw} y={y} width={(w - lw) * f} height={4} rx={2} fill={frac > 0.9 ? "var(--cv-warn)" : "var(--cv-line-2)"} />
-      {usage !== undefined && <rect x={x + lw + (w - lw) * Math.min(1, usage) - 1} y={y - 1.5} width={2} height={7} rx={1} fill="#7c3aed" />}
+      <rect x={x + lw} y={y} width={w - lw} height={4} fill="var(--cv-hair)" />
+      <rect x={x + lw} y={y} width={(w - lw) * f} height={4} fill={frac > 0.9 ? "var(--cv-warn)" : "var(--cv-line-2)"} />
+      {usage !== undefined && <rect x={x + lw + (w - lw) * Math.min(1, usage) - 1} y={y - 1.5} width={2} height={7} fill="var(--cv-text)" />}
     </g>
   );
 }
@@ -1011,7 +1004,7 @@ function Mark({ cat, x, y, r = 3.5 }: { cat: PodCategory | TagCat; x: number; y:
   if (cat === "bad") return <rect x={x - r * 0.9} y={y - r * 0.9} width={r * 1.8} height={r * 1.8} rx={0.8} className="cv-mark-bad cv-blink" />;
   if (cat === "starting" || cat === "warn") return <circle cx={x} cy={y} r={r - 0.6} className={`cv-mark-starting ${cat === "starting" ? "cv-pulse" : ""}`} />;
   if (cat === "gone" || cat === "stale") return <circle cx={x} cy={y} r={r - 0.6} className={`cv-mark-${cat}`} />;
-  const fill = cat === "info" ? "var(--cv-accent)" : cat === "hpa" || cat === "ingress" ? "#7c3aed" : cat === "done" || cat === "muted" ? "var(--cv-muted)" : "var(--cv-ok)";
+  const fill = cat === "info" ? "var(--cv-text)" : cat === "hpa" || cat === "ingress" ? "var(--cv-text)" : cat === "done" || cat === "muted" ? "var(--cv-muted)" : "var(--cv-ok)";
   return <circle cx={x} cy={y} r={r} fill={fill} />;
 }
 
@@ -1022,7 +1015,7 @@ function Tag({ x, y, text, cat, anchor = "start" }: { x: number; y: number; text
   const x0 = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
   return (
     <g pointerEvents="none">
-      <rect x={x0} y={y} width={w} height={h} rx={h / 2} fill="#f8fafc" stroke="#e5e9ef" />
+      <rect x={x0} y={y} width={w} height={h} fill="var(--cv-bg)" stroke="var(--cv-line)" />
       <Mark cat={cat} x={x0 + 10} y={y + h / 2} r={3} />
       <text x={x0 + 17} y={y + h / 2 + 3.6} className="cv-dim" style={{ fontSize: TAG_FS, fontWeight: 500 }}>
         {text}
@@ -1062,7 +1055,7 @@ function KindGlyph({ kind, x, y, size = 16 }: { kind: string; x: number; y: numb
 function KindIcon({ kind, x, y }: { kind: string; x: number; y: number }) {
   return (
     <g pointerEvents="none">
-      <rect x={x} y={y} width={26} height={26} rx={7} className="cv-tint" />
+      <rect x={x} y={y} width={26} height={26} className="cv-tint" />
       <KindGlyph kind={kind} x={x + 5} y={y + 5} />
     </g>
   );

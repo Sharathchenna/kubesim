@@ -6,20 +6,20 @@ export const metadata: Metadata = { title: "Page not found · kubesim", robots: 
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-[#f7f8fa]">
-      <AppHeader />
+    <div className="font-sheet min-h-screen bg-paper text-ink">
+      <AppHeader sheet />
       <main className="mx-auto max-w-xl px-6 pt-24 text-center">
-        <div className="font-mono text-[13px] text-slate-500">Error from server (NotFound)</div>
-        <h1 className="mt-3 text-[30px] font-semibold tracking-tight text-slate-900">This page doesn&apos;t exist</h1>
-        <p className="mt-3 text-[15px] leading-relaxed text-slate-500">Like a Pod that was never scheduled. Try one of these instead:</p>
+        <div className="font-mono text-[13px] text-ink-soft">Error from server (NotFound)</div>
+        <h1 className="font-display mt-3 text-[36px] leading-tight">This page doesn&apos;t exist</h1>
+        <p className="mt-3 text-[16px] leading-relaxed text-ink-soft">Like a Pod that was never scheduled. Try one of these instead:</p>
         <div className="mt-8 flex justify-center gap-3">
-          <Link href="/learn" className="inline-flex h-10 items-center rounded-xl bg-slate-900 px-4 text-[13.5px] font-medium text-white hover:bg-slate-800">
+          <Link href="/learn" className="inline-flex h-10 items-center border-[1.5px] border-ink bg-ink px-4 text-[15px] text-paper hover:border-signal hover:bg-signal">
             Lessons
           </Link>
-          <Link href="/sandbox" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50">
+          <Link href="/sandbox" className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] hover:bg-ink/5">
             Sandbox
           </Link>
-          <Link href="/" className="inline-flex h-10 items-center rounded-xl border border-slate-200 bg-white px-4 text-[13.5px] font-medium text-slate-700 hover:bg-slate-50">
+          <Link href="/" className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] hover:bg-ink/5">
             Home
           </Link>
         </div>

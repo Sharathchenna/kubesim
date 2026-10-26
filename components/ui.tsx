@@ -9,26 +9,26 @@ export type Tone = "default" | "primary" | "danger" | "ghost";
 
 export function Btn({ children, onClick, tone = "default", disabled, title, className = "" }: { children: React.ReactNode; onClick: () => void; tone?: Tone; disabled?: boolean; title?: string; className?: string }) {
   const tones: Record<Tone, string> = {
-    default: "border-slate-200 bg-white text-slate-700 shadow-[0_1px_1px_rgba(15,23,42,.04)] hover:border-slate-300 hover:bg-slate-50",
-    primary: "border-slate-900 bg-slate-900 text-white shadow-[0_1px_2px_rgba(15,23,42,.2)] hover:bg-slate-800",
-    danger: "border-slate-200 bg-white text-red-600 shadow-[0_1px_1px_rgba(15,23,42,.04)] hover:border-red-200 hover:bg-red-50",
-    ghost: "border-transparent bg-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-800",
+    default: "border-ink/30 bg-paper text-ink hover:border-ink",
+    primary: "border-ink bg-ink text-paper hover:bg-ink/90",
+    danger: "border-ink/30 bg-paper text-red-700 hover:border-red-700",
+    ghost: "border-transparent bg-transparent text-ink-soft hover:bg-ink/[0.05] hover:text-ink",
   };
   return (
-    <button type="button" title={title} disabled={disabled} onClick={onClick} className={`inline-flex h-7 items-center justify-center gap-1 rounded-lg border px-2.5 text-[12px] font-medium transition-colors disabled:opacity-40 ${tones[tone]} ${className}`}>
+    <button type="button" title={title} disabled={disabled} onClick={onClick} className={`inline-flex h-7 items-center justify-center gap-1 border px-2.5 text-[12.5px] transition-colors disabled:opacity-40 ${tones[tone]} ${className}`}>
       {children}
     </button>
   );
 }
 
 export function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-xl border border-slate-200/80 bg-white shadow-[0_1px_2px_rgba(15,23,42,.04)] ${className}`}>{children}</div>;
+  return <div className={`border border-ink/20 bg-paper ${className}`}>{children}</div>;
 }
 
 export function Heading({ children, right }: { children: React.ReactNode; right?: React.ReactNode }) {
   return (
     <div className="mb-2.5 flex items-center justify-between">
-      <h3 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{children}</h3>
+      <h3 className="text-[13px] font-medium text-ink-soft">{children}</h3>
       {right}
     </div>
   );
@@ -38,13 +38,13 @@ export function Dot({ color }: { color: string }) {
   return <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: color }} />;
 }
 
-export const CAT_COLOR = { ok: "#16a34a", bad: "#dc2626", starting: "#f59e0b", gone: "#94a3b8", done: "#64748b", stale: "#94a3b8" } as const;
+export const CAT_COLOR = { ok: "#15803d", bad: "#b91c1c", starting: "#b45309", gone: "#8a93a6", done: "#5a6680", stale: "#8a93a6" } as const;
 
 export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: React.ReactNode }[]; onChange: (v: T) => void }) {
   return (
-    <div className="flex rounded-lg bg-slate-100 p-0.5">
+    <div className="flex h-full items-stretch gap-4">
       {options.map((o) => (
-        <button key={o.value} type="button" aria-pressed={value === o.value} onClick={() => onChange(o.value)} className={`rounded-md px-2.5 py-1 text-[12px] font-medium transition ${value === o.value ? "bg-white text-slate-900 shadow-[0_1px_2px_rgba(15,23,42,.1)]" : "text-slate-500 hover:text-slate-800"}`}>
+        <button key={o.value} type="button" aria-pressed={value === o.value} onClick={() => onChange(o.value)} className={`whitespace-nowrap border-b-2 px-0.5 text-[13.5px] transition-colors ${value === o.value ? "border-ink text-ink" : "border-transparent text-ink-soft hover:text-ink"}`}>
           {o.label}
         </button>
       ))}
@@ -53,4 +53,4 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
 }
 
 
-export const inputCls = "h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-[12.5px] text-slate-800 shadow-[0_1px_1px_rgba(15,23,42,.03)] outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-900/5";
+export const inputCls = "h-8 border border-ink/30 bg-paper px-2.5 text-[12.5px] text-ink outline-none transition focus:border-ink";

@@ -11,21 +11,23 @@ import type { SimStore } from "@/lib/sim/useSimulation";
 import { Btn } from "../ui";
 
 const highlight = HighlightStyle.define([
-  { tag: t.propertyName, color: "#1d4ed8" },
-  { tag: [t.string, t.content], color: "#0f766e" },
-  { tag: [t.number, t.bool, t.null], color: "#b45309" },
-  { tag: t.comment, color: "#94a3b8", fontStyle: "italic" },
-  { tag: [t.punctuation, t.separator], color: "#94a3b8" },
+  // Ink on paper: keys in full ink, values a step softer, punctuation and comments faint.
+  { tag: t.propertyName, color: "#172340", fontWeight: "500" },
+  { tag: [t.string, t.content], color: "#5a6680" },
+  { tag: [t.number, t.bool, t.null], color: "#5a6680" },
+  { tag: t.comment, color: "rgba(23,35,64,.45)", fontStyle: "italic" },
+  { tag: [t.punctuation, t.separator], color: "rgba(23,35,64,.4)" },
 ]);
 
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "12.5px", backgroundColor: "#fff" },
+  "&": { height: "100%", fontSize: "12.5px", backgroundColor: "#fbfaf6", color: "#172340" },
   ".cm-scroller": { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", lineHeight: "1.65" },
-  ".cm-gutters": { backgroundColor: "#fff", border: "none", color: "#cbd5e1" },
-  ".cm-activeLine": { backgroundColor: "#f8fafc" },
-  ".cm-activeLineGutter": { backgroundColor: "#f8fafc", color: "#64748b" },
-  "&.cm-focused": { outline: "2px solid rgba(37,99,235,.35)", outlineOffset: "-2px" },
-  ".cm-cursor": { borderLeftColor: "#0f172a" },
+  ".cm-gutters": { backgroundColor: "#fbfaf6", border: "none", color: "rgba(23,35,64,.3)" },
+  ".cm-activeLine": { backgroundColor: "rgba(23,35,64,.03)" },
+  ".cm-activeLineGutter": { backgroundColor: "rgba(23,35,64,.03)", color: "#5a6680" },
+  "&.cm-focused": { outline: "2px solid rgba(217,72,15,.5)", outlineOffset: "-2px" },
+  ".cm-cursor": { borderLeftColor: "#172340" },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(23,35,64,.12)" },
 });
 
 /** A YAML editor over the Learner's virtual files, with Apply. */
@@ -74,9 +76,9 @@ export function Editor({ sim }: { sim: SimStore }) {
 
   return (
     <div className="flex h-full flex-col md:flex-row">
-      <div ref={host} className="min-h-0 min-w-0 flex-1 overflow-hidden border-slate-100 md:border-r" />
-      <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 p-3 md:w-64 md:border-t-0">
-        <select value={file} onChange={(e) => sim.openFile(e.target.value)} className="h-7 rounded-lg border border-slate-200 bg-white px-1.5 font-mono text-[11.5px] text-slate-700" aria-label="File">
+      <div ref={host} className="min-h-0 min-w-0 flex-1 overflow-hidden border-ink/15 md:border-r" />
+      <div className="flex shrink-0 flex-col gap-2 border-t border-ink/15 p-3 md:w-64 md:border-t-0">
+        <select value={file} onChange={(e) => sim.openFile(e.target.value)} className="h-7 border border-ink/30 bg-paper px-1.5 font-mono text-[11.5px] text-ink outline-none hover:border-ink focus-visible:border-signal" aria-label="File">
           {names.map((n) => (
             <option key={n}>{n}</option>
           ))}
@@ -84,8 +86,8 @@ export function Editor({ sim }: { sim: SimStore }) {
         <Btn tone="primary" onClick={() => view.current && sim.apply(view.current.state.doc.toString())}>
           kubectl apply -f {file}
         </Btn>
-        <div className="hidden text-[11px] text-slate-500 md:block">⌘/Ctrl + Enter also applies. Files are shared with the terminal: try ls, cat, and kubectl get … -o yaml &gt; file.yaml</div>
-        {last && <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-lg border p-2 font-mono text-[11px] leading-snug ${last.ok ? "border-slate-200 bg-slate-50 text-slate-600" : "border-red-100 bg-red-50 text-red-700"}`}>{last.out}</pre>}
+        <div className="hidden text-[11px] text-ink-soft md:block">⌘/Ctrl + Enter also applies. Files are shared with the terminal: try ls, cat, and kubectl get … -o yaml &gt; file.yaml</div>
+        {last && <pre className={`mt-1 max-h-40 overflow-auto whitespace-pre-wrap border p-2 font-mono text-[11px] leading-snug ${last.ok ? "border-ink/15 bg-ink/[0.03] text-ink-soft" : "border-red-600/40 bg-red-50 text-red-900"}`}>{last.out}</pre>}
       </div>
     </div>
   );
