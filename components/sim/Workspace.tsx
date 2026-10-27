@@ -380,7 +380,12 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
           {story[0] ? explainEvent(story[0]) : ""}
         </div>
       )}
-      {overlay}
+      {/* Centred in the canvas the diagram uses, clear of the palette column. */}
+      {overlay && (
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-10" style={{ left: inset.left }}>
+          {overlay}
+        </div>
+      )}
     </div>
   );
 

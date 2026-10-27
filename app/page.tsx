@@ -4,6 +4,7 @@ import { PodWordmark } from "@/components/home/PodWordmark";
 import { TryItSection } from "@/components/home/TryItSection";
 import { CHALLENGES, EXAMS, EXAM_TRADEMARK_NOTICE, EXPLAINERS, LESSONS, TRACKS, trackOf } from "@/lib/lessons/meta";
 import { heptagon } from "@/lib/heptagon";
+import { INCIDENTS } from "@/lib/sim/incidents";
 import { version } from "@/package.json";
 
 const GITHUB = "https://github.com/Sharathchenna/kubesim";
@@ -89,10 +90,11 @@ export default function Home() {
                 </p>
               </div>
             </div>
-            <dl className="mt-10 grid grid-cols-2 gap-y-4 border-t border-white/20 pt-6 sm:grid-cols-4">
+            <dl className="mt-10 grid grid-cols-2 gap-y-4 border-t border-white/20 pt-6 sm:grid-cols-5">
               {[
                 [LESSONS.length, "lessons"],
                 [CHALLENGES.length, "challenges"],
+                [INCIDENTS.length, "live incidents"],
                 [EXPLAINERS.length, "explainers"],
                 [EXAMS.length, "practice exams"],
               ].map(([n, k]) => (
@@ -119,12 +121,58 @@ export default function Home() {
               <h2 id="try" className="text-[15px] font-semibold">
                 This cluster is live
               </h2>
-              <p className="text-[14px] text-ink-soft">Delete a Pod and watch the ReplicaSet bring it back.</p>
+              <p className="text-[14px] text-ink-soft">A shop with real traffic. Kill its database and watch the errors travel up, then heal.</p>
               <Link href="/sandbox" className="ml-auto text-[14px] font-medium text-signal hover:underline">
                 Full-size Sandbox →
               </Link>
             </div>
             <TryItSection />
+          </div>
+        </section>
+
+        {/* ---------------------------------------------------------------- on call: the Daily Incident */}
+        <section aria-labelledby="oncall" className="mx-auto max-w-6xl px-4 pt-20 sm:px-6">
+          <div className="grid grid-cols-1 items-center gap-8 rounded-[20px] bg-ink p-6 text-white sm:p-10 lg:grid-cols-[1.2fr_1fr]">
+            <div>
+              <p className="font-mono text-[12px] uppercase tracking-[0.08em] text-white/60">Daily Incident</p>
+              <h2 id="oncall" className="mt-2 text-balance font-sans text-[32px] font-extrabold leading-[1.05] tracking-[-0.03em] sm:text-[40px]">
+                You&apos;re on call. Production is down.
+              </h2>
+              <p className="text-pretty mt-3 max-w-lg text-[16px] leading-relaxed text-white/75">
+                A shop is serving real traffic when something breaks. Find the cause with kubectl and get it serving again before the clock runs up. One new outage a day, the same for everyone: share your time, keep your streak.
+              </p>
+              <div className="mt-6 flex flex-wrap items-center gap-4">
+                <Link href="/daily" className="btn-primary inline-flex h-12 items-center rounded-full px-6 text-[15.5px] font-semibold text-white">
+                  Take today&apos;s incident →
+                </Link>
+                <Link href="/incidents" className="text-[14.5px] font-medium text-white/80 hover:text-white hover:underline">
+                  All {INCIDENTS.length} incidents
+                </Link>
+              </div>
+            </div>
+            {/* A still of the pager, as the Learner will see it. */}
+            <div aria-hidden className="rounded-2xl border border-red-300/30 bg-red-50 p-5 text-ink shadow-[0_20px_60px_-20px_rgb(220_38_38/0.5)]">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 font-mono text-[12px] font-semibold uppercase tracking-[0.08em]">
+                  <span className="cv-blink h-2 w-2 rounded-full bg-red-600" />
+                  Paged
+                </span>
+                <span className="font-mono text-[22px] font-semibold tabular-nums">0:42</span>
+              </div>
+              <div className="mt-1 text-[16px] font-medium">shop-web is returning 503s</div>
+              <div className="mt-3 flex items-baseline gap-6 font-mono tabular-nums">
+                <span>
+                  <span className="text-[28px] font-semibold text-red-700">100%</span>
+                  <span className="ml-1 text-[11px] uppercase tracking-[0.06em] text-ink-soft">errors</span>
+                </span>
+                <span>
+                  <span className="text-[28px] font-semibold">10</span>
+                  <span className="ml-1 text-[11px] uppercase tracking-[0.06em] text-ink-soft">req/s</span>
+                </span>
+              </div>
+              <div className="mt-2 font-mono text-[12.5px] text-ink-soft">$ kubectl get pods</div>
+              <div className="font-mono text-[12.5px] text-red-700">shop-db-0   0/1   CreateContainerConfigError</div>
+            </div>
           </div>
         </section>
 

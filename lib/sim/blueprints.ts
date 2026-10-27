@@ -61,7 +61,11 @@ spec:${extra}
   - port: ${port}
     targetPort: ${targetPort}`;
 
-const api = (name: string, db?: string, cache?: string) => `
+/**
+ * kubesim/demo-app, the simulator's sample app: it calls every *_URL in its environment on each
+ * request, so wiring services together is just setting environment variables, as in real apps.
+ */
+const app = (name: string, replicas: number, env: [string, string][], secret?: string) => `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -69,7 +73,7 @@ metadata:
   labels:
     app: ${name}
 spec:
-  replicas: 2
+  replicas: ${replicas}
   selector:
     matchLabels:
       app: ${name}
@@ -79,31 +83,20 @@ spec:
         app: ${name}
     spec:
       containers:
-      - name: api
-        image: hashicorp/http-echo
-        args: ["-text=hello from the api"]
+      - name: app
+        image: kubesim/demo-app:1.0
         ports:
-        - containerPort: 5678${
-          db || cache
+        - containerPort: 8080
+        env:
+        - name: APP_NAME
+          value: ${name}${env.map(([k, v]) => `\n        - name: ${k}\n          value: ${v}`).join("")}${
+          secret
             ? `
-        env:${
-          db
-            ? `
-        - name: DB_HOST
-          value: ${db}
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: ${db}
+              name: ${secret}
               key: POSTGRES_PASSWORD`
-            : ""
-        }${
-          cache
-            ? `
-        - name: REDIS_HOST
-          value: ${cache}`
-            : ""
-        }`
             : ""
         }
         resources:
@@ -112,8 +105,8 @@ spec:
             memory: 32Mi
         readinessProbe:
           httpGet:
-            path: /
-            port: 5678
+            path: /healthz
+            port: 8080
           periodSeconds: 5`;
 
 /** A single-replica database: password in a Secret, a headless Service, and a StatefulSet whose Pod keeps its own volume. */
@@ -288,8 +281,8 @@ export const BLUEPRINTS: Blueprint[] = [
     hint: "2 replicas + Service",
     base: "api",
     on: "canvas",
-    yaml: (name) => doc(api(name), service(name, 80, 5678)),
-    note: (name) => `Deployment ${name} runs 2 API replicas; Service ${name} maps port 80 to their port 5678. Try curl http://${name}.`,
+    yaml: (name) => doc(`# Add DATABASE_URL (postgres://<service>:5432/app) or REDIS_URL (redis://<service>:6379)\n# under env and apply again: the API then calls them on every request.\n${app(name, 2, []).trim()}`, service(name, 80, 8080)),
+    note: (name) => `Deployment ${name} runs 2 API replicas; Service ${name} maps port 80 to their port 8080. Open ${name}.yaml and point DATABASE_URL at a database: every request then goes through to it.`,
   },
   {
     id: "autoscale",
@@ -445,15 +438,23 @@ spec:
     on: "canvas",
     yaml: (name) =>
       doc(
-        web(`${name}-web`),
-        service(`${name}-web`, 80),
-        api(`${name}-api`, `${name}-db`, `${name}-cache`),
-        service(`${name}-api`, 80, 5678),
+        app(`${name}-web`, 3, [["API_URL", `http://${name}-api`]]),
+        service(`${name}-web`, 80, 8080),
+        app(
+          `${name}-api`,
+          2,
+          [
+            ["DATABASE_URL", `postgres://${name}-db:5432/shop`],
+            ["REDIS_URL", `redis://${name}-cache:6379`],
+          ],
+          `${name}-db`,
+        ),
+        service(`${name}-api`, 80, 8080),
         database(`${name}-db`, "postgres"),
         redis(`${name}-cache`),
         ingress(name, `${name}-web`),
         loadGenerator(`${name}-users`, `${name}-web`),
       ),
-    note: (name) => `A whole app: ${name}-web and ${name}-api (which finds Postgres and Redis through their Services and reads the database password from a Secret), ${name}-db with its own volume, ${name}-cache, an Ingress, and ${name}-users sending traffic.`,
+    note: (name) => `A whole app, and every request goes all the way through: ${name}-users → ${name}-web → ${name}-api → ${name}-db (Postgres, with its own volume) and ${name}-cache (Redis). They find each other through Services named in their environment. Break any piece and watch the errors travel back up.`,
   },
 ];

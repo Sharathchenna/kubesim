@@ -9,6 +9,7 @@ import { AppHeader } from "../AppHeader";
 import { Btn, CAT_COLOR, Card, Dot, Heading, inputCls as input } from "../ui";
 import type { Selection } from "./ClusterView";
 import { Inspector } from "./Inspector";
+import { saveClusterImage } from "./saveImage";
 import { LayoutToggle, MobileTabs, SimControls, Workspace, useLayoutChoice } from "./Workspace";
 import { SYSTEM_NAMESPACES } from "@/lib/engine/bootstrap";
 import { SHARE_PARAM, decodeCluster, encodeCluster, tokenFromHash } from "@/lib/sim/share";
@@ -584,6 +585,13 @@ export function Sandbox() {
             </label>
             <Btn onClick={share} title="Copy a link that opens a copy of this cluster">
               Share
+            </Btn>
+            <Btn
+              className="max-sm:hidden"
+              title="Download the cluster diagram as a PNG"
+              onClick={() => saveClusterImage(document).catch((e: Error) => setNote({ text: e.message, tone: "error" }))}
+            >
+              Save image
             </Btn>
             <Btn
               onClick={() => {

@@ -80,6 +80,8 @@ export interface ImageInfo {
   cpuPerRps?: number;
   /** Resident memory in bytes. */
   baseMem?: number;
+  /** Dependencies it calls to serve a request to `path`, from its environment (URLs). */
+  calls?(env: Record<string, string>, path: string): string[];
 }
 
 const Mi = 2 ** 20;
@@ -159,6 +161,12 @@ const shellImage = (repo: string, sizeBytes: number, extraTags: string[] = [], f
 });
 
 const hasEnv = (env: Record<string, string>, name: string) => !!env[name];
+/** The URLs kubesim/demo-app calls: its *_URL environment variables, in name order. */
+const demoCalls = (env: Record<string, string>) =>
+  Object.keys(env)
+    .filter((k) => k.endsWith("_URL") && /^(https?|postgres(ql)?|mysql|redis):\/\//.test(env[k]))
+    .sort()
+    .map((k) => env[k]);
 
 /** The first digits of pi, computed once (Machin's formula) for the classic `perl bpi` Job. */
 let piCache = "";
@@ -360,6 +368,26 @@ export const IMAGES: ImageInfo[] = [
     idleCpu: 1,
     cpuPerRps: 50,
     baseMem: 9 * Mi,
+  },
+  {
+    // kubesim's own sample app (it exists only in the simulator). Like most real services it finds its
+    // dependencies through environment variables: every *_URL (http, postgres, mysql, redis) is
+    // called on each request, and if one is unreachable it answers 503 instead of 200.
+    repo: "kubesim/demo-app",
+    tags: (t) => t === "latest" || semverish(t),
+    sizeBytes: 18_204_160,
+    shell: false,
+    flavor: "none",
+    defaultPort: 8080,
+    entrypoint: ({ env }) => serveWith([`demo-app ${env.APP_NAME ?? ""} listening on :8080`.replace("  ", " "), ...demoCalls(env).map((u) => `will call ${u.replace(/\/\/[^@/]*@/, "//")}`)]),
+    http: (c) => ({ status: 200, body: `{"app":"demo-app","pod":"${c.podName}","path":"${c.path}"}` }),
+    accessLog: (c, r) => `${c.clientIP} - "GET ${c.path}" ${r.status}${r.status >= 500 ? ` ${r.body}` : ""}`,
+    // Health checks answer from the process itself, so a database outage doesn't take every Pod out of its Service.
+    calls: (env, path) => (path.startsWith("/healthz") ? [] : demoCalls(env)),
+    termExit: 0,
+    idleCpu: 2,
+    cpuPerRps: 3,
+    baseMem: 14 * Mi,
   },
   {
     repo: "redis",

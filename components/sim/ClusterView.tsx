@@ -61,19 +61,26 @@ const RATE_BEAT = 500;
 const BUCKETS = 24;
 const RATE_SECONDS = 3;
 
-/** Requests a Pod served in each second up to `t`, oldest first, from its containers' request log. */
-function servedSeries(c: Cluster, uid: string, t: number): number[] {
+/** Counts timestamps into one bucket per second up to `t`, oldest first. */
+function bucket(times: number[], t: number, out = new Array<number>(BUCKETS).fill(0)): number[] {
+  for (const at of times) {
+    const i = BUCKETS - 1 - Math.floor((t - at) / 1000);
+    if (at <= t && i >= 0) out[i]++;
+  }
+  return out;
+}
+/** Requests a Pod served (or answered with a 5xx: `errs`) in each second up to `t`, from its containers' logs. */
+function servedSeries(c: Cluster, uid: string, t: number, key: "reqs" | "errs" = "reqs"): number[] {
   const out = new Array<number>(BUCKETS).fill(0);
-  for (const crt of Object.values(c.state.pods[uid]?.containers ?? {}))
-    for (const at of crt.reqs ?? []) {
-      const i = BUCKETS - 1 - Math.floor((t - at) / 1000);
-      if (at <= t && i >= 0) out[i]++;
-    }
+  for (const crt of Object.values(c.state.pods[uid]?.containers ?? {})) bucket(crt[key] ?? [], t, out);
   return out;
 }
 /** Requests per second over the last few seconds of a series. */
 const rateOf = (series: number[]) => series.slice(-RATE_SECONDS).reduce((a, b) => a + b, 0) / RATE_SECONDS;
 const fmtRate = (r: number) => `${r < 10 ? r.toFixed(1) : Math.round(r)}/s`;
+/** Requests per second, and the share of them failing once it's worth mentioning. */
+const fmtTraffic = (r: number, err: number) => (err >= 0.01 ? `${fmtRate(r)} · ${Math.round(err * 100)}% err` : fmtRate(r));
+const ERR = "#dc2626";
 
 const CAT: Record<PodCategory, { dot: string; text: string; label?: string }> = {
   ok: { dot: "#16a34a", text: "#15803d" },
@@ -541,29 +548,37 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   // Live request rates, from the Pods' own request logs (what metrics-server and the HPA read too).
   const beat = Math.floor(c.now / RATE_BEAT) * RATE_BEAT;
   const series = new Map(pods.map((p) => [p.metadata.uid, servedSeries(c, p.metadata.uid, beat)]));
+  const errSeries = new Map(pods.map((p) => [p.metadata.uid, servedSeries(c, p.metadata.uid, beat, "errs")]));
   const podRate = (uid: string) => rateOf(series.get(uid) ?? []);
-  const svcSeries = (svcUid: string) => {
-    const out = new Array<number>(BUCKETS).fill(0);
-    for (const e of svcEdges.values()) if (e.svcUid === svcUid) series.get(e.podUid)?.forEach((n, i) => (out[i] += n));
+  /** Share of a Pod's recent requests it answered with an error. */
+  const podErr = (uid: string) => {
+    const r = podRate(uid);
+    return r ? rateOf(errSeries.get(uid) ?? []) / r : 0;
+  };
+  // A Service's traffic is what its Pods served, plus requests it had no ready Pod for (those all fail).
+  const svcSeries = (svcUid: string, key: "reqs" | "errs" = "reqs") => {
+    const out = bucket(c.state.svcErrs?.[svcUid] ?? [], beat);
+    for (const e of svcEdges.values()) if (e.svcUid === svcUid) (key === "reqs" ? series : errSeries).get(e.podUid)?.forEach((n, i) => (out[i] += n));
     return out;
   };
   const svcRate = new Map(svcBoxes.map(({ s }) => [s.metadata.uid, rateOf(svcSeries(s.metadata.uid))]));
+  const svcErr = new Map(svcBoxes.map(({ s }) => [s.metadata.uid, svcRate.get(s.metadata.uid) ? rateOf(svcSeries(s.metadata.uid, "errs")) / svcRate.get(s.metadata.uid)! : 0]));
   // A rate label on every wire carrying traffic, each at the first point along its wire that's clear of the others.
-  const rateLabels: (Pt & { key: string; text: string })[] = [];
+  const rateLabels: (Pt & { key: string; text: string; bad: boolean })[] = [];
   if (detail > 0) {
     const placed: { x: number; y: number; w: number }[] = [];
     const wires = [
-      ...[...svcEdges.values()].filter((e) => e.ready).map((e) => ({ key: `s${e.svcUid}/${e.podUid}`, e, r: podRate(e.podUid) })),
-      ...[...ingEdges.values()].map((e) => ({ key: `i${e.ingUid}/${e.svcUid}`, e, r: svcRate.get(e.svcUid) ?? 0 })),
+      ...[...svcEdges.values()].filter((e) => e.ready).map((e) => ({ key: `s${e.svcUid}/${e.podUid}`, e, r: podRate(e.podUid), err: podErr(e.podUid) })),
+      ...[...ingEdges.values()].map((e) => ({ key: `i${e.ingUid}/${e.svcUid}`, e, r: svcRate.get(e.svcUid) ?? 0, err: svcErr.get(e.svcUid) ?? 0 })),
     ];
-    for (const { key, e, r } of wires) {
+    for (const { key, e, r, err } of wires) {
       if (!r) continue;
-      const text = fmtRate(r);
+      const text = fmtTraffic(r, err);
       const w = rateWidth(text);
       const spots = [0.5, 0.62, 0.38, 0.72, 0.28].map((t) => onCubic(e.a, e.c1, e.c2, e.b, t));
       const at = spots.find((q) => placed.every((o) => Math.abs(o.x - q.x) > (o.w + w) / 2 + 18 || Math.abs(o.y - q.y) > 21)) ?? spots[0];
       placed.push({ ...at, w });
-      rateLabels.push({ ...at, key, text });
+      rateLabels.push({ ...at, key, text, bad: err >= 0.01 });
     }
   }
   // Service → Pod edges carrying requests right now, for the flow animation.
@@ -664,7 +679,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
           const r = podRate(e.podUid);
           return (
             <g key={`s${key}`} className="cv-edge">
-              <path d={e.d} className={cls("cv-svc-wire", h && "is-hot", !e.ready && "is-notready", e.ready && (flowing.has(key) || r > 0) && "is-live")} />
+              <path d={e.d} className={cls("cv-svc-wire", h && "is-hot", !e.ready && "is-notready", e.ready && (flowing.has(key) || r > 0) && "is-live", e.ready && podErr(e.podUid) >= 0.01 && "is-failing")} />
             </g>
           );
         })}
@@ -673,7 +688,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
           const r = svcRate.get(e.svcUid) ?? 0;
           return (
             <g key={`i${e.ingUid}${e.svcUid}`} className="cv-edge">
-              <path d={e.d} className={cls("cv-svc-wire", h && "is-hot", r > 0 && "is-live")} />
+              <path d={e.d} className={cls("cv-svc-wire", h && "is-hot", r > 0 && "is-live", (svcErr.get(e.svcUid) ?? 0) >= 0.01 && "is-failing")} />
             </g>
           );
         })}
@@ -953,6 +968,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const sub = headless ? `headless · DNS → Pod IPs` : `${s.spec?.clusterIP}:${port?.port}${port?.nodePort ? ` · node :${port.nodePort}` : ""}${s.spec?.type === "LoadBalancer" ? ` · ${lbIp ?? "<pending>"}` : ""}`;
         const tag = `${ready} ep`;
         const rate = svcRate.get(s.metadata.uid) ?? 0;
+        const err = svcErr.get(s.metadata.uid) ?? 0;
+        const traffic = fmtTraffic(rate, err);
         return (
           <g key={s.metadata.uid} data-kind="service" className={cls("cv-obj cv-fade cursor-pointer", !ready && "is-warn", hot && "is-hot")} opacity={dragged("service", s.metadata.namespace, s.metadata.name) ? 0.45 : 1} {...dnd(`service:${s.metadata.namespace}/${s.metadata.name}`, { kind: "object", type: "service", ns: s.metadata.namespace ?? "default", name: s.metadata.name, label: `Service ${s.metadata.name}` })} onClick={click({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name })} {...act({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name }, `Service ${s.metadata.name}, ${headless ? "headless, " : ""}${ready} endpoints`)}>
             <rect className="cv-body" x={x} y={y} width={SVC_W} height={SVC_H} rx={R} />
@@ -963,15 +980,15 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             </text>
             {detail > 0 && (
               <text x={x + 48} y={y + 46} className="cv-sub cv-mono" style={{ fontSize: 10.5 }}>
-                {fit(sub, SVC_W - 60 - (rate ? textWidth(fmtRate(rate), 10.5, { mono: true, weight: 600 }) + 10 : 0), 10.5, { mono: true })}
+                {fit(sub, SVC_W - 60 - (rate ? textWidth(traffic, 10.5, { mono: true, weight: 600 }) + 10 : 0), 10.5, { mono: true })}
               </text>
             )}
             {detail > 0 && rate > 0 && (
               <>
-                <text x={x + SVC_W - 12} y={y + 46} textAnchor="end" className="cv-mono" fill="var(--cv-flow)" style={{ fontSize: 10.5, fontWeight: 600 }}>
-                  {fmtRate(rate)}
+                <text x={x + SVC_W - 12} y={y + 46} textAnchor="end" className="cv-mono" fill={err >= 0.01 ? ERR : "var(--cv-flow)"} style={{ fontSize: 10.5, fontWeight: 600 }}>
+                  {traffic}
                 </text>
-                <Spark x={x + R} y={y + SVC_H - 12} w={SVC_W - 2 * R} h={11} data={svcSeries(s.metadata.uid)} />
+                <Spark x={x + R} y={y + SVC_H - 12} w={SVC_W - 2 * R} h={11} data={svcSeries(s.metadata.uid)} errs={svcSeries(s.metadata.uid, "errs")} />
               </>
             )}
             <Tag x={x + SVC_W - 12} y={y + 14} anchor="end" cat={ready ? "info" : "bad"} text={tag} />
@@ -1059,7 +1076,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
 
       {/* ------------ live rates, above the packets so the numbers stay readable */}
       {rateLabels.map((l) => (
-        <Rate key={l.key} x={l.x} y={l.y} text={l.text} />
+        <Rate key={l.key} x={l.x} y={l.y} text={l.text} bad={l.bad} />
       ))}
 
       <defs>
@@ -1159,26 +1176,29 @@ type TagCat = Tone | "info" | "hpa" | "ingress";
 const TAG_FS = 10.5;
 const rateWidth = (text: string) => textWidth(text, 10, { mono: true, weight: 600 }) + 8;
 /** A live rate riding on a traffic wire. */
-function Rate({ x, y, text }: { x: number; y: number; text: string }) {
+function Rate({ x, y, text, bad }: { x: number; y: number; text: string; bad?: boolean }) {
   const w = rateWidth(text);
   return (
     <g pointerEvents="none">
       <rect x={x - w / 2} y={y - 8} width={w} height={16} rx={4} fill="var(--cv-bg)" />
-      <text x={x} y={y + 3.5} textAnchor="middle" className="cv-mono" fill="var(--cv-flow)" style={{ fontSize: 10, fontWeight: 600 }}>
+      <text x={x} y={y + 3.5} textAnchor="middle" className="cv-mono" fill={bad ? ERR : "var(--cv-flow)"} style={{ fontSize: 10, fontWeight: 600 }}>
         {text}
       </text>
     </g>
   );
 }
 
-/** Recent requests as a faint area along the bottom of a card, newest on the right. */
-function Spark({ x, y, w, h, data }: { x: number; y: number; w: number; h: number; data: number[] }) {
+/** Recent requests as a faint area along the bottom of a card, newest on the right; the failed share in red on top. */
+function Spark({ x, y, w, h, data, errs }: { x: number; y: number; w: number; h: number; data: number[]; errs?: number[] }) {
   const max = Math.max(1, ...data);
-  const pts = data.map((v, i) => `${(x + (i / (data.length - 1)) * w).toFixed(1)},${(y + h - (v / max) * h * 0.9).toFixed(1)}`);
+  const at = (v: number, i: number) => `${(x + (i / (data.length - 1)) * w).toFixed(1)},${(y + h - (v / max) * h * 0.9).toFixed(1)}`;
+  const pts = data.map(at);
+  const bad = errs?.some((v) => v > 0) ? errs.map((v, i) => at(Math.min(v, data[i]), i)) : undefined;
   return (
     <g pointerEvents="none">
       <polygon points={`${x},${y + h} ${pts.join(" ")} ${x + w},${y + h}`} fill="var(--cv-flow)" fillOpacity={0.08} />
       <polyline points={pts.join(" ")} fill="none" stroke="var(--cv-flow)" strokeOpacity={0.45} strokeWidth={1} strokeLinejoin="round" />
+      {bad && <polygon points={`${x},${y + h} ${bad.join(" ")} ${x + w},${y + h}`} fill={ERR} fillOpacity={0.18} />}
     </g>
   );
 }

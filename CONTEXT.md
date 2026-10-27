@@ -52,6 +52,18 @@ _Avoid_: Module, course, chapter
 A Simulated Cluster that starts broken or unfinished, plus one or more goals, with no step-by-step instructions. Each goal is a Step whose Check tests the fix; hints and the solution stay hidden until asked for.
 _Avoid_: Puzzle, quiz, lab
 
+**Incident**:
+The shop (a web tier, an API, Postgres and Redis, with simulated customers sending real traffic) running healthily until something breaks. The Learner is paged with the live error rate and a clock, and the Incident is resolved once the shop has served cleanly, with every workload healthy, for 15 seconds of cluster time.
+_Avoid_: Outage game, scenario (Scenarios are the Sandbox's guided demos)
+
+**Daily Incident**:
+One Incident a day, picked by the UTC date so it's the same for everyone, numbered from its first day. Results and the streak are kept in the browser.
+_Avoid_: Daily challenge, puzzle of the day
+
+**Building Block**:
+An item in the Sandbox's + Add palette that deploys a real manifest (a database, an API, a load generator, the whole shop). It runs `kubectl apply -f <name>.yaml` and saves the file in the Editor.
+_Avoid_: Template, component, blueprint (in prose; `blueprints.ts` is the code)
+
 **Practice Exam**:
 A timed list of independent tasks in the style of the CKAD or CKA, each worth points, graded from cluster state when the Learner submits or time runs out.
 _Avoid_: Test, quiz, certification

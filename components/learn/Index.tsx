@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useSyncExternalStore } from "react";
+import { INCIDENTS, clock, dailyIncident } from "@/lib/sim/incidents";
 import { CHALLENGES, CURRICULUM, EXAMS, EXAM_TRADEMARK_NOTICE, EXPLAINERS, LESSONS, TRACKS, trackOf, type LessonMeta as Lesson } from "@/lib/lessons/meta";
 import { AppHeader } from "../AppHeader";
 import { DIFFICULTY } from "./difficulty";
 import { challengeKey, examKey, resetAllProgress, useProgress } from "./progress";
+import { bestIncident, dailyResult, dailyStreak } from "./incidentProgress";
 
 function Shell({ title, intro, children }: { title: string; intro: string; children: React.ReactNode }) {
   return (
@@ -152,6 +155,51 @@ export function ChallengeIndex() {
         );
       })}
       {CHALLENGES.length === 0 && <p className="text-[14px] text-ink-soft">Challenges are on their way.</p>}
+    </Shell>
+  );
+}
+
+/** True once running in the browser: the date and saved results aren't known while prerendering. */
+const useMounted = () =>
+  useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+
+export function IncidentIndex() {
+  const mounted = useMounted();
+  const today = mounted ? dailyIncident() : null;
+  const done = today ? dailyResult(today.n) : undefined;
+  const streak = today ? dailyStreak(today.n) : 0;
+  return (
+    <Shell title="Incidents" intro="A small shop runs in the cluster: a website, an API, Postgres and Redis, with customers sending real traffic. Then something breaks and you're paged. Find the cause with kubectl and fix it against the clock; it's resolved once the shop has served cleanly for 15 seconds.">
+      <Link href="/daily" className="group mb-10 block rounded-2xl bg-signal p-6 text-white transition-colors hover:bg-[#2a5bc4]">
+        <div className="font-mono text-[12px] uppercase tracking-[0.08em] text-white/75">{today ? `Daily Incident #${today.n}` : "Daily Incident"}</div>
+        <div className="font-display mt-1 text-[26px] leading-tight">{done ? `Resolved in ${clock(done.ms)}` : "Today's outage is waiting"}</div>
+        <p className="mt-1.5 max-w-xl text-[15px] text-white/85">
+          {done ? "Come back tomorrow for the next one." : "One incident a day, the same for everyone. Fix it, share your time, keep your streak going."}
+          {streak > 0 ? ` ${streak}-day streak.` : ""}
+        </p>
+        <span className="mt-4 inline-flex h-9 items-center rounded-full bg-white px-4 text-[14px] font-medium text-[#123a9c]">{done ? "See it again →" : "Start today's incident →"}</span>
+      </Link>
+      <div className={RULED}>
+        {INCIDENTS.map((inc) => {
+          const best = mounted ? bestIncident(inc.slug) : undefined;
+          return (
+            <Link key={inc.slug} href={`/incidents/${inc.slug}`} className={ROW}>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-3">
+                  <h2 className="text-[17px] font-medium underline-offset-4 group-hover:underline">{inc.title}</h2>
+                  <span className={`rounded border px-1.5 py-px text-[11.5px] ${DIFFICULTY[inc.difficulty].cls}`}>{DIFFICULTY[inc.difficulty].label}</span>
+                </div>
+                <p className="mt-0.5 text-[14.5px] leading-snug text-ink-soft">{inc.brief}</p>
+              </div>
+              <span className="shrink-0 font-mono text-[12.5px] text-ink-soft">{best ? `best ${clock(best.ms)}` : ""}</span>
+            </Link>
+          );
+        })}
+      </div>
     </Shell>
   );
 }

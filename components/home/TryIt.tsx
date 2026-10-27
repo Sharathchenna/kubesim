@@ -4,54 +4,44 @@
 // kubectl terminal, with a few commands to click. Not a recording.
 
 import { useState } from "react";
-import type { Cluster, Pod } from "@/lib/engine";
+import type { Cluster } from "@/lib/engine";
+import { applyYaml } from "@/lib/kubectl/kubectl";
+import { shopYaml } from "@/lib/sim/incidents";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { ClusterView, type Selection } from "../sim/ClusterView";
 import { Terminal } from "../sim/Terminal";
 
+/** The shop from the Incidents (web, API, Postgres, Redis, and customers sending traffic), healthy. */
 function setup(c: Cluster) {
-  c.create({
-    apiVersion: "apps/v1",
-    kind: "Deployment",
-    metadata: { name: "web", labels: { app: "web" } },
-    spec: { replicas: 3, selector: { matchLabels: { app: "web" } }, template: { metadata: { labels: { app: "web" } }, spec: { containers: [{ name: "web", image: "nginxdemos/hello:plain-text" }] } } },
-  });
-  c.create({ apiVersion: "v1", kind: "Service", metadata: { name: "web" }, spec: { selector: { app: "web" }, ports: [{ port: 80 }] } });
-  // Real, steady traffic, so the Cluster View's live request rates have something to show.
-  c.create({
-    apiVersion: "v1",
-    kind: "Pod",
-    metadata: { name: "load", labels: { app: "load" } },
-    spec: { containers: [{ name: "load", image: "busybox:1.36", command: ["sh", "-c", "while true; do wget -q -O- http://web; sleep 0.05; done"] }] },
-  });
+  applyYaml({ cluster: c, namespace: "default", files: {} }, shopYaml(), undefined, undefined, "shop.yaml");
 }
 
 export default function TryIt({ active = true }: { active?: boolean }) {
-  const sim = useSimulation({ setup, warmupMs: 15_000, seed: 3, onStart: (s) => s.exec("kubectl get pods") }, active);
+  const sim = useSimulation({ setup, warmupMs: 60_000, seed: 3, onStart: (s) => s.exec("kubectl get pods") }, active);
   const [sel, setSel] = useState<Selection>(null);
   const c = sim.cluster;
   if (!c) return <div className="grid h-full place-items-center text-[14px] text-ink-soft">Starting a cluster…</div>;
-  const victim = c.list<Pod>("Pod", "default").find((p) => p.metadata.labels?.app === "web" && !p.metadata.deletionTimestamp);
   const chips = [
-    [victim ? `kubectl delete pod ${victim.metadata.name}` : "kubectl get pods", "Delete a Pod"],
+    ["kubectl delete pod shop-db-0", "Kill the database"],
+    ["kubectl rollout restart deployment shop-api", "Restart the API"],
+    ["kubectl scale deployment shop-web --replicas=5", "Scale the website"],
     ["kubectl get pods -o wide", "List the Pods"],
-    ["kubectl scale deployment web --replicas=5", "Scale to 5"],
-    ["curl http://web", "Send a request"],
   ];
+  // The shop is wide: the diagram gets the whole width, with the commands and terminal in a strip below it.
   return (
-    <div className="grid h-full min-h-0 md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)] lg:grid-rows-1">
-      <div className="relative hidden min-h-[300px] border-b border-ink/10 md:block lg:border-b-0 lg:border-r">
+    <div className="grid h-full min-h-0 md:grid-rows-[minmax(0,1fr)_230px]">
+      <div className="relative hidden min-h-[300px] border-b border-ink/10 md:block">
         <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} captureWheel={false} />
       </div>
-      <div className="flex min-h-0 flex-col bg-paper">
-        <div className="flex flex-wrap gap-1.5 border-b border-ink/10 p-3">
+      <div className="flex min-h-0 flex-col bg-paper md:grid md:grid-cols-[230px_minmax(0,1fr)]">
+        <div className="flex flex-wrap content-start gap-1.5 border-b border-ink/10 p-3 md:flex-col md:border-b-0 md:border-r">
           {chips.map(([cmd, label]) => (
-            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="rounded-lg border border-ink/15 bg-paper px-2.5 py-1 text-[12.5px] font-medium text-ink transition-colors hover:border-signal/50 hover:text-signal">
+            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="rounded-lg border border-ink/15 bg-paper px-2.5 py-1 text-left text-[12.5px] font-medium text-ink transition-colors hover:border-signal/50 hover:text-signal">
               {label}
             </button>
           ))}
         </div>
-        <div className="min-h-0 flex-1 md:h-[260px] md:flex-none lg:h-auto lg:flex-1 max-md:[&_pre]:overflow-x-auto max-md:[&_pre]:whitespace-pre max-md:[&_pre]:break-normal">
+        <div className="min-h-0 flex-1 max-md:[&_pre]:overflow-x-auto max-md:[&_pre]:whitespace-pre max-md:[&_pre]:break-normal">
           <Terminal sim={sim} />
         </div>
       </div>

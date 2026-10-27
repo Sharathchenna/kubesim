@@ -8,6 +8,7 @@ import { heptagon } from "@/lib/heptagon";
 const NAV = [
   { href: "/learn", label: "Lessons" },
   { href: "/challenges", label: "Challenges" },
+  { href: "/incidents", label: "Incidents" },
   { href: "/exams", label: "Exams" },
   { href: "/explainers", label: "Explainers" },
   { href: "/concepts", label: "Concepts" },

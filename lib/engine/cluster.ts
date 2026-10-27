@@ -117,6 +117,8 @@ export interface ContainerRuntime {
   alloc?: number;
   burn?: number;
   reqs?: number[];
+  /** Requests it answered with a 5xx (sim ms), for error rates. */
+  errs?: number[];
   /** Readiness as the prober sees it; startup probe passed. */
   ready?: boolean;
   started?: boolean;
@@ -192,6 +194,8 @@ export interface ClusterState {
   eventSeq: number;
   /** Separate generator for load-balancing picks, so curl traffic never shifts generated names. */
   trafficRng: number;
+  /** Requests to a Service that had no ready endpoint to send them to (sim ms), by Service uid. */
+  svcErrs?: Record<string, number[]>;
 }
 
 export type ClusterSignal =

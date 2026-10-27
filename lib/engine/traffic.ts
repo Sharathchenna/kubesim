@@ -35,6 +35,20 @@ export interface RequestOptions {
   quiet?: boolean;
   /** curl -H "Host: …". */
   hostHeader?: string;
+  /** How many services deep this call is (an app calling its dependencies), so a loop of calls ends. */
+  depth?: number;
+}
+
+/** Calls nested deeper than this fail, like a request that times out going round a loop of services. */
+const MAX_DEPTH = 6;
+const DEFAULT_PORT: Record<string, number> = { postgres: 5432, postgresql: 5432, mysql: 3306, redis: 6379 };
+
+/** Notes a failed request against a Service, for its error rate. */
+function svcFailed(cluster: Cluster, svc: Service, opts: RequestOptions) {
+  if (opts.dryRun || opts.quiet) return;
+  const log = ((cluster.state.svcErrs ??= {})[svc.metadata.uid] ??= []);
+  log.push(cluster.now);
+  if (log.length > 400) log.splice(0, log.length - 400);
 }
 
 export function parseUrl(url: string): { host: string; port?: number; path: string; scheme: string } | undefined {
@@ -208,11 +222,16 @@ function viaService(
   const sp = svc.spec?.ports?.find((p) => p.port === port);
   if (!sp) return { ok: false, error: timeoutMsg(shownHost, port), exitCode: 28 };
   const ready = endpointAddrs(cluster, svc).map((a) => ({ a, port: a.ports.find((p) => p.name === sp.name || (!p.name && !sp.name))?.port ?? a.ports[0]?.port ?? port }));
-  if (ready.length === 0) return { ok: false, error: refusedMsg(shownHost, port), exitCode: 7, serviceName: svc.metadata.name };
+  if (ready.length === 0) {
+    svcFailed(cluster, svc, opts);
+    return { ok: false, error: refusedMsg(shownHost, port), exitCode: 7, serviceName: svc.metadata.name };
+  }
   const pick = ready[cluster.trafficRng.int(ready.length)];
   const pod = cluster.byUid(pick.a.uid ?? "") as unknown as Pod | undefined;
   if (!pod) return { ok: false, error: refusedMsg(shownHost, port), exitCode: 7 };
   const r = toPod(cluster, pod, pick.port, path, shownHost, src, opts, { serviceUid: svc.metadata.uid, via, ...extra });
+  // The Pod didn't answer at all (its Node is down, or nothing listens): a failure of the Service, for its error rate.
+  if (!r.ok) svcFailed(cluster, svc, opts);
   return { ...r, serviceName: svc.metadata.name };
 }
 
@@ -264,19 +283,93 @@ function toPod(
       host: sig.hostHeader,
     };
     void p;
-    const res: HttpResponse = info.http(ctx);
+    let res: HttpResponse = info.http(ctx);
+    // An app that depends on other services calls them first; the first one it can't reach fails the request.
+    for (const url of info.calls?.(crt.env ?? {}, path) ?? []) {
+      const depth = (opts.depth ?? 0) + 1;
+      const r: { ok: boolean; status?: number } = depth > MAX_DEPTH ? { ok: false } : /^https?:/.test(url) ? request(cluster, url, { fromPod: pod, dryRun: opts.dryRun, quiet: opts.quiet, depth }) : connect(cluster, url, pod, { dryRun: opts.dryRun, quiet: opts.quiet, depth });
+      if (!r.ok || (r.status ?? 200) >= 500) {
+        const where = url.replace(/\/\/[^@/]*@/, "//");
+        res = { status: 503, body: `{"error":"cannot reach ${where}"}` };
+        break;
+      }
+    }
     if (!opts.dryRun) {
       if (info.accessLog && !opts.quiet) cluster.log(pod.metadata.uid, c.name, crt.restarts, cluster.now, info.accessLog(ctx, res));
       (crt.reqs ??= []).push(cluster.now);
       if (crt.reqs.length > 400) crt.reqs.splice(0, crt.reqs.length - 400);
+      if (res.status >= 500 && !opts.quiet) {
+        (crt.errs ??= []).push(cluster.now);
+        if (crt.errs.length > 400) crt.errs.splice(0, crt.errs.length - 400);
+      }
       cluster.markChanged();
-      emit(true);
+      emit(res.status < 500);
     }
     return { ok: true, status: res.status, body: res.body, exitCode: 0, podName: pod.metadata.name };
   }
   if (!opts.dryRun) emit(false);
   const shown = sig.serviceUid || sig.ingressUid ? shownHost : (pod.status?.podIP ?? shownHost);
   return { ok: false, error: refusedMsg(shown, podPort), exitCode: 7, podName: pod.metadata.name };
+}
+
+// ---------- TCP connections (databases, caches) ----------
+
+/**
+ * Opens a TCP connection, as an app does to its database: resolves the host, goes through the
+ * Service (or straight to a Pod, for a headless Service), and succeeds if a running container
+ * there listens on the port. No HTTP: postgres://, mysql:// and redis:// URLs.
+ */
+export function connect(cluster: Cluster, url: string, fromPod: Pod | undefined, opts: RequestOptions = {}): { ok: boolean; error?: string } {
+  const m = url.match(/^([a-z]+):\/\/(?:[^@/]*@)?([^/:?#]+)(?::(\d+))?/);
+  if (!m) return { ok: false, error: `invalid address ${url}` };
+  const host = m[2];
+  const port = m[3] ? parseInt(m[3], 10) : (DEFAULT_PORT[m[1]] ?? 0);
+  const target = resolveTarget(cluster, host, port, fromPod);
+  if (target.kind === "none" || target.kind === "ingress") return { ok: false, error: `could not connect to ${host}:${port}` };
+  const src = { pod: fromPod, ip: fromPod?.status?.podIP ?? "10.244.0.1" };
+  let pod: Pod | undefined;
+  let podPort = port;
+  let serviceUid: string | undefined;
+  if (target.kind === "service") {
+    const sp = target.svc.spec?.ports?.find((p) => p.port === port);
+    const ready = sp ? endpointAddrs(cluster, target.svc) : [];
+    if (!sp || !ready.length) {
+      svcFailed(cluster, target.svc, opts);
+      return { ok: false, error: `connection refused: ${host}:${port}` };
+    }
+    const pick = ready[cluster.trafficRng.int(ready.length)];
+    pod = cluster.byUid(pick.uid ?? "") as unknown as Pod | undefined;
+    podPort = pick.ports.find((p) => p.name === sp.name || (!p.name && !sp.name))?.port ?? pick.ports[0]?.port ?? port;
+    serviceUid = target.svc.metadata.uid;
+  } else pod = target.pod;
+  if (!pod) return { ok: false, error: `connection refused: ${host}:${port}` };
+  // A headless Service resolves straight to Pod IPs; still show the traffic on its wire.
+  serviceUid ??= cluster.list<Service>("Service", pod.metadata.namespace).find((s) => s.spec?.clusterIP === "None" && host.split(".")[0] === s.metadata.name)?.metadata.uid;
+  const nodeName = pod.spec?.nodeName;
+  const emit = (ok: boolean, blocked = false) => {
+    if (!opts.dryRun && !opts.quiet) cluster.emit({ type: "traffic", serviceUid, podUid: pod!.metadata.uid, nodeName, ok, via: serviceUid ? "clusterip" : "pod", blocked, fromUid: fromPod?.metadata.uid });
+  };
+  if (!nodeName || cluster.state.nodes[nodeName]?.up === false) return { ok: false, error: `connection timed out: ${host}:${port}` };
+  if (fromPod !== pod && !connectionAllowed(cluster, src, pod, podPort)) {
+    emit(false, true);
+    return { ok: false, error: `connection timed out: ${host}:${port}` };
+  }
+  const prt = cluster.state.pods[pod.metadata.uid];
+  for (const c of pod.spec?.containers ?? []) {
+    const crt = prt?.containers[c.name];
+    if (!crt || (crt.phase !== "running" && crt.phase !== "stopping")) continue;
+    const serving = crt.program?.[crt.pc]?.op === "serve" && crt.wakeAt <= cluster.now;
+    if (!serving || !listenPorts(lookupImage(crt.image).info, c).includes(podPort)) continue;
+    if (!opts.dryRun) {
+      (crt.reqs ??= []).push(cluster.now);
+      if (crt.reqs.length > 400) crt.reqs.splice(0, crt.reqs.length - 400);
+      cluster.markChanged();
+      emit(true);
+    }
+    return { ok: true };
+  }
+  if (!opts.dryRun) emit(false);
+  return { ok: false, error: `connection refused: ${host}:${port}` };
 }
 
 // ---------- Ingress (ingress-nginx) ----------

@@ -33,6 +33,8 @@ export interface Inset {
 const MIN_FIT = 0.8;
 /** The floor when the diagram is too wide for the visible canvas: below this, Nodes lose their details. */
 const MIN_FIT_WIDE = 0.6;
+/** On a wide screen, fitting goes this far to keep a wide row of workloads in view; the Cluster View still shows labels at this zoom. */
+const MIN_FIT_ACROSS = 0.5;
 
 
 const GRID = 24;
@@ -90,18 +92,18 @@ export function PanZoom({
     const h = height - i.top - i.bottom;
     const kW = (w - 48) / b.w;
     const kFit = Math.min(kW, (h - 48) / b.h);
-    // Prefer readable (≥ MIN_FIT), but zoom out further (to MIN_FIT_WIDE) so every Node fits across the
+    // Prefer readable (≥ MIN_FIT), but zoom out further (to MIN_FIT_ACROSS) so everything fits across the
     // visible width; a tall diagram then shows its top and the Learner scrolls down. Phones always get the
     // overview floor; the canvas simplifies objects instead of shrinking their text.
-    const floor = width < 640 ? MIN_FIT_WIDE : Math.max(MIN_FIT_WIDE, Math.min(MIN_FIT, kW));
+    const floor = width < 640 ? MIN_FIT_WIDE : Math.max(MIN_FIT_ACROSS, Math.min(MIN_FIT, kW));
     let k = Math.min(Math.max(kFit, floor), 1.3);
     // Never leave a Node off-screen: zoom out further (the canvas simplifies objects) until they all fit.
     const m = mustRef.current;
     if (m && m.w > 0 && m.h > 0) k = Math.max(MIN_K, Math.min(k, (w - 32) / m.w, (h - 32) / m.h));
     touched.current = false;
     setAnimating(animate);
-    // Too big to fit: show the top of the diagram (workloads + nodes), centred on the Nodes if it doesn't fit across.
-    let x = b.w * k <= w ? i.left + w / 2 - (b.x + b.w / 2) * k : m ? i.left + w / 2 - (m.x + m.w / 2) * k : i.left + 24 - b.x * k;
+    // Too big to fit: show the top-left of the diagram (workloads + nodes), so none of the visible width is wasted.
+    let x = b.w * k <= w ? i.left + w / 2 - (b.x + b.w / 2) * k : i.left + 16 - b.x * k;
     let y = b.h * k <= h ? i.top + h / 2 - (b.y + b.h / 2) * k : i.top + 8 - b.y * k;
     if (m) {
       // Keep the whole Node area inside the visible rectangle: its left/top edge no further left/up than the

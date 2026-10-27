@@ -31,7 +31,7 @@ export function TryItSection() {
     return () => io.disconnect();
   }, []);
   return (
-    <div ref={ref} className="h-[420px] md:h-[640px] lg:h-[560px]">
+    <div ref={ref} className="h-[420px] md:h-[720px] lg:h-[760px]">
       {on ? <TryIt active={visible} /> : <Placeholder />}
     </div>
   );
