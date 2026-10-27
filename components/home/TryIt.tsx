@@ -17,6 +17,13 @@ function setup(c: Cluster) {
     spec: { replicas: 3, selector: { matchLabels: { app: "web" } }, template: { metadata: { labels: { app: "web" } }, spec: { containers: [{ name: "web", image: "nginxdemos/hello:plain-text" }] } } },
   });
   c.create({ apiVersion: "v1", kind: "Service", metadata: { name: "web" }, spec: { selector: { app: "web" }, ports: [{ port: 80 }] } });
+  // Real, steady traffic, so the Cluster View's live request rates have something to show.
+  c.create({
+    apiVersion: "v1",
+    kind: "Pod",
+    metadata: { name: "load", labels: { app: "load" } },
+    spec: { containers: [{ name: "load", image: "busybox:1.36", command: ["sh", "-c", "while true; do wget -q -O- http://web; sleep 0.05; done"] }] },
+  });
 }
 
 export default function TryIt({ active = true }: { active?: boolean }) {
@@ -32,14 +39,14 @@ export default function TryIt({ active = true }: { active?: boolean }) {
     ["curl http://web", "Send a request"],
   ];
   return (
-    <div className="grid h-full min-h-0 md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:grid-rows-1">
-      <div className="relative hidden min-h-[300px] border-b border-ink/20 md:block lg:border-b-0 lg:border-r">
+    <div className="grid h-full min-h-0 md:grid-rows-[minmax(0,1fr)_auto] lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)] lg:grid-rows-1">
+      <div className="relative hidden min-h-[300px] border-b border-ink/10 md:block lg:border-b-0 lg:border-r">
         <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} captureWheel={false} />
       </div>
       <div className="flex min-h-0 flex-col bg-paper">
-        <div className="flex flex-wrap gap-1.5 border-b border-ink/15 p-3">
+        <div className="flex flex-wrap gap-1.5 border-b border-ink/10 p-3">
           {chips.map(([cmd, label]) => (
-            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="border border-ink/30 bg-paper px-2.5 py-1 font-mono text-[11.5px] text-ink transition-colors hover:border-ink">
+            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="rounded-lg border border-ink/15 bg-paper px-2.5 py-1 text-[12.5px] font-medium text-ink transition-colors hover:border-signal/50 hover:text-signal">
               {label}
             </button>
           ))}

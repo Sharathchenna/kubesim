@@ -3,12 +3,14 @@
 
 import { ApiError, type Cluster, type Deployment, type Node, type Pod, type Service } from "@/lib/engine";
 import * as A from "./actions";
+import { BLUEPRINTS } from "./blueprints";
 import type { SimStore } from "./useSimulation";
 
 export type DragItem =
   | { kind: "palette"; what: "deployment"; image: string; label: string }
   | { kind: "palette"; what: "pod"; image: string; label: string }
   | { kind: "palette"; what: "service" | "node"; label: string }
+  | { kind: "blueprint"; id: string; label: string }
   | { kind: "tool"; what: "chaos" | "cordon"; label: string }
   | { kind: "object"; type: "pod" | "deployment" | "service"; ns: string; name: string; label: string };
 
@@ -35,6 +37,11 @@ export function canDrop(item: DragItem, t: Target | null): boolean {
     if (item.what === "pod") return t.type === "canvas" || t.type === "node";
     return t.type === "canvas" || t.type === "node" || t.type === "deployment" || t.type === "service" || t.type === "pod";
   }
+  if (item.kind === "blueprint") {
+    const b = BLUEPRINTS.find((x) => x.id === item.id);
+    // A Node is part of the canvas here: what you deploy is placed by the scheduler, not by where it lands.
+    return b?.on === "service" ? t.type === "service" : t.type === "canvas" || t.type === "node";
+  }
   if (item.kind === "tool") return item.what === "chaos" ? t.type === "node" || t.type === "pod" : t.type === "node";
   if (t.type === "trash") return true;
   if (item.type === "pod") return t.type === "node";
@@ -46,6 +53,8 @@ export interface DropResult {
   ok: boolean;
   /** Plain-English explanation of what Kubernetes did. */
   note: string;
+  /** The manifest it applied, saved in the Editor. */
+  file?: string;
 }
 
 function uniqueName(c: Cluster, kind: string, base: string, ns = "default"): string {
@@ -55,6 +64,14 @@ function uniqueName(c: Cluster, kind: string, base: string, ns = "default"): str
 }
 
 const repoName = (image: string) => image.split("/").pop()!.split(":")[0];
+
+/** A base name nothing in the namespace uses yet, either as itself or as the prefix of what a blueprint derives from it. */
+function uniqueBase(c: Cluster, base: string, ns = "default"): string {
+  const kinds = ["Deployment", "StatefulSet", "Service", "CronJob", "Ingress", "Secret"];
+  const taken = (n: string) => kinds.some((k) => c.list(k, ns).some((o) => o.metadata.name === n || o.metadata.name.startsWith(`${n}-`)));
+  if (!taken(base)) return base;
+  for (let i = 2; ; i++) if (!taken(`${base}-${i}`)) return `${base}-${i}`;
+}
 
 export function performDrop(sim: SimStore, item: DragItem, t: Target): DropResult {
   const c = sim.cluster!;
@@ -72,7 +89,9 @@ export function performDrop(sim: SimStore, item: DragItem, t: Target): DropResul
 
   if (!canDrop(item, t)) {
     const hint =
-      item.kind === "palette" && item.what === "service"
+      item.kind === "blueprint"
+        ? `Drop ${item.label} onto a Service: it needs something to point at.`
+        : item.kind === "palette" && item.what === "service"
         ? "Drop a Service onto a Deployment: it will send traffic to that Deployment's Pods."
         : item.kind === "tool" && item.what === "cordon"
           ? "Drop Cordon onto a Node."
@@ -84,6 +103,16 @@ export function performDrop(sim: SimStore, item: DragItem, t: Target): DropResul
                 ? "Drop a Pod onto another Node, or onto the trash to delete it."
                 : "Drop it on the trash to delete it.";
     return { ok: false, note: hint };
+  }
+
+  // ---- blueprints: apply a manifest, saved in the Editor
+  if (item.kind === "blueprint") {
+    const b = BLUEPRINTS.find((x) => x.id === item.id)!;
+    const target = t.type === "service" ? t.name : undefined;
+    const name = uniqueBase(c, b.base);
+    const r = sim.apply(b.yaml(name, target), `${name}.yaml`);
+    if (!r) return { ok: false, note: "The cluster isn't running." };
+    return { ok: r.ok, note: r.ok ? b.note(name, target) : r.out, file: `${name}.yaml` };
   }
 
   // ---- palette: create things

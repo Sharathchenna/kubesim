@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { BLUEPRINTS, type BlueprintGroup } from "@/lib/sim/blueprints";
 import { canDrop, parseTarget, performDrop, type DragItem } from "@/lib/sim/drag";
 import type { SimStore } from "@/lib/sim/useSimulation";
 
@@ -12,6 +13,8 @@ interface DragApi {
   over: string | null;
   /** True right after a drag ended, so the click that follows can be ignored. */
   justDropped: () => boolean;
+  /** Adds an item to the cluster without dragging (a click, or Enter). */
+  add: (item: DragItem) => void;
 }
 
 const Ctx = createContext<DragApi | null>(null);
@@ -33,7 +36,7 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
   const [dragging, setDragging] = useState<DragItem | null>(null);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [over, setOver] = useState<string | null>(null);
-  const [note, setNote] = useState<{ text: string; ok: boolean; id: number } | null>(null);
+  const [note, setNote] = useState<{ text: string; ok: boolean; id: number; file?: string } | null>(null);
   const dropped = useRef(0);
 
   const begin = useCallback(
@@ -68,7 +71,7 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
         setOver(null);
         if (!t) return; // dropped outside the canvas: cancel quietly
         const r = performDrop(sim, item, t);
-        setNote({ text: r.note, ok: r.ok, id: performance.now() });
+        setNote({ text: r.note, ok: r.ok, id: performance.now(), file: r.file });
       };
       const cancel = () => {
         window.removeEventListener("pointermove", move);
@@ -98,7 +101,15 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
     return () => window.removeEventListener("keydown", esc);
   }, [dragging]);
 
-  const api: DragApi = { begin, dragging, over, justDropped: () => performance.now() - dropped.current < 250 };
+  const add = useCallback(
+    (item: DragItem) => {
+      const r = performDrop(sim, item, { type: "canvas" });
+      setNote({ text: r.note, ok: r.ok, id: performance.now(), file: r.file });
+    },
+    [sim],
+  );
+
+  const api: DragApi = { begin, dragging, over, justDropped: () => performance.now() - dropped.current < 250, add };
   const isObject = dragging?.kind === "object";
 
   return (
@@ -119,7 +130,7 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
       {/* ghost following the pointer */}
       {dragging && (
         <div className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[130%]" style={{ left: pos.x, top: pos.y }}>
-          <div className={`whitespace-nowrap border-[1.5px] px-2.5 py-1 text-[12.5px] ${over ? "border-ink bg-ink text-paper" : "border-dashed border-ink bg-paper text-ink"}`}>
+          <div className={`whitespace-nowrap rounded-lg border px-2.5 py-1 text-[12.5px] ${over ? "border-signal bg-signal text-white" : "border-dashed border-ink bg-paper text-ink"}`}>
             {dragging.label}
             {over && <span className="ml-1.5 opacity-70">→ {describe(over)}</span>}
           </div>
@@ -127,9 +138,16 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
       )}
       {note && !dragging && (
         <div key={note.id} className="cv-fade absolute bottom-6 left-1/2 z-30 w-[min(560px,calc(100%-2rem))] -translate-x-1/2">
-          <div className={`flex items-start gap-2.5 px-3.5 py-2.5 text-[12.5px] leading-relaxed ${note.ok ? "border-[1.5px] border-ink bg-paper text-ink" : "border border-amber-600/40 bg-amber-50 text-amber-900"}`} role="status">
+          <div className={`flex items-start gap-2.5 px-3.5 py-2.5 text-[12.5px] leading-relaxed ${note.ok ? "rounded-xl border border-ink/10 bg-paper text-ink" : "border border-amber-600/40 bg-amber-50 text-amber-900"}`} role="status">
             <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${note.ok ? "bg-green-700" : "bg-amber-700"}`} />
-            <span className="min-w-0 flex-1">{note.text}</span>
+            <span className="min-w-0 flex-1">
+              {note.text}
+              {note.ok && note.file && (
+                <button onClick={() => (sim.openFile(note.file!), setNote(null))} className="ml-1.5 font-medium text-signal underline-offset-2 hover:underline">
+                  Open {note.file} →
+                </button>
+              )}
+            </span>
             <button onClick={() => setNote(null)} className="-my-1 grid h-6 w-6 shrink-0 place-items-center text-ink-soft hover:bg-ink/[0.05] hover:text-ink" aria-label="Dismiss">
               ×
             </button>
@@ -148,14 +166,34 @@ function describe(target: string): string {
   return "name" in t ? t.name : "";
 }
 
+const ICON: Record<string, React.ReactNode> = {
+  load: <path d="M2 6h8m-2.5-2.5L10 6 7.5 8.5M2 12h8m-2.5-2.5L10 12l-2.5 2.5M13 3v12" />,
+  ingress: <path d="M9 2a7 7 0 1 0 0 14A7 7 0 0 0 9 2zM2 9h14M9 2c1.9 2 2.8 4.4 2.8 7S10.9 14 9 16c-1.9-2-2.8-4.4-2.8-7S7.1 4 9 2z" />,
+  web: <path d="M2.5 3.5h13v11h-13zM2.5 6.5h13M4.5 5h.01M6.5 5h.01" />,
+  api: <path d="M6.5 3C4.5 3 5 6 4.5 7.5S2.5 9 2.5 9s1.5 0 2 1.5S4.5 15 6.5 15M11.5 3c2 0 1.5 3 2 4.5s2 1.5 2 1.5-1.5 0-2 1.5.5 4.5-2 4.5" />,
+  autoscale: <path d="M3 15v-3M7 15V9M11 15V6M15 15V3M12.5 3H15v2.5" />,
+  worker: <path d="M9 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM9 2v2M9 14v2M2 9h2M14 9h2M4 4l1.4 1.4M12.6 12.6 14 14M4 14l1.4-1.4M12.6 5.4 14 4" />,
+  cron: <path d="M9 2.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM9 5.5V9l2.5 1.5" />,
+  postgres: <path d="M3 4.5C3 3.1 5.7 2 9 2s6 1.1 6 2.5S12.3 7 9 7 3 5.9 3 4.5zm0 0v9C3 14.9 5.7 16 9 16s6-1.1 6-2.5v-9M3 9c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5" />,
+  redis: <path d="M9 3l6 3-6 3-6-3zM3 9.5l6 3 6-3M3 12.5l6 3 6-3" />,
+  stack: <path d="M9 2l7 3.5L9 9 2 5.5zM2 9l7 3.5L16 9M2 12.5 9 16l7-3.5" />,
+};
+ICON.mysql = ICON.postgres;
+
+type PaletteEntry = DragItem & { hint: string; icon: React.ReactNode };
+
 // Labels and hints wrap rather than truncate; keep them short so each stays on one line at the palette width.
-const PALETTE: { group: string; items: (DragItem & { hint: string; icon: React.ReactNode })[] }[] = [
+const BLUEPRINT_GROUPS: BlueprintGroup[] = ["Traffic", "Compute", "Data", "Stacks"];
+const PALETTE: { group: string; items: PaletteEntry[] }[] = [
+  ...BLUEPRINT_GROUPS.map((group) => ({
+    group,
+    items: BLUEPRINTS.filter((b) => b.group === group).map((b): PaletteEntry => ({ kind: "blueprint", id: b.id, label: b.label, hint: b.hint, icon: ICON[b.id] })),
+  })),
   {
-    group: "Create",
+    group: "Basics",
     items: [
-      { kind: "palette", what: "deployment", image: "nginxdemos/hello:plain-text", label: "Deployment · hello", hint: "3 web Pods", icon: <path d="M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z" /> },
-      { kind: "palette", what: "deployment", image: "redis:7", label: "Deployment · redis", hint: "a database", icon: <path d="M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z" /> },
-      { kind: "palette", what: "pod", image: "nginx", label: "Pod · nginx", hint: "drop on a Node to pin", icon: <rect x="4" y="4" width="10" height="10" /> },
+      { kind: "palette", what: "deployment", image: "nginxdemos/hello:plain-text", label: "Deployment", hint: "3 Pods, nothing else", icon: <path d="M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z" /> },
+      { kind: "palette", what: "pod", image: "nginx", label: "Pod", hint: "drop on a Node to pin", icon: <rect x="4" y="4" width="10" height="10" /> },
       { kind: "palette", what: "service", label: "Service", hint: "drop on a Deployment", icon: <path d="M9 2.5a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zM4 12a1.8 1.8 0 1 0 0 3.6A1.8 1.8 0 0 0 4 12zm10 0a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zM9 6v3m0 0l-4 3m4-3l4 3" /> },
       { kind: "palette", what: "node", label: "Node", hint: "add a worker", icon: <path d="M3 4h12v4H3zM3 10h12v4H3z" /> },
     ],
@@ -169,17 +207,23 @@ const PALETTE: { group: string; items: (DragItem & { hint: string; icon: React.R
   },
 ];
 
-/** Draggable palette of things to add to the cluster. Open/closed state is owned by the Workspace, which also keeps the diagram clear of it. */
+/** Palette of things to add to the cluster: drag onto the canvas, or click. Open/closed state is owned by the Workspace, which also keeps the diagram clear of it. */
 export function Palette({ open, onToggle, width, floating }: { open: boolean; onToggle: () => void; width: number; /** Narrow canvas: float over the diagram, clear of the bottom controls. */ floating?: boolean }) {
   const drag = useDrag();
+  const [query, setQuery] = useState("");
   if (!drag) return null;
+  const q = query.trim().toLowerCase();
+  const groups = PALETTE.map((g) => ({ ...g, items: g.items.filter((it) => !q || `${g.group} ${it.label} ${it.hint}`.toLowerCase().includes(q)) })).filter((g) => g.items.length);
+  const add = (it: PaletteEntry) => {
+    if (!drag.justDropped()) drag.add(it);
+  };
   return (
     <div className={`pointer-events-none absolute left-4 top-3 z-20 flex flex-col ${floating ? "bottom-16" : "bottom-4"}`}>
-      <div data-overlay="palette" className={`pointer-events-auto flex max-h-full flex-col overflow-hidden border-[1.5px] border-ink bg-paper text-ink ${open ? "" : "self-start"}`} style={{ width: open ? width : undefined }}>
-        <button onClick={onToggle} className={`flex shrink-0 items-center gap-2 text-[12.5px] transition-colors hover:bg-ink/[0.04] ${open ? "w-full justify-between border-b border-ink/15 px-3 py-1.5 text-ink-soft hover:text-ink" : "h-8 px-2.5 font-medium"}`} aria-expanded={open} aria-label="Drag to add">
+      <div data-overlay="palette" className={`pointer-events-auto flex max-h-full flex-col overflow-hidden rounded-xl border border-ink/10 bg-paper text-ink ${open ? "" : "self-start"}`} style={{ width: open ? width : undefined }}>
+        <button onClick={onToggle} className={`flex shrink-0 items-center gap-2 text-[12.5px] transition-colors hover:bg-ink/[0.04] ${open ? "w-full justify-between border-b border-ink/15 px-3 py-1.5 text-ink-soft hover:text-ink" : "h-8 px-2.5 font-medium"}`} aria-expanded={open} aria-label="Add to the cluster">
           {open ? (
             <>
-              Drag to add
+              Add to the cluster
               <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden="true">
                 <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
@@ -189,33 +233,43 @@ export function Palette({ open, onToggle, width, floating }: { open: boolean; on
           )}
         </button>
         {open && (
-          <div className="flex min-h-0 flex-col overflow-y-auto">
-            {PALETTE.map((g) => (
-              <div key={g.group}>
-                <div className="border-b border-ink/15 px-3 pb-1 pt-2 text-[12px] font-medium text-ink-soft">{g.group}</div>
-                <div className="flex flex-col [&>*]:border-b [&>*]:border-ink/15">
-                  {g.items.map((it) => (
-                    <div
-                      key={it.label}
-                      data-palette-item
-                      onPointerDown={(e) => drag.begin(it, e)}
-                      className={`flex cursor-grab touch-none select-none items-start gap-2 px-3 py-1.5 transition-colors active:cursor-grabbing ${drag.dragging?.label === it.label ? "bg-ink/[0.07]" : "hover:bg-ink/[0.04]"}`}
-                      title={`Drag ${it.label}: ${it.hint}`}
-                    >
-                      <svg viewBox="0 0 18 18" className="mt-px h-3.5 w-3.5 shrink-0 text-ink" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                        {it.icon}
-                      </svg>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[12.5px] leading-tight">{it.label}</span>
-                        <span className="block text-[11px] leading-tight text-ink-soft">{it.hint}</span>
-                      </span>
-                    </div>
-                  ))}
+          <>
+            <div className="shrink-0 border-b border-ink/15 p-2">
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search: database, api…" aria-label="Search things to add" className="w-full rounded-md border border-ink/15 bg-paper px-2 py-1 text-[12.5px] outline-none placeholder:text-ink-soft focus:border-signal" />
+            </div>
+            <div className="flex min-h-0 flex-col overflow-y-auto">
+              {groups.map((g) => (
+                <div key={g.group}>
+                  <div className="border-b border-ink/15 px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-[0.06em] text-ink-soft">{g.group}</div>
+                  <div className="flex flex-col [&>*]:border-b [&>*]:border-ink/15">
+                    {g.items.map((it) => (
+                      <div
+                        key={it.label}
+                        role="button"
+                        tabIndex={0}
+                        data-palette-item
+                        onPointerDown={(e) => drag.begin(it, e)}
+                        onClick={() => add(it)}
+                        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), add(it))}
+                        className={`flex cursor-grab touch-none select-none items-start gap-2 px-3 py-1.5 outline-none transition-colors focus-visible:bg-signal-soft active:cursor-grabbing ${drag.dragging?.label === it.label ? "bg-ink/[0.07]" : "hover:bg-ink/[0.04]"}`}
+                        title={`${it.label}: ${it.hint}. Drag it in, or click to add.`}
+                      >
+                        <svg viewBox="0 0 18 18" className="mt-px h-3.5 w-3.5 shrink-0 text-signal" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          {it.icon}
+                        </svg>
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[12.5px] leading-tight">{it.label}</span>
+                          <span className="block text-[11px] leading-tight text-ink-soft">{it.hint}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-            <p className="px-3 py-2 text-[11px] leading-snug text-ink-soft">You can also drag Pods, Deployments and Services already on the canvas.</p>
-          </div>
+              ))}
+              {!groups.length && <p className="px-3 py-3 text-[12px] text-ink-soft">Nothing matches “{query}”.</p>}
+              <p className="px-3 py-2 text-[11px] leading-snug text-ink-soft">Everything here is a real manifest: it opens in the Editor as a file you can change and apply again. You can also drag Pods, Deployments and Services already on the canvas.</p>
+            </div>
+          </>
         )}
       </div>
     </div>

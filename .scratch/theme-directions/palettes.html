@@ -1,0 +1,91 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@600;700;800&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@500&family=JetBrains+Mono:wght@500&family=Space+Grotesk:wght@500;700&family=Geist:wght@400;600;700&family=Geist+Mono:wght@500&display=swap">
+<style>
+.wrap{display:flex;flex-direction:column;gap:30px;padding:2px 0 8px}
+.rules{font-size:13px;line-height:1.5;color:var(--muted-foreground);margin:0}
+.rules b{color:var(--foreground);font-weight:600}
+.hd{display:flex;align-items:center;gap:10px;margin-bottom:3px}
+.hd b{font-size:15px}
+.num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);font:600 12px/1 ui-monospace,Menlo,monospace;flex:none}
+.why{color:var(--muted-foreground);font-size:13px;margin:0 0 10px 32px;line-height:1.45}
+.stage{position:relative;overflow:hidden;background:var(--bg);color:var(--ink);border-radius:var(--r);box-shadow:0 0 0 1px var(--line);padding:26px 24px 18px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:22px;font-family:var(--body)}
+.eyebrow{font:500 10.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+.stage h2{margin:12px 0 10px;font-family:var(--head);font-weight:var(--hw);font-size:var(--hs);line-height:1.04;letter-spacing:var(--ht)}
+.stage p.sub{margin:0 0 18px;font-size:13px;line-height:1.5;color:var(--soft);max-width:30ch}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.b1{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:var(--br);background:var(--cta);color:var(--ctaInk);font-size:13px;font-weight:600}
+.b2{display:inline-flex;align-items:center;height:34px;padding:0 13px;border-radius:var(--br);border:1px solid var(--line2);color:var(--ink);font-size:13px;font-weight:500}
+.term{background:var(--termBg);color:var(--termInk);border-radius:calc(var(--r) * .6);padding:9px 12px;font:500 11px/1.6 var(--mono);box-shadow:0 0 0 1px var(--line)}
+.term i{font-style:normal;color:var(--termPrompt)}
+.term span{opacity:.6}
+.right svg{display:block;width:100%;height:auto;margin-top:10px}
+.sw{grid-column:1/-1;display:flex;gap:14px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--line)}
+.sw div{display:flex;align-items:center;gap:6px;font:500 10px var(--mono);color:var(--soft)}
+.sw s{width:14px;height:14px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12)}
+@keyframes pulse{50%{opacity:.35}}
+.pend{animation:pulse 1.4s ease-in-out infinite}
+@media (max-width:560px){.stage{grid-template-columns:1fr}}
+</style></head><body>
+<div class="wrap">
+<p class="rules">What made the last round look generated, and what every option below drops: <b>blue-to-purple gradients, gradient text, glowing shadows, blurred colour blobs, glass panels and rainbow confetti.</b> Instead each palette uses one accent, and every other colour means something: Pods are Kubernetes blue, new versions are a darker shade, and green, amber and red only ever mean Running, Pending and failing.</p>
+<div id="out" style="display:flex;flex-direction:column;gap:30px"></div>
+</div>
+<script>
+const P=[
+ {name:'Kubernetes blue, used once',why:'Clean white and near-black, with the official Kubernetes blue as the only colour. Closest to Linear, Vercel or GitHub: it looks expensive because it holds back.',
+  bg:'#ffffff',panel:'#f7f8fa',line:'#e6e8ec',line2:'#d3d7de',ink:'#0b1220',soft:'#5b6472',cta:'#326ce5',ctaInk:'#fff',pod:'#326ce5',v2:'#173a8c',run:'#1a7f37',pend:'#b26b00',fail:'#cf222e',
+  termBg:'#0b1220',termInk:'#e6e8ec',termPrompt:'#7ea6ff',head:"'Inter Tight',sans-serif",hw:700,hs:'34px',ht:'-.03em',body:"Inter,sans-serif",mono:"'JetBrains Mono',monospace",r:'14px',br:'8px',
+  em:t=>`<span style="color:#326ce5">${t}</span>`},
+ {name:'Paper and ink',why:'Warm paper, black ink and a serif headline, like a good technical book. Pods stay blue so the diagram reads instantly. The most distinctive on a timeline full of dark SaaS sites.',
+  bg:'#f4f1ea',panel:'#fbf9f4',line:'rgba(27,27,27,.12)',line2:'rgba(27,27,27,.35)',ink:'#1b1b1b',soft:'#6b6458',cta:'#1b1b1b',ctaInk:'#f4f1ea',pod:'#2f5fd0',v2:'#1a2f6b',run:'#2f7d4f',pend:'#a8670f',fail:'#b42318',
+  termBg:'#fbf9f4',termInk:'#1b1b1b',termPrompt:'#2f5fd0',head:"'Instrument Serif',serif",hw:400,hs:'44px',ht:'-.01em',body:"Inter,sans-serif",mono:"'IBM Plex Mono',monospace",r:'6px',br:'4px',
+  em:t=>`<em>${t}</em>`},
+ {name:'Container yard',why:'Steel grey and navy with safety orange for the one thing to click, borrowed from shipping containers, which is where the "container" metaphor comes from. Industrial and confident.',
+  bg:'#eceff2',panel:'#ffffff',line:'#d5dae0',line2:'#aab3bf',ink:'#0f1b2d',soft:'#5a6577',cta:'#ff5a1f',ctaInk:'#fff',pod:'#326ce5',v2:'#0f1b2d',run:'#1f7a45',pend:'#b26b00',fail:'#c8102e',
+  termBg:'#0f1b2d',termInk:'#dfe4ea',termPrompt:'#ff8a5c',head:"'Space Grotesk',sans-serif",hw:700,hs:'35px',ht:'-.03em',body:"Inter,sans-serif",mono:"'JetBrains Mono',monospace",r:'8px',br:'6px',
+  em:t=>`<span style="box-shadow:inset 0 -.32em 0 #ffb08f">${t}</span>`,stripe:true},
+ {name:'Swiss',why:'Pure white, black and one red, with very large, tight type, square corners and hairline rules. No shadows at all. Bold in a screenshot because the type does the work.',
+  bg:'#ffffff',panel:'#ffffff',line:'#000000',line2:'#000000',ink:'#000000',soft:'#555555',cta:'#e3000f',ctaInk:'#fff',pod:'#326ce5',v2:'#000000',run:'#00843d',pend:'#c47a00',fail:'#e3000f',
+  termBg:'#ffffff',termInk:'#000',termPrompt:'#e3000f',head:"'Inter Tight',sans-serif",hw:800,hs:'40px',ht:'-.045em',body:"Inter,sans-serif",mono:"'IBM Plex Mono',monospace",r:'0px',br:'0px',
+  em:t=>`${t}<span style="color:#e3000f">.</span>`,noDot:true},
+ {name:'Night shift (dark)',why:'You picked light before, so this is only here for contrast: a dark, terminal-native look with one amber accent. Dark tends to look less generic on X, but it\'s a different direction.',
+  bg:'#0d0f12',panel:'#15181d',line:'#262a31',line2:'#3a3f48',ink:'#ecedee',soft:'#8b929c',cta:'#f5a524',ctaInk:'#0d0f12',pod:'#4f86f0',v2:'#c9d6f5',run:'#3fb950',pend:'#f5a524',fail:'#f85149',
+  termBg:'#15181d',termInk:'#ecedee',termPrompt:'#f5a524',head:"Geist,sans-serif",hw:700,hs:'34px',ht:'-.035em',body:"Geist,sans-serif",mono:"'Geist Mono',monospace",r:'12px',br:'8px',
+  em:t=>`<span style="color:#f5a524">${t}</span>`},
+];
+const hept=(cx,cy,r)=>Array.from({length:7},(_,i)=>{const a=-Math.PI/2+i*2*Math.PI/7;return (cx+r*Math.cos(a)).toFixed(1)+','+(cy+r*Math.sin(a)).toFixed(1)}).join(' ');
+const cube=(x,y,s)=>{const c=.87*s;return `M${x},${y-s}l${c},${s/2}v${s}l${-c},${s/2}l${-c},${-s/2}v${-s}zM${x},${y}v${s}M${x},${y}l${c},${-s/2}M${x},${y}l${-c},${-s/2}`};
+function pod(x,y,st,p){const r=14;
+  if(st==='pend')return `<g class="pend"><polygon points="${hept(x,y,r)}" fill="none" stroke="${p.pod}" stroke-width="1.6" stroke-dasharray="3 3"/></g>`;
+  const f=st==='fail'?p.fail:st==='v2'?p.v2:p.pod;
+  const glyph=st==='fail'?`<text x="${x}" y="${y+4.5}" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="Inter">!</text>`:`<path d="${cube(x,y,6.6)}" fill="none" stroke="${st==='v2'&&p.v2.startsWith('#c')?p.bg:'#fff'}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  return `<polygon points="${hept(x,y,r)}" fill="${f}"/>${glyph}`}
+function cluster(p){
+  const nodes=[{x:0,name:'node-1',pods:[['run',0],['run',1],['v2',2],['pend',3]]},{x:196,name:'node-2',pods:[['run',0],['fail',1],['v2',2]]}];
+  let s=`<svg viewBox="0 0 382 196" xmlns="http://www.w3.org/2000/svg" font-family="${p.mono.replace(/'/g,'')}">`;
+  const targets=[];
+  for(const n of nodes){s+=`<rect x="${n.x+.5}" y="62.5" width="185" height="128" rx="${parseFloat(p.r)*.7}" fill="${p.panel}" stroke="${p.line}"/>`;
+    s+=`<polygon points="${hept(n.x+18,80,6.5)}" fill="${p.pod}"/><text x="${n.x+30}" y="84" font-size="10.5" font-weight="500" fill="${p.ink}">${n.name}</text><text x="${n.x+174}" y="84" font-size="10" text-anchor="end" fill="${p.run}">Ready</text>`;
+    n.pods.forEach(([st,i])=>{const x=n.x+30+i*42,y=124;targets.push([x,y,st]);s+=pod(x,y,st,p);
+      const lab={run:['Running',p.run],v2:['Running',p.run],pend:['Pending',p.pend],fail:['Error',p.fail]}[st];s+=`<text x="${x}" y="158" font-size="8" text-anchor="middle" fill="${lab[1]}">${lab[0]}</text>`;});}
+  const sx=191,sy=22;
+  targets.filter(t=>t[2]==='run'||t[2]==='v2').forEach(([x,y],k)=>{const d=`M${sx},${sy+11} L${x},${y-15}`;s+=`<path d="${d}" stroke="${p.line2}" stroke-width="1" stroke-dasharray="2 3" fill="none"/>`;
+    s+=`<circle r="3" fill="${p.pod}"><animateMotion dur="1.6s" begin="${k*.37}s" repeatCount="indefinite" path="${d}"/></circle>`});
+  s+=`<rect x="${sx-42}" y="${sy-11}" width="84" height="22" rx="${Math.min(11,parseFloat(p.r))}" fill="${p.panel}" stroke="${p.ink}" stroke-opacity=".7"/><text x="${sx}" y="${sy+3.5}" font-size="10" text-anchor="middle" fill="${p.ink}">svc/web</text>`;
+  return s+'</svg>'}
+const out=document.getElementById('out');
+P.forEach((p,i)=>{
+  const vars=Object.entries({bg:p.bg,panel:p.panel,line:p.line,line2:p.line2,ink:p.ink,soft:p.soft,cta:p.cta,ctaInk:p.ctaInk,termBg:p.termBg,termInk:p.termInk,termPrompt:p.termPrompt,head:p.head,hw:p.hw,hs:p.hs,ht:p.ht,body:p.body,mono:p.mono,r:p.r,br:p.br}).map(([k,v])=>`--${k}:${v}`).join(';');
+  const sw=[['paper',p.bg],['ink',p.ink],['accent',p.cta],['pod',p.pod],['v2',p.v2],['running',p.run],['pending',p.pend],['failing',p.fail]].filter((x,j,a)=>a.findIndex(y=>y[1]===x[1])===j);
+  out.insertAdjacentHTML('beforeend',`<section><div class="hd"><span class="num">${i+1}</span><b>${p.name}</b></div><p class="why">${p.why}</p>
+  <div class="stage" style="${vars}">${p.stripe?'<div style="position:absolute;left:0;right:0;top:0;height:6px;background:repeating-linear-gradient(135deg,#ff5a1f 0 10px,#0f1b2d 10px 20px)"></div>':''}
+   <div><div class="eyebrow">kubesim · Kubernetes in your browser</div>
+    <h2>Learn Kubernetes on a ${p.em(p.noDot?'cluster you can see':'cluster you can see.')}</h2>
+    <p class="sub">A real-feeling cluster running in this tab. Break it, fix it, and watch every Pod as it happens.</p>
+    <div class="btns"><span class="b1">Start lesson 1 →</span><span class="b2">Open the Sandbox</span></div></div>
+   <div class="right"><div class="term"><i>$</i> kubectl set image deploy/web web=web:v2<br><span>deployment.apps/web image updated</span></div>${cluster(p)}</div>
+   <div class="sw">${sw.map(([n,c])=>`<div><s style="background:${c}"></s>${n} ${c}</div>`).join('')}</div>
+  </div></section>`)});
+</script>
+</body></html>

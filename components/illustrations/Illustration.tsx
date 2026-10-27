@@ -54,8 +54,8 @@ export interface Scene {
 
 // Drawn like a blueprint: ink lines on paper. Kinds are told apart by a faint
 // ink fill; colour is kept for health only (green running, amber starting, red failing).
-const INK = "#172340";
-const PAPER = "#fbfaf6";
+const INK = "#111827";
+const PAPER = "#ffffff";
 const SOFT = "#5a6680";
 const LINE = "rgba(23,35,64,.32)";
 const TONES: Record<Tone, { fill: string; stroke: string; text: string; sub: string; on: string }> = {
@@ -193,7 +193,7 @@ export function Illustration({ scene, defaultOpen = false }: { scene: Scene; /**
   const bodyId = `${useId()}-diagram`;
   const controls = (
     <div className="ml-auto flex shrink-0 gap-1.5">
-      <button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0} className="h-7 border border-ink/30 bg-paper px-2.5 text-[12.5px] text-ink transition-colors hover:border-ink disabled:opacity-40 disabled:hover:border-ink/30">
+      <button onClick={() => setI(Math.max(0, i - 1))} disabled={i === 0} className="h-7 rounded-md border border-ink/15 bg-paper px-2.5 text-[12.5px] text-ink transition-colors hover:border-ink/40 disabled:opacity-40 disabled:hover:border-ink/30">
         ← Prev
       </button>
       <button onClick={() => setI(i === n - 1 ? 0 : i + 1)} className="h-7 border border-ink bg-ink px-2.5 text-[12.5px] text-paper transition-colors hover:bg-ink/90">
@@ -209,7 +209,7 @@ export function Illustration({ scene, defaultOpen = false }: { scene: Scene; /**
   );
 
   return (
-    <figure className="border-y border-ink/25 text-ink" aria-label={`Diagram: ${scene.title}`}>
+    <figure className="border-y border-ink/10 text-ink" aria-label={`Diagram: ${scene.title}`}>
       <div className="flex items-center">
         <button type="button" onClick={() => setShown(!shown)} aria-expanded={shown} aria-controls={bodyId} className="flex min-w-0 flex-1 items-baseline gap-2 px-1 py-2 text-left transition-colors hover:bg-ink/[0.04]">
           <span className="min-w-0 flex-1 text-[13.5px]">
@@ -222,7 +222,7 @@ export function Illustration({ scene, defaultOpen = false }: { scene: Scene; /**
             <span className="ml-3 font-mono text-[11px] tabular-nums text-ink-soft">
               {i + 1}/{n}
             </span>
-            <button onClick={() => setBig(true)} className="ml-2 min-h-6 border border-ink/30 bg-paper px-1.5 py-0.5 text-[11.5px] text-ink transition-colors hover:border-ink" aria-label={`Enlarge the ${scene.title} illustration`} title="Enlarge">
+            <button onClick={() => setBig(true)} className="ml-2 min-h-6 rounded-md border border-ink/15 bg-paper px-1.5 py-0.5 text-[11.5px] text-ink transition-colors hover:border-ink/40" aria-label={`Enlarge the ${scene.title} illustration`} title="Enlarge">
               ⤢ Enlarge
             </button>
           </>
@@ -269,11 +269,11 @@ function Lightbox({ title, onClose, children }: { title: string; onClose: () => 
       onClose={onClose}
       onClick={(e) => e.target === e.currentTarget && onClose()}
       aria-label={title}
-      className="font-sheet m-auto flex h-[min(92vh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden border-[1.5px] border-ink bg-paper p-0 text-ink backdrop:bg-ink/40 [&:not([open])]:hidden"
+      className="font-sheet m-auto flex h-[min(92vh,900px)] w-[min(96vw,1200px)] max-w-none flex-col overflow-hidden rounded-xl border border-ink/10 bg-paper p-0 text-ink backdrop:bg-ink/40 [&:not([open])]:hidden"
     >
-      <div className="flex items-center justify-between border-b-[1.5px] border-ink px-5 py-3">
+      <div className="flex items-center justify-between border-b border-ink/10 px-5 py-3">
         <div className="text-[14px] font-medium">{title}</div>
-        <button onClick={onClose} className="border border-ink/30 bg-paper px-2 py-0.5 text-[13px] text-ink transition-colors hover:border-ink" autoFocus>
+        <button onClick={onClose} className="rounded-md border border-ink/15 bg-paper px-2 py-0.5 text-[13px] text-ink transition-colors hover:border-ink/40" autoFocus>
           Close
         </button>
       </div>

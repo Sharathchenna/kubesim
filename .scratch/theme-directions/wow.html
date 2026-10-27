@@ -1,0 +1,357 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@700;800&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@500&family=JetBrains+Mono:wght@500;700&family=Geist:wght@400;600;700&family=Geist+Mono:wght@500&family=Barlow+Condensed:wght@700&display=swap">
+<style>
+.wrap{display:flex;flex-direction:column;gap:34px;padding:2px 0 8px}
+.rules{font-size:13px;line-height:1.5;color:var(--muted-foreground);margin:0}
+.hd{display:flex;align-items:center;gap:10px;margin-bottom:3px}
+.hd b{font-size:15px}
+.num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);font:600 12px/1 ui-monospace,Menlo,monospace;flex:none}
+.why{color:var(--muted-foreground);font-size:13px;margin:0 0 10px 32px;line-height:1.45}
+.stage{position:relative;overflow:hidden;border-radius:14px;user-select:none;-webkit-user-select:none}
+.stage canvas{display:block}
+.full{position:absolute;inset:0}
+.mono{font-family:'JetBrains Mono',monospace}
+
+/* A */
+#sA{background:#326ce5;color:#fff;font-family:Inter,sans-serif;padding:18px 22px 20px}
+#sA .row{display:flex;justify-content:space-between;align-items:center;gap:12px;font:500 10.5px/1.3 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.8)}
+#sA .cvw{margin:8px -22px 6px;cursor:crosshair}
+#sA .bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+#sA .h{font:800 26px/1.05 'Inter Tight',sans-serif;letter-spacing:-.02em}
+#sA .sub{font-size:12.5px;color:rgba(255,255,255,.8);margin-top:6px}
+#sA .b1{display:inline-flex;align-items:center;height:36px;padding:0 16px;border-radius:999px;background:#fff;color:#123a9c;font-weight:600;font-size:13px;white-space:nowrap}
+
+/* B */
+#sB{background:#fff;color:#111;font-family:Geist,Inter,sans-serif;padding:20px;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:16px;box-shadow:0 0 0 1px #e7e7e7}
+#sB .browser{border:1px solid #d9d9d9;border-radius:10px;background:#fafafa;position:relative}
+#sB .bar{height:30px;border-bottom:1px solid #e7e7e7;display:flex;align-items:center;padding:0 10px;gap:8px}
+#sB .url{flex:1;height:18px;border-radius:5px;background:#fff;border:1px solid #e7e7e7;font:500 10px/16px 'Geist Mono',monospace;color:#666;padding:0 8px}
+#sB .page{padding:12px 12px 14px;display:flex;flex-direction:column;gap:14px}
+#sB .slot{position:relative}
+#sB .blk{height:100%;box-sizing:border-box;border:1px solid #e7e7e7;border-radius:8px;background:#fff}
+#sB .s-nav{height:40px}#sB .s-hero{height:150px}#sB .s-cards{height:82px}
+#sB .nav{display:flex;align-items:center;gap:14px;padding:0 12px;font-size:12px;color:#555}
+#sB .nav b{color:#111;margin-right:auto;font-weight:700;letter-spacing:-.02em;font-size:13px}
+#sB .hero{padding:18px 16px}
+#sB .hero .h{font-weight:700;font-size:24px;line-height:1.08;letter-spacing:-.045em;max-width:13em}
+#sB mark{background:none;color:inherit;box-shadow:inset 0 -.42em 0 #ffe500}
+#sB .hero .p{font-size:11.5px;color:#666;margin:8px 0 10px}
+#sB .btn{display:inline-block;background:#111;color:#ffe500;font-size:11px;font-weight:600;padding:6px 10px;border-radius:6px}
+#sB .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:8px}
+#sB .cards div{border:1px solid #eee;border-radius:6px;padding:8px;font-size:11px;font-weight:600;display:flex;flex-direction:column;gap:6px}
+#sB .cards svg{width:16px;height:16px}
+#sB .tag{position:absolute;right:8px;top:-8px;z-index:3;background:#fff;border:1px solid #d9d9d9;border-radius:99px;font:500 9.5px/14px 'Geist Mono',monospace;padding:0 7px;white-space:nowrap;transition:background .2s}
+#sB .tag.flash{background:#ffe500}
+#sB .tag i{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:0}
+#sB .ph{position:absolute;inset:0;border-radius:8px;display:none;flex-direction:column;justify-content:center;gap:7px;padding:14px;box-sizing:border-box;border:1.5px dashed rgba(0,0,0,.25);font:500 10px 'Geist Mono',monospace;color:#888}
+#sB .slot.pending .ph,#sB .slot.creating .ph{display:flex}
+#sB .slot.creating .ph{border-style:solid;border-color:#ececec;background:#fff}
+#sB .ph s{display:block;height:9px;border-radius:3px;background:#efefef;animation:pulse 1s ease-in-out infinite}
+#sB .slot.pending .ph s{display:none}
+#sB .blk.in{animation:in .45s cubic-bezier(.2,.8,.2,1)}
+@keyframes in{from{opacity:0;transform:translateY(8px)}}
+@keyframes pulse{50%{opacity:.4}}
+#sB .shards{position:absolute;inset:0;pointer-events:none;z-index:5}
+#sB .term{background:#111;color:#eee;border-radius:10px;padding:12px 12px 10px;font:500 10.5px/1.6 'Geist Mono',monospace;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+#sB .term .tt{color:#777;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+#sB .lines{flex:1;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden;min-height:0}
+#sB .lines div{white-space:pre;overflow:hidden;text-overflow:ellipsis}
+#sB .p{color:#ffe500}
+#sB .dim{color:#8a8a8a}
+#sB .ok{color:#7ee2a8}#sB .warn{color:#f5c26b}#sB .bad{color:#ff8a8a}
+#sB .caret{display:inline-block;width:6px;height:11px;background:#ffe500;vertical-align:-1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+@media (max-width:560px){#sB{grid-template-columns:1fr}#sB .term{height:190px}}
+
+/* C */
+#sC{background:#0a1224;color:#e8eef9;height:440px;font-family:Inter,sans-serif}
+#sC .ov{position:absolute;left:22px;right:22px;top:18px;display:flex;justify-content:space-between;gap:16px;pointer-events:none}
+#sC .eb{font:500 10.5px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#8a98b3}
+#sC .cmd{font:500 13px/1.5 'JetBrains Mono',monospace;margin-top:10px;color:#e8eef9;min-height:20px}
+#sC .cmd i{font-style:normal;color:#7ea6ff}
+#sC .cmd .caret{display:inline-block;width:7px;height:14px;background:#7ea6ff;vertical-align:-2px;animation:blink 1s steps(1) infinite}
+#sC .st{font:500 11px 'JetBrains Mono',monospace;color:#8a98b3;margin-top:4px}
+#sC .big{text-align:right}
+#sC .n{font:800 64px/0.9 'Inter Tight',sans-serif;letter-spacing:-.05em;font-variant-numeric:tabular-nums}
+#sC .nl{font:500 10.5px 'JetBrains Mono',monospace;color:#8a98b3;letter-spacing:.06em;text-transform:uppercase;margin-top:6px}
+
+/* D */
+#sD{background:#f4f1ea;color:#1b1b1b;height:440px;font-family:Inter,sans-serif;box-shadow:0 0 0 1px rgba(27,27,27,.12)}
+#sD .ov{position:absolute;left:22px;right:22px;top:18px;display:flex;justify-content:space-between;gap:16px;pointer-events:none}
+#sD .h{font:400 36px/1 'Instrument Serif',serif;letter-spacing:-.01em}
+#sD .sub{font-size:12px;color:#6b6458;margin-top:6px;max-width:34ch;line-height:1.45}
+#sD .st{font:500 10.5px/1.5 'IBM Plex Mono',monospace;color:#6b6458;text-align:right;max-width:24ch}
+#sD canvas{cursor:grab}
+
+/* E */
+#sE{background:#0e2237;color:#f5f3ee;height:460px;font-family:Inter,sans-serif}
+#sE .ov{position:absolute;left:24px;top:24px;width:42%;pointer-events:none}
+#sE .eb{font:500 10.5px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:rgba(245,243,238,.6)}
+#sE h2{margin:14px 0 10px;font:700 70px/.9 'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.005em}
+#sE h2 span{color:#e8553d}
+#sE .sub{font-size:12.5px;line-height:1.5;color:rgba(245,243,238,.72);max-width:30ch}
+#sE .b1{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:3px;background:#d1462f;color:#fff;font-weight:600;font-size:13px;margin-top:16px;pointer-events:auto}
+#sE .st{position:absolute;left:24px;bottom:20px;font:500 11px 'JetBrains Mono',monospace;color:rgba(245,243,238,.7);pointer-events:none}
+#sE .st b{color:#f5f3ee;font-weight:700}
+#sE canvas{cursor:grab}
+@media (max-width:560px){#sE{height:560px}#sE .ov{width:auto;right:24px}#sE h2{font-size:48px}}
+</style></head><body>
+<div class="wrap">
+<p class="rules">These are five hero concepts, and every one is live, so hover, click and drag. Each is built on one of the palettes you've seen.</p>
+
+<section><div class="hd"><span class="num">A</span><b>The wordmark is made of Pods</b></div>
+<p class="why">The logo is about 700 live Pods. The cluster keeps killing them and the scheduler keeps putting them back, so the logo is never quite still. Hover to kill Pods; click for a node failure. Palette: Full blue poster (14).</p>
+<div class="stage" id="sA">
+ <div class="row"><span>kubesim · Kubernetes in your browser</span><span class="ctr"></span></div>
+ <div class="cvw"><canvas></canvas></div>
+ <div class="bottom"><div><div class="h">Learn Kubernetes by breaking it.</div><div class="sub">Hover to kill Pods. Click for a node failure. They always come back.</div></div><span class="b1">Start lesson 1 →</span></div>
+</div></section>
+
+<section><div class="hd"><span class="num">B</span><b>This page is a Deployment</b></div>
+<p class="why">The landing page is itself running on the cluster. The terminal deletes the page's own sections, they shatter, and Kubernetes rebuilds them through Pending, then ContainerCreating, then Running. It's the kind of thing people screen-record. Palette: Highlighter (8).</p>
+<div class="stage" id="sB">
+ <div class="browser"><div class="bar"><span class="url">kubesim.dev</span></div>
+  <div class="page">
+   <div class="slot s-nav" data-dep="nav"><div class="blk nav"><b>kubesim</b><span>Learn</span><span>Sandbox</span><span>Exam</span></div><span class="tag"></span><div class="ph"></div></div>
+   <div class="slot s-hero" data-dep="hero"><div class="blk hero"><div class="h">Learn Kubernetes on a <mark>cluster you can see</mark>.</div><div class="p">A real cluster, simulated in your tab.</div><span class="btn">Start lesson 1 →</span></div><span class="tag"></span><div class="ph"></div></div>
+   <div class="slot s-cards" data-dep="cards"><div class="blk cards"><div><svg viewBox="-10 -10 20 20"><polygon fill="#326ce5" points="0,-9 7,-5.6 8.8,2 3.9,8.1 -3.9,8.1 -8.8,2 -7,-5.6"/></svg>Pods</div><div><svg viewBox="-10 -10 20 20"><polygon fill="#326ce5" points="0,-9 7,-5.6 8.8,2 3.9,8.1 -3.9,8.1 -8.8,2 -7,-5.6"/></svg>Services</div><div><svg viewBox="-10 -10 20 20"><polygon fill="#326ce5" points="0,-9 7,-5.6 8.8,2 3.9,8.1 -3.9,8.1 -8.8,2 -7,-5.6"/></svg>Deployments</div></div><span class="tag"></span><div class="ph"></div></div>
+  </div></div>
+ <div class="term"><div class="tt">terminal · this page's cluster</div><div class="lines"></div></div>
+</div></section>
+
+<section><div class="hd"><span class="num">C</span><b>Scale to a thousand</b></div>
+<p class="why">One command, and a thousand Pods pour out of the scheduler into ten nodes while a giant counter runs up. Then a node is drained and its Pods move, then everything scales back down to three. The scale is the spectacle. Palette: Control plane (13).</p>
+<div class="stage" id="sC"><canvas class="full"></canvas>
+ <div class="ov"><div><div class="eb">kubesim · Kubernetes in your browser</div><div class="cmd"></div><div class="st"></div></div>
+ <div class="big"><div class="n">0</div><div class="nl">Pods Running</div></div></div>
+</div></section>
+
+<section><div class="hd"><span class="num">D</span><b>Pods you can pick up</b></div>
+<p class="why">Pods are physical objects. Drag them and throw them, or click a node's name to drain it: its floor opens, the Pods fall out and the scheduler lifts each one into another node. Palette: Paper and ink (2).</p>
+<div class="stage" id="sD"><canvas class="full"></canvas>
+ <div class="ov"><div><div class="h">Drag a Pod. <em>Drain a node.</em></div><div class="sub">Click a node's name to drain it. The scheduler finds every Pod a new home.</div></div><div class="st"></div></div>
+</div></section>
+
+<section><div class="hd"><span class="num">E</span><b>Take the helm</b></div>
+<p class="why">The Kubernetes logo is a ship's wheel, so this hero is one: spokes are nodes, dots are Pods, and a rolling update sweeps round it like radar. Drag to spin it. Palette: Helm (6), at night.</p>
+<div class="stage" id="sE"><canvas class="full"></canvas>
+ <div class="ov"><div class="eb">"Kubernetes" is Greek for helmsman</div><h2>Take the <span>helm.</span></h2><div class="sub">Every spoke is a node and every dot is a Pod. Watch a rolling update sweep the wheel, then spin it yourself.</div><span class="b1">Start lesson 1 →</span></div>
+ <div class="st"></div>
+</div></section>
+</div>
+
+<script>
+const TAU=Math.PI*2,rand=(a,b)=>a+Math.random()*(b-a),sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const eOut=t=>1-Math.pow(1-t,3),eIO=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,eBack=t=>{const c=1.7;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+const qb=(a,b,c,t)=>(1-t)*(1-t)*a+2*(1-t)*t*b+t*t*c;
+function setup(cv,w,h){const d=Math.min(2,devicePixelRatio||1);cv.width=Math.round(w*d);cv.height=Math.round(h*d);cv.style.width=w+'px';cv.style.height=h+'px';const ctx=cv.getContext('2d');ctx.setTransform(d,0,0,d,0,0);return ctx}
+function hept(ctx,x,y,r,rot=0){ctx.beginPath();for(let i=0;i<7;i++){const a=rot-Math.PI/2+i*TAU/7;i?ctx.lineTo(x+r*Math.cos(a),y+r*Math.sin(a)):ctx.moveTo(x+r*Math.cos(a),y+r*Math.sin(a))}ctx.closePath()}
+function cube(ctx,x,y,s,rot,col,lw){const c=.87*s;ctx.save();ctx.translate(x,y);ctx.rotate(rot);ctx.beginPath();ctx.moveTo(0,-s);ctx.lineTo(c,-s/2);ctx.lineTo(c,s/2);ctx.lineTo(0,s);ctx.lineTo(-c,s/2);ctx.lineTo(-c,-s/2);ctx.closePath();ctx.moveTo(0,0);ctx.lineTo(0,s);ctx.moveTo(0,0);ctx.lineTo(c,-s/2);ctx.moveTo(0,0);ctx.lineTo(-c,-s/2);ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.lineJoin='round';ctx.stroke();ctx.restore()}
+function pill(ctx,x,y,w,h,r){ctx.beginPath();ctx.roundRect(x,y,w,h,r)}
+
+/* ---------- A: wordmark of Pods ---------- */
+function conceptA(stage){
+  const wrap=stage.querySelector('.cvw'),cv=wrap.querySelector('canvas'),ctr=stage.querySelector('.ctr');
+  const W=wrap.clientWidth,H=W<520?190:280,ctx=setup(cv,W,H),ac=new AbortController();let raf,alive=true;
+  const BW=W*3,off=document.createElement('canvas');off.width=BW;off.height=H;const o=off.getContext('2d',{willReadFrequently:true});
+  const word='kubesim',top=30;let fs=200;
+  const font=()=>{o.font=`800 ${fs}px "Inter Tight"`;try{o.letterSpacing=(-fs*.03)+'px'}catch(e){}};
+  const draw=()=>{font();o.clearRect(0,0,BW,H);const m=o.measureText(word);o.textAlign='center';o.fillStyle='#000';o.fillText(word,BW/2,top+(H-top-m.actualBoundingBoxAscent)/2+m.actualBoundingBoxAscent);
+    const d=o.getImageData(0,0,BW,H).data;let x0=BW,x1=0;for(let y=0;y<H;y+=2)for(let x=0;x<BW;x++)if(d[(y*BW+x)*4+3]>140){if(x<x0)x0=x;if(x>x1)x1=x}return{d,x0,x1}};
+  let res=draw();fs=Math.min(fs*(W-36)/(res.x1-res.x0+1),(H-top-8)/.76);res=draw();
+  const sh=Math.round(BW/2-W/2),src=res.d,at=(x,y)=>src[(y*BW+x+sh)*4+3],s=W<520?6.4:8.4,rowH=s*.9,r=s*.47,pods=[];
+  for(let row=0,y=s/2;y<H;row++,y+=rowH)for(let x=s/2+(row%2?s/2:0);x<W;x+=s)if(at(x|0,y|0)>140)pods.push({tx:x,ty:y,state:'wait'});
+  const O={x:W/2,y:14};let restarts=0,lastKill=0,mx=-999,my=-999;
+  const launch=(p,t)=>{p.state='fly';p.t0=t;p.dur=rand(650,1000);p.fx=O.x+rand(-30,30);p.fy=O.y+6;p.cx=(p.fx+p.tx)/2+rand(-120,120);p.cy=Math.min(p.fy,p.ty)-rand(10,60);p.spin=rand(-4,4)};
+  const kill=(p,t)=>{if(p.state!=='run')return;p.state='crash';p.t0=t;restarts++};
+  const t0=performance.now();pods.forEach(p=>{launch(p,t0+p.tx/W*900+rand(0,600))});
+  const pos=e=>{const b=cv.getBoundingClientRect();mx=e.clientX-b.left;my=e.clientY-b.top};
+  cv.addEventListener('pointermove',pos,{signal:ac.signal});cv.addEventListener('pointerleave',()=>{mx=my=-999},{signal:ac.signal});
+  cv.addEventListener('pointerdown',e=>{pos(e);const t=performance.now();pods.forEach(p=>{if(Math.hypot(p.tx-mx,p.ty-my)<70)kill(p,t+Math.hypot(p.tx-mx,p.ty-my)*3)})},{signal:ac.signal});
+  let lastCtr=0;
+  function frame(now){if(!alive)return;ctx.clearRect(0,0,W,H);
+    if(now-lastKill>70&&now-t0>2600){lastKill=now;kill(pods[(Math.random()*pods.length)|0],now)}
+    let run=0;
+    for(const p of pods){
+      if(p.state==='run'&&mx>-999&&Math.abs(p.tx-mx)<17&&Math.abs(p.ty-my)<17&&Math.hypot(p.tx-mx,p.ty-my)<17)kill(p,now);
+      if(p.state==='fly'){let k=(now-p.t0)/p.dur;if(k<0)continue;if(k>=1){p.state='run';p.land=now}else{const e=eIO(k);ctx.fillStyle='#fff';hept(ctx,qb(p.fx,p.cx,p.tx,e),qb(p.fy,p.cy,p.ty,e),r*(.55+.45*e),(1-e)*p.spin);ctx.fill();continue}}
+      if(p.state==='run'){run++;const f=Math.max(0,1-(now-p.land)/260);ctx.fillStyle='#fff';hept(ctx,p.tx,p.ty,r*(1+.35*f));ctx.fill()}
+      else if(p.state==='crash'){const k=(now-p.t0)/380;if(k<0){run++;ctx.fillStyle='#fff';hept(ctx,p.tx,p.ty,r);ctx.fill();continue}if(k>=1){p.state='pend';p.t0=now}else{ctx.fillStyle='#ff5c61';hept(ctx,p.tx,p.ty,r*(k<.25?1+k*1.4:1.35*(1-(k-.25)/.75)));ctx.fill()}}
+      else if(p.state==='pend'){ctx.setLineDash([1.6,1.6]);ctx.lineWidth=1;ctx.strokeStyle='rgba(255,255,255,.55)';hept(ctx,p.tx,p.ty,r*.9);ctx.stroke();ctx.setLineDash([]);if(now-p.t0>550)launch(p,now)}
+    }
+    ctx.strokeStyle='rgba(255,255,255,.55)';ctx.lineWidth=1;pill(ctx,O.x-54,2,108,19,10);ctx.fillStyle='#326ce5';ctx.fill();ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,.9)';ctx.font='500 9.5px "JetBrains Mono"';ctx.textAlign='center';ctx.fillText('kube-scheduler',O.x,15.5);
+    if(now-lastCtr>200){lastCtr=now;ctr.textContent=`${run} / ${pods.length} Running · ${restarts} restarts`}
+    raf=requestAnimationFrame(frame)}
+  raf=requestAnimationFrame(frame);
+  return()=>{alive=false;cancelAnimationFrame(raf);ac.abort()}
+}
+
+/* ---------- B: this page is a Deployment ---------- */
+function conceptB(stage){
+  const lines=stage.querySelector('.lines'),slots={};stage.querySelectorAll('.slot').forEach(s=>slots[s.dataset.dep]=s);
+  const id=()=>Math.random().toString(36).slice(2,6);
+  const names={nav:'nav-6c9d',hero:'hero-5d8f',cards:'cards-7b2k'};
+  const col={Running:'#1a7f37',Pending:'#b26b00',ContainerCreating:'#b26b00',Terminating:'#d1242f'};
+  function tag(dep,st){const t=slots[dep].querySelector('.tag');t.innerHTML=`<i style="background:${col[st]}"></i>${st} · ${names[dep]}`;if(st==='Running'){t.classList.add('flash');setTimeout(()=>t.classList.remove('flash'),500)}}
+  Object.keys(names).forEach(d=>tag(d,'Running'));
+  function line(html,cls=''){const d=document.createElement('div');d.className=cls;d.innerHTML=html;lines.appendChild(d);while(lines.children.length>40)lines.firstChild.remove();return d}
+  async function type(cmd){const d=line('<span class="p">$</span> <span class="c"></span><span class="caret"></span>');const c=d.querySelector('.c');for(const ch of cmd){c.textContent+=ch;await sleep(rand(22,48))}await sleep(250);d.querySelector('.caret').remove()}
+  function shatter(slot){
+    const blk=slot.querySelector('.blk'),w=blk.offsetWidth,h=blk.offsetHeight,cols=Math.max(4,Math.round(w/42)),rows=Math.max(2,Math.round(h/36));
+    const P=[];for(let r=0;r<=rows;r++){P[r]=[];for(let c=0;c<=cols;c++){const jx=c>0&&c<cols?rand(-.32,.32)*w/cols:0,jy=r>0&&r<rows?rand(-.32,.32)*h/rows:0;P[r][c]=[c*w/cols+jx,r*h/rows+jy]}}
+    const layer=document.createElement('div');layer.className='shards';slot.appendChild(layer);const sh=[];
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const q=[P[r][c],P[r][c+1],P[r+1][c+1],P[r+1][c]],cx=q.reduce((a,p)=>a+p[0],0)/4,cy=q.reduce((a,p)=>a+p[1],0)/4;
+      const el=blk.cloneNode(true);el.classList.remove('in');el.style.cssText=`position:absolute;left:0;top:0;width:${w}px;height:${h}px;margin:0;clip-path:polygon(${q.map(p=>p[0].toFixed(1)+'px '+p[1].toFixed(1)+'px').join(',')});transform-origin:${cx}px ${cy}px`;
+      layer.appendChild(el);sh.push({el,vx:(cx-w/2)/w*7+rand(-1.5,1.5),vy:-rand(1.5,5),vr:rand(-12,12),x:0,y:0,a:0,d:rand(0,6)|0})}
+    blk.style.visibility='hidden';let f=0;
+    (function step(){f++;for(const s of sh){if(f<s.d)continue;s.vy+=.5;s.x+=s.vx;s.y+=s.vy;s.a+=s.vr;s.el.style.transform=`translate(${s.x}px,${s.y}px) rotate(${s.a}deg)`;s.el.style.opacity=f>34?Math.max(0,1-(f-34)/40):1}
+      if(f<80)requestAnimationFrame(step);else layer.remove()})()}
+  async function kill(dep){const s=slots[dep];shatter(s);tag(dep,'Terminating');await sleep(550);
+    names[dep]=dep+'-'+id();const node='node-'+(1+(Math.random()*3|0));line(`<span class="dim">  Scheduled   ${names[dep]} → ${node}</span>`);
+    s.classList.add('pending');s.querySelector('.ph').innerHTML='<span>Pending · waiting for a node</span>';tag(dep,'Pending');await sleep(700);
+    s.classList.add('creating');s.querySelector('.ph').innerHTML=`<s style="width:60%"></s><s style="width:85%"></s><s style="width:40%"></s><span>ContainerCreating · pulling web:v2</span>`;tag(dep,'ContainerCreating');line(`<span class="dim">  Pulling     image "web:v2"</span>`);await sleep(850);
+    s.classList.remove('pending','creating');const b=s.querySelector('.blk');b.style.visibility='';b.classList.remove('in');void b.offsetWidth;b.classList.add('in');tag(dep,'Running');line(`<span class="ok">  Started     ${names[dep]}</span>`)}
+  let alive=true;
+  (async()=>{await sleep(600);while(alive){
+    await type('kubectl get pods');line('<span class="dim">NAME            STATUS    AGE</span>');for(const d of ['nav','hero','cards'])line(`${names[d].padEnd(16)}<span class="ok">Running</span>   ${(Math.random()*50+3)|0}m`);await sleep(1300);
+    await type(`kubectl delete pod ${names.hero}`);line(`pod "${names.hero}" deleted`,'');await kill('hero');await sleep(1100);
+    await type(`kubectl delete pod ${names.cards} ${names.nav}`);line(`pod "${names.cards}" deleted`);line(`pod "${names.nav}" deleted`);kill('cards');await sleep(300);await kill('nav');await sleep(1100);
+    await type('kubectl delete pods --all');for(const d of ['nav','hero','cards'])line(`pod "${names[d]}" deleted`);kill('nav');await sleep(140);kill('hero');await sleep(140);await kill('cards');
+    line('<span class="warn">  0 requests dropped · page never went down</span>');await sleep(2600)}})();
+  return()=>{alive=false}
+}
+
+/* ---------- C: scale to 1000 ---------- */
+function conceptC(stage){
+  const cv=stage.querySelector('canvas'),W=stage.clientWidth,H=440,ctx=setup(cv,W,H),cmdEl=stage.querySelector('.cmd'),stEl=stage.querySelector('.st'),nEl=stage.querySelector('.n');
+  let alive=true,raf;const N=W<520?6:10,pad=20,gap=W<520?6:8,binW=(W-2*pad-gap*(N-1))/N,cols=N>6?6:8,rows=Math.ceil(1200/(N*cols)),step=binW/cols,binH=rows*step,bottom=H-30,top=bottom-binH,pr=step*.42;
+  const O={x:W/2,y:top-44};let pods=[],used=new Array(N).fill(0),nodes=new Array(N).fill('Ready'),shown=-1;
+  const slotXY=(n,k)=>[pad+n*(binW+gap)+step*(k%cols+.5),bottom-step*(Math.floor(k/cols)+.5)];
+  async function type(cmd){cmdEl.innerHTML='<i>$</i> <span></span><span class="caret"></span>';const sp=cmdEl.querySelector('span');for(const ch of cmd){sp.textContent+=ch;await sleep(rand(20,45))}await sleep(350);cmdEl.querySelector('.caret').remove()}
+  function fly(p,t,fx,fy){p.state='fly';p.t0=t;p.dur=rand(600,900);p.fx=fx;p.fy=fy;const [x,y]=slotXY(p.node,p.k);p.tx=x;p.ty=y;p.cx=(fx+x)/2+rand(-40,40);p.cy=Math.min(fy,y)-rand(40,110)}
+  function frame(now){if(!alive)return;ctx.clearRect(0,0,W,H);
+    for(let n=0;n<N;n++){const x=pad+n*(binW+gap);pill(ctx,x,top-6,binW,binH+12,6);ctx.fillStyle='#0f1a31';ctx.fill();if(nodes[n]!=='Ready'){ctx.setLineDash([3,3]);ctx.strokeStyle='#e9a23b'}else ctx.strokeStyle='#1d2a45';ctx.lineWidth=1;ctx.stroke();ctx.setLineDash([]);
+      ctx.font='500 9px "JetBrains Mono"';ctx.textAlign='left';ctx.fillStyle=nodes[n]==='Ready'?'#8a98b3':'#e9a23b';ctx.fillText(nodes[n]==='Ready'?`node-${n+1}`:'cordoned',x+2,bottom+19)}
+    pill(ctx,O.x-56,O.y-10,112,20,10);ctx.fillStyle='#0f1a31';ctx.fill();ctx.strokeStyle='#2e3f63';ctx.stroke();ctx.fillStyle='#d8e1f2';ctx.textAlign='center';ctx.font='500 9.5px "JetBrains Mono"';ctx.fillText('kube-scheduler',O.x,O.y+3.5);
+    let run=0;
+    for(const p of pods){
+      if(p.state==='fly'){const k=(now-p.t0)/p.dur;if(k<0){if(p.moving){run++;ctx.fillStyle='#4f86f0';hept(ctx,p.fx,p.fy,pr);ctx.fill()}continue}
+        if(k>=1){p.state='run';p.land=now}else{const e=eIO(k);ctx.fillStyle='#4f86f0';hept(ctx,qb(p.fx,p.cx,p.tx,e),qb(p.fy,p.cy,p.ty,e),pr*(.7+.3*e),e*3);ctx.fill();if(p.moving)run++;continue}}
+      if(p.state==='run'){run++;const f=Math.max(0,1-(now-p.land)/300);ctx.fillStyle=f>0?`rgb(${79+176*f|0},${134+121*f|0},${240+15*f|0})`:'#4f86f0';hept(ctx,p.tx,p.ty,pr);ctx.fill()}
+      else if(p.state==='term'){const k=(now-p.t0)/450;if(k<0){run++;ctx.fillStyle='#4f86f0';hept(ctx,p.tx,p.ty,pr);ctx.fill();continue}if(k<1){ctx.fillStyle=`rgba(242,85,90,${1-k})`;hept(ctx,p.tx,p.ty,pr*(1-k*.6));ctx.fill()}else p.state='dead'}}
+    if(run!==shown){shown=run;nEl.textContent=run.toLocaleString('en-US')}
+    raf=requestAnimationFrame(frame)}
+  raf=requestAnimationFrame(frame);
+  (async()=>{await sleep(500);while(alive){
+    pods=[];used.fill(0);nodes.fill('Ready');stEl.textContent='deployment/web · 0 replicas';
+    await type('kubectl scale deploy/web --replicas=1000');stEl.textContent='Scheduling 1,000 Pods across '+N+' nodes…';
+    const t=performance.now();for(let i=0;i<1000;i++){const n=i%N,p={node:n,k:used[n]++};fly(p,t+2600*Math.pow(i/1000,.75),O.x+rand(-8,8),O.y);pods.push(p)}
+    await sleep(3800);stEl.textContent='1,000 / 1,000 ready';await sleep(1500);
+    const d=N>6?6:3;await type(`kubectl drain node-${d+1}`);nodes[d]='cordon';stEl.textContent=`Evicting Pods from node-${d+1}…`;
+    const movers=pods.filter(p=>p.node===d).sort((a,b)=>b.k-a.k),others=[...Array(N).keys()].filter(n=>n!==d);let j=0;const t2=performance.now();
+    movers.forEach((p,i)=>{const fx=p.tx,fy=p.ty,n=others[j++%others.length];p.node=n;p.k=used[n]++;p.moving=true;fly(p,t2+i*12,fx,fy)});used[d]=0;
+    await sleep(movers.length*12+1500);stEl.textContent=`node-${d+1} drained · ${movers.length} Pods moved · 0 lost`;await sleep(1800);
+    await type('kubectl scale deploy/web --replicas=3');const keep=new Set(others.slice(0,3).map(n=>pods.find(p=>p.node===n&&p.k===0)));
+    const t3=performance.now();const kill=pods.filter(p=>!keep.has(p)).sort((a,b)=>a.ty-b.ty);kill.forEach((p,i)=>{p.state='term';p.t0=t3+i/kill.length*1800});
+    await sleep(2500);stEl.textContent='3 / 3 ready';await type(`kubectl uncordon node-${d+1}`);nodes[d]='Ready';await sleep(1600)}})();
+  return()=>{alive=false;cancelAnimationFrame(raf)}
+}
+
+/* ---------- D: physics ---------- */
+function conceptD(stage){
+  const cv=stage.querySelector('canvas'),W=stage.clientWidth,H=440,ctx=setup(cv,W,H),stEl=stage.querySelector('.st'),ac=new AbortController();
+  let alive=true,raf;const narrow=W<520,pad=narrow?28:40,gap=narrow?10:24,binW=(W-2*pad-gap*2)/3,bottom=H-104,binH=narrow?120:130,top=bottom-binH,r=narrow?10:13.5,G=.32;
+  const bins=[0,1,2].map(i=>{const x0=pad+i*(binW+gap);return{x0,x1:x0+binW,state:'Ready',door:0}});
+  const pods=[];const n=narrow?27:39;
+  for(let i=0;i<n;i++){const b=bins[i%3],x=rand(b.x0+r,b.x1-r),y=-rand(20,600);pods.push({x,y,px:x,py:y,a:rand(0,TAU),mode:'phys',state:'run'})}
+  function segs(){const s=[];for(const b of bins){s.push([b.x0,top,b.x0,bottom],[b.x1,top,b.x1,bottom]);const L=binW/2,th=b.door*1.35;s.push([b.x0,bottom,b.x0+L*Math.cos(th),bottom+L*Math.sin(th)],[b.x1,bottom,b.x1-L*Math.cos(th),bottom+L*Math.sin(th)])}return s}
+  let grab=null,mx=0,my=0,pmx=0,pmy=0,busy=false,lastUser=0;
+  const pos=e=>{const b=cv.getBoundingClientRect();mx=e.clientX-b.left;my=e.clientY-b.top};
+  cv.addEventListener('pointerdown',e=>{pos(e);lastUser=performance.now();
+    for(let i=0;i<3;i++){const b=bins[i];if(mx>b.x0&&mx<b.x1&&my>top-30&&my<top){drain(i);return}}
+    let best=null,bd=r+6;for(const p of pods){if(p.mode!=='phys')continue;const d=Math.hypot(p.x-mx,p.y-my);if(d<bd){bd=d;best=p}}
+    if(best){grab=best;pmx=mx;pmy=my;cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing'}},{signal:ac.signal});
+  cv.addEventListener('pointermove',e=>{pos(e);if(!grab){let over=false;for(const b of bins)if(mx>b.x0&&mx<b.x1&&my>top-30&&my<top)over=true;cv.style.cursor=over?'pointer':'grab'}},{signal:ac.signal});
+  cv.addEventListener('pointerup',()=>{grab=null;lastUser=performance.now();cv.style.cursor='grab'},{signal:ac.signal});
+  function physics(){const S=segs();
+    for(const p of pods){if(p.mode!=='phys')continue;if(p===grab){p.px=p.x;p.py=p.y;p.x+=(mx-p.x)*.5;p.y+=(my-p.y)*.5;continue}
+      let vx=(p.x-p.px)*.992,vy=(p.y-p.py)*.992;const sp=Math.hypot(vx,vy);if(sp>9){vx*=9/sp;vy*=9/sp}p.px=p.x;p.py=p.y;p.x+=vx;p.y+=vy+G;p.a+=vx/r}
+    for(let it=0;it<5;it++){
+      for(let i=0;i<pods.length;i++){const a=pods[i];if(a.mode!=='phys')continue;for(let j=i+1;j<pods.length;j++){const b=pods[j];if(b.mode!=='phys')continue;const dx=b.x-a.x,dy=b.y-a.y,d2=dx*dx+dy*dy;if(d2<4*r*r&&d2>1e-6){const d=Math.sqrt(d2),o=(2*r-d)/d*.5;const wa=a===grab?0:b===grab?2:1,wb=b===grab?0:a===grab?2:1;a.x-=dx*o*wa;a.y-=dy*o*wa;b.x+=dx*o*wb;b.y+=dy*o*wb}}}
+      for(const p of pods){if(p.mode!=='phys'||p===grab)continue;
+        for(const [ax,ay,bx,by] of S){const ex=bx-ax,ey=by-ay,l2=ex*ex+ey*ey;let t=((p.x-ax)*ex+(p.y-ay)*ey)/l2;t=Math.max(0,Math.min(1,t));const cx=ax+ex*t,cy=ay+ey*t,dx=p.x-cx,dy=p.y-cy,d=Math.hypot(dx,dy),m=r+1.5;if(d<m&&d>1e-6){p.x+=dx/d*(m-d);p.y+=dy/d*(m-d)}}
+        if(p.y>H-3-r){p.y=H-3-r;p.px+=(p.x-p.px)*.2}if(p.x<r){p.x=r}if(p.x>W-r){p.x=W-r}}}}
+  const inBin=(p,b)=>p.x>b.x0&&p.x<b.x1&&p.y<bottom&&p.y>top-60;
+  function tween(ms,f){return new Promise(res=>{const t0=performance.now();(function s(){const k=Math.min(1,(performance.now()-t0)/ms);f(k);k<1&&alive?requestAnimationFrame(s):res()})()})}
+  async function drain(i){if(busy)return;busy=true;const b=bins[i];b.state='Draining';stEl.innerHTML=`$ kubectl drain node-${i+1}<br>evicting Pods…`;
+    await tween(420,k=>b.door=eOut(k));await sleep(1300);
+    const fallen=pods.filter(p=>p.mode==='phys'&&p.y>bottom+2&&p!==grab);fallen.forEach(p=>p.state='pend');await sleep(500);
+    let done=0;fallen.forEach((p,j)=>{setTimeout(()=>{const others=bins.filter(x=>x!==b&&x.state==='Ready');const tb=others.sort((x,y)=>pods.filter(q=>inBin(q,x)).length-pods.filter(q=>inBin(q,y)).length)[0];
+      p.mode='lift';const fx=p.x,fy=p.y,tx=rand(tb.x0+r+2,tb.x1-r-2),ty=top-r-16,cx=(fx+tx)/2,cy=Math.min(fy,ty)-110;
+      tween(700,k=>{const e=eIO(k);p.x=qb(fx,cx,tx,e);p.y=qb(fy,cy,ty,e);p.a+=.08}).then(()=>{p.px=p.x;p.py=p.y;p.mode='phys';p.state='run';done++;stEl.innerHTML=`$ kubectl drain node-${i+1}<br>${done} / ${fallen.length} Pods rescheduled`})},j*140)});
+    await sleep(fallen.length*140+900);await tween(450,k=>b.door=1-eOut(k));b.state='Ready';stEl.innerHTML=`node-${i+1} drained<br>${fallen.length} Pods moved · 0 lost`;busy=false}
+  let next=1;
+  function frame(now){if(!alive)return;physics();physics();ctx.clearRect(0,0,W,H);
+    ctx.strokeStyle='rgba(27,27,27,.18)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(0,H-2.5);ctx.lineTo(W,H-2.5);ctx.stroke();
+    bins.forEach((b,i)=>{ctx.fillStyle='rgba(255,255,255,.55)';ctx.fillRect(b.x0,top,binW,binH);
+      ctx.font='500 11px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='#1b1b1b';ctx.fillText(`node-${i+1}`,b.x0,top-10);ctx.textAlign='right';ctx.fillStyle=b.state==='Ready'?'#2f7d4f':'#a8670f';ctx.fillText(b.state==='Ready'?'Ready':'SchedulingDisabled',b.x1,top-10);
+      ctx.strokeStyle='rgba(27,27,27,.25)';ctx.beginPath();ctx.moveTo(b.x0,top-6.5);ctx.lineTo(b.x1,top-6.5);ctx.stroke()});
+    ctx.strokeStyle='#1b1b1b';ctx.lineWidth=2.5;ctx.lineCap='round';for(const [ax,ay,bx,by] of segs()){ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke()}
+    for(const p of pods){if(p.state==='pend'&&p.mode!=='lift'){ctx.setLineDash([3,3]);ctx.lineWidth=1.3;ctx.strokeStyle='#1b1b1b';hept(ctx,p.x,p.y,r,p.a);ctx.stroke();ctx.setLineDash([]);continue}
+      ctx.fillStyle=p.mode==='lift'?'#1a2f6b':'#2f5fd0';hept(ctx,p.x,p.y,r,p.a);ctx.fill();cube(ctx,p.x,p.y,r*.46,p.a,'#fff',1.3)}
+    if(!busy&&now-lastUser>4000&&now>6000&&(!frame.t||now-frame.t>7000)){frame.t=now;drain(next);next=(next+1)%3}
+    raf=requestAnimationFrame(frame)}
+  stEl.innerHTML='3 nodes Ready<br>'+n+' Pods Running';raf=requestAnimationFrame(frame);
+  return()=>{alive=false;cancelAnimationFrame(raf);ac.abort()}
+}
+
+/* ---------- E: helm wheel ---------- */
+function conceptE(stage){
+  const cv=stage.querySelector('canvas'),W=stage.clientWidth,H=stage.clientHeight,ctx=setup(cv,W,H),stEl=stage.querySelector('.st'),ac=new AbortController();
+  let alive=true,raf;const narrow=W<560,cx=narrow?W/2:W*.69,cy=narrow?H*.66:H/2,R=narrow?Math.min(W*.3,120):Math.min(H*.29,W*.23);
+  const pods=[],sp=7;
+  for(let i=0;i<42;i++)pods.push({ang:i/42*TAU,rad:R,s:1});
+  for(let k=0;k<sp;k++){const a=k/sp*TAU;[.38,.55,.72].forEach(f=>pods.push({ang:a,rad:R*f,s:.95}));pods.push({ang:a,rad:R*1.26,s:1.45})}
+  pods.forEach(p=>{p.v=1;p.ov=1;p.ts=-1e9});
+  let theta=0,omega=.12,phi=-1,cur=1,next=2,last=performance.now(),drag=false,la=0,pause=performance.now()+900,upd=0;
+  const packets=Array.from({length:12},()=>({k:rand(0,sp)|0,t:rand(0,1),sp:rand(.4,.8)}));
+  const ang=e=>{const b=cv.getBoundingClientRect();return Math.atan2(e.clientY-b.top-cy,e.clientX-b.left-cx)};
+  cv.addEventListener('pointerdown',e=>{const b=cv.getBoundingClientRect();if(Math.hypot(e.clientX-b.left-cx,e.clientY-b.top-cy)<R*1.5){drag=true;la=ang(e);cv.setPointerCapture(e.pointerId);cv.style.cursor='grabbing'}},{signal:ac.signal});
+  cv.addEventListener('pointermove',e=>{if(!drag)return;const a=ang(e);let d=a-la;if(d>Math.PI)d-=TAU;if(d<-Math.PI)d+=TAU;theta+=d;omega=d*60;la=a},{signal:ac.signal});
+  cv.addEventListener('pointerup',()=>{drag=false;cv.style.cursor='grab'},{signal:ac.signal});
+  const col=v=>v%2?'#4f86f0':'#f5f3ee',gly=v=>v%2?'#fff':'#0e2237';
+  function frame(now){if(!alive)return;const dt=Math.min(.05,(now-last)/1000);last=now;
+    if(!drag){theta+=omega*dt;omega+=(.12-omega)*Math.min(1,dt*1.2)}
+    if(now>pause){const prev=phi<0?0:phi;phi=prev+1.15*dt;
+      for(const p of pods){if(p.v!==next&&p.ang>=prev&&p.ang<phi){p.ov=p.v;p.v=next;p.ts=now;upd++}}
+      if(phi>=TAU){phi=-1;cur=next;next++;pause=now+1600;stEl.innerHTML=`deployment/web · <b>v${cur}</b> rolled out · 0 downtime`;upd=0}
+      else stEl.innerHTML=`deployment/web · v${cur} → <b>v${next}</b> · ${upd} / ${pods.length} Pods updated`}
+    ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(cx,cy);
+    ctx.strokeStyle='rgba(245,243,238,.10)';ctx.lineWidth=2;hept(ctx,0,0,R*1.5,theta+Math.PI/7);ctx.stroke();
+    ctx.lineWidth=1;ctx.strokeStyle='rgba(245,243,238,.16)';ctx.beginPath();ctx.arc(0,0,R,0,TAU);ctx.stroke();ctx.beginPath();ctx.arc(0,0,R*.2,0,TAU);ctx.stroke();
+    for(let k=0;k<sp;k++){const a=theta+k/sp*TAU-Math.PI/2;ctx.beginPath();ctx.moveTo(Math.cos(a)*R*.2,Math.sin(a)*R*.2);ctx.lineTo(Math.cos(a)*R*1.2,Math.sin(a)*R*1.2);ctx.strokeStyle='rgba(245,243,238,.16)';ctx.lineWidth=1;ctx.stroke()}
+    if(phi>=0){const a=theta+phi-Math.PI/2;ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,R*1.42,a-.55,a);ctx.closePath();ctx.fillStyle='rgba(209,70,47,.09)';ctx.fill();
+      ctx.beginPath();ctx.moveTo(Math.cos(a)*R*.2,Math.sin(a)*R*.2);ctx.lineTo(Math.cos(a)*R*1.42,Math.sin(a)*R*1.42);ctx.strokeStyle='#e8553d';ctx.lineWidth=2;ctx.stroke()}
+    for(const q of packets){q.t+=q.sp*dt;if(q.t>1){q.t=0;q.k=rand(0,sp)|0}const a=theta+q.k/sp*TAU-Math.PI/2,rr=R*(.2+q.t*1.02);ctx.fillStyle=`rgba(245,243,238,${.85*(1-q.t*.6)})`;ctx.beginPath();ctx.arc(Math.cos(a)*rr,Math.sin(a)*rr,1.8,0,TAU);ctx.fill()}
+    const pr=R*.06;
+    for(const p of pods){const a=theta+p.ang-Math.PI/2,x=Math.cos(a)*p.rad,y=Math.sin(a)*p.rad,rr=pr*p.s,k=(now-p.ts)/520;
+      if(k<1){if(k<.4){ctx.fillStyle=col(p.ov);hept(ctx,x,y,rr*(1-k/.4),a);ctx.fill()}else{const e=eBack((k-.4)/.6);ctx.fillStyle=col(p.v);hept(ctx,x,y,rr*e,a);ctx.fill()}}
+      else{ctx.fillStyle=col(p.v);hept(ctx,x,y,rr,a);ctx.fill();if(rr>7)cube(ctx,x,y,rr*.46,a,gly(p.v),1.2)}
+      const rk=(now-p.ts)/1100;if(rk>0&&rk<1){ctx.strokeStyle=`rgba(232,85,61,${1-rk})`;ctx.lineWidth=1.5;hept(ctx,x,y,rr+3+rk*6,a);ctx.stroke()}}
+    ctx.fillStyle='#d1462f';hept(ctx,0,0,R*.15,theta);ctx.fill();ctx.fillStyle='#fff';ctx.font=`600 ${Math.max(9,R*.07)|0}px "JetBrains Mono"`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('svc',0,1);ctx.textBaseline='alphabetic';
+    ctx.restore();raf=requestAnimationFrame(frame)}
+  stEl.innerHTML=`deployment/web · <b>v1</b> · ${pods.length} Pods Running`;raf=requestAnimationFrame(frame);
+  return()=>{alive=false;cancelAnimationFrame(raf);ac.abort()}
+}
+
+const fonts=['800 100px "Inter Tight"','400 30px "Instrument Serif"','700 60px "Barlow Condensed"','500 12px "JetBrains Mono"','500 12px "IBM Plex Mono"','500 12px "Geist Mono"'];
+Promise.race([Promise.all(fonts.map(f=>document.fonts.load(f))),sleep(3000)]).then(()=>{
+  conceptB(document.getElementById('sB'));
+  for(const [id,fn] of [['sA',conceptA],['sC',conceptC],['sD',conceptD],['sE',conceptE]]){
+    const el=document.getElementById(id);let w=el.clientWidth,stop=fn(el),tm;
+    new ResizeObserver(()=>{clearTimeout(tm);tm=setTimeout(()=>{if(Math.abs(el.clientWidth-w)>24){w=el.clientWidth;stop();stop=fn(el)}},200)}).observe(el)}
+});
+</script>
+</body></html>

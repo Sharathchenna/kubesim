@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { Cluster, type Pod, type Service } from "@/lib/engine";
+import { BLUEPRINTS } from "./blueprints";
 import { canDrop, parseTarget, performDrop } from "./drag";
 import { SimStore } from "./useSimulation";
 
@@ -44,4 +45,41 @@ test("drag to build: deployment, service, pinned pod, delete", () => {
   const bad = performDrop(s, { kind: "palette", what: "service", label: "" }, { type: "canvas" });
   expect(bad.ok).toBe(false);
   expect(bad.note).toContain("Deployment");
+});
+
+test("blueprints: every one applies cleanly and its Pods come up", () => {
+  for (const b of BLUEPRINTS) {
+    const s = new SimStore();
+    s.cluster = new Cluster();
+    const c = s.cluster;
+    if (b.on === "service") s.apply(BLUEPRINTS.find((x) => x.id === "web")!.yaml("web"), "web.yaml");
+    const r = performDrop(s, { kind: "blueprint", id: b.id, label: b.label }, b.on === "service" ? { type: "service", ns: "default", name: "web" } : { type: "canvas" });
+    expect(r.ok).toBe(true);
+    expect(s.term.at(-1)?.cmd).toBe(`kubectl apply -f ${b.base}.yaml`);
+    // The manifest is saved as a file the Learner can open, change and apply again.
+    expect(s.files[`${b.base}.yaml`]).toContain(b.base);
+    c.advance(90_000);
+    const pods = c.list<Pod>("Pod", "default");
+    expect(pods.length).toBeGreaterThan(0);
+    for (const p of pods) expect([p.metadata.name, p.status?.phase === "Succeeded" || p.status?.conditions?.some((q) => q.type === "Ready" && q.status === "True")]).toEqual([p.metadata.name, true]);
+  }
+});
+
+test("blueprints: unique names, and the ones that need a Service say so", () => {
+  const s = store();
+  const c = s.cluster!;
+  performDrop(s, { kind: "blueprint", id: "postgres", label: "PostgreSQL" }, { type: "canvas" });
+  performDrop(s, { kind: "blueprint", id: "postgres", label: "PostgreSQL" }, { type: "node", name: "worker-1" });
+  expect(c.raw("StatefulSet", "default", "postgres")).toBeTruthy();
+  expect(c.raw("StatefulSet", "default", "postgres-2")).toBeTruthy();
+  // The full stack derives names from its base, so it avoids anything already using that prefix.
+  performDrop(s, { kind: "blueprint", id: "stack", label: "Full-stack app" }, { type: "canvas" });
+  performDrop(s, { kind: "blueprint", id: "stack", label: "Full-stack app" }, { type: "canvas" });
+  expect(c.raw("Deployment", "default", "shop-api")).toBeTruthy();
+  expect(c.raw("Deployment", "default", "shop-2-api")).toBeTruthy();
+  const bad = performDrop(s, { kind: "blueprint", id: "load", label: "Load generator" }, { type: "canvas" });
+  expect(bad.ok).toBe(false);
+  expect(bad.note).toContain("Service");
+  expect(canDrop({ kind: "blueprint", id: "load", label: "" }, parseTarget("service:default/web"))).toBe(true);
+  expect(canDrop({ kind: "blueprint", id: "redis", label: "" }, parseTarget("service:default/web"))).toBe(false);
 });

@@ -20,7 +20,7 @@ function Shell({ title, intro, children }: { title: string; intro: string; child
 }
 
 /** A ruled list: hairlines between rows, a heavier rule on top. */
-const RULED = "border-t-[1.5px] border-ink [&>*]:border-b [&>*]:border-ink/25";
+const RULED = "border-t border-ink/10 [&>*]:border-b [&>*]:border-ink/10";
 /** One row of a ruled list. */
 const ROW = "group flex items-start gap-5 px-1 py-4 transition-colors hover:bg-ink/[0.04]";
 
@@ -32,7 +32,7 @@ function LessonRow({ l, i, isNext }: { l: Lesson; i: number; isNext: boolean }) 
   return (
     <li>
       <Link href={`/learn/${l.slug}`} className={ROW}>
-        <span className={`grid h-9 w-9 shrink-0 place-items-center border-[1.5px] font-mono text-[13px] font-medium ${done ? "border-ink bg-ink text-paper" : isNext ? "border-signal text-signal" : "border-ink/40 text-ink-soft"}`} aria-label={done ? "Done" : undefined}>
+        <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border font-mono text-[13px] font-medium ${done ? "border-signal bg-signal text-white" : isNext ? "border-signal text-signal" : "border-ink/40 text-ink-soft"}`} aria-label={done ? "Done" : undefined}>
           {done ? "✓" : String(i + 1).padStart(2, "0")}
         </span>
         <div className="min-w-0 flex-1">
@@ -60,15 +60,15 @@ export function LessonIndex() {
   const doneCount = LESSONS.filter((l) => (progress[l.slug]?.done ?? 0) >= l.steps.length).length;
   return (
     <Shell title="Lessons" intro={`${LESSONS.length} short, hands-on lessons in ${TRACKS.length} tracks. Each one gives you a live cluster, a real kubectl terminal, and checks that tick off as you go. Take the tracks in order; each builds on the last.`}>
-      <nav aria-label="Curriculum map" className="mb-10 grid grid-cols-2 border-[1.5px] border-ink sm:grid-cols-4 lg:grid-cols-7">
+      <nav aria-label="Curriculum map" className="mb-10 grid grid-cols-2 rounded-xl border border-ink/10 sm:grid-cols-4 lg:grid-cols-7">
         {TRACKS.map((t) => {
           const ls = LESSONS.filter((l) => trackOf(l) === t.id);
           const d = ls.filter((l) => (progress[l.slug]?.done ?? 0) >= l.steps.length).length;
           return (
-            <a key={t.id} href={`#${t.id}`} className="-mb-px -mr-px border-b border-r border-ink/25 p-3 hover:bg-ink/[0.04]">
+            <a key={t.id} href={`#${t.id}`} className="-mb-px -mr-px border-b border-r border-ink/10 p-3 hover:bg-ink/[0.04]">
               <div className="text-[14px] font-medium">{t.title}</div>
               <div className="mt-2 h-1 bg-ink/10" role="progressbar" aria-valuemin={0} aria-valuemax={ls.length} aria-valuenow={d} aria-label={`${t.title}: ${d} of ${ls.length} lessons done`}>
-                <div className="h-full bg-ink" style={{ width: `${ls.length ? (d / ls.length) * 100 : 0}%` }} />
+                <div className="h-full rounded-full bg-signal" style={{ width: `${ls.length ? (d / ls.length) * 100 : 0}%` }} />
               </div>
               <div className="mt-1.5 font-mono text-[11px] text-ink-soft">
                 {d}/{ls.length}
@@ -102,7 +102,7 @@ export function LessonIndex() {
           );
         })}
       </div>
-      <div className="mt-14 grid grid-cols-1 border-[1.5px] border-ink sm:grid-cols-2">
+      <div className="mt-14 grid grid-cols-1 rounded-xl border border-ink/10 sm:grid-cols-2">
         <Link href="/challenges" className="group p-5 hover:bg-ink/[0.04]">
           <div className="text-[17px] font-medium underline-offset-4 group-hover:underline">{CHALLENGES.length} challenges: fix a broken cluster</div>
           <p className="mt-1 text-[14.5px] text-ink-soft">No steps, just a symptom and a goal. Practise troubleshooting.</p>
@@ -199,17 +199,17 @@ export function ProgressPage() {
   ];
   return (
     <Shell title="Your progress" intro="Everything here is stored in this browser only. There are no accounts, so clearing site data (or the button below) starts you over.">
-      <dl className="grid grid-cols-1 border-[1.5px] border-ink sm:grid-cols-3">
+      <dl className="grid grid-cols-1 rounded-xl border border-ink/10 sm:grid-cols-3">
         {stats.map(([k, v, sub]) => (
           <div key={k} className="border-ink p-4 max-sm:[&+&]:border-t sm:[&+&]:border-l">
-            <dt className="text-[11px] uppercase tracking-[0.1em] text-ink-soft">{k}</dt>
+            <dt className="text-[12px] text-ink-soft">{k}</dt>
             <dd className="mt-1 font-mono text-[26px] font-medium">{v}</dd>
             <dd className="text-[13.5px] text-ink-soft">{sub}</dd>
           </div>
         ))}
       </dl>
       {next && (
-        <Link href={`/learn/${next.slug}`} className="group mt-6 block border-[1.5px] border-ink bg-ink p-4 text-paper hover:border-signal hover:bg-signal">
+        <Link href={`/learn/${next.slug}`} className="group mt-6 block btn-primary rounded-xl p-4 text-white">
           <span className="text-[13.5px] opacity-80">Up next</span>
           <span className="block text-[18px] font-medium">{next.title}</span>
         </Link>
@@ -224,15 +224,15 @@ export function ProgressPage() {
             if (!ls.length) return null;
             return (
               <div key={t.id}>
-                <div className="border-b-[1.5px] border-ink pb-1 text-[16px] font-medium">{t.title}</div>
-                <ul className="flex flex-col [&>li]:border-b [&>li]:border-ink/25">
+                <div className="border-b border-ink/10 pb-1 text-[16px] font-medium">{t.title}</div>
+                <ul className="flex flex-col [&>li]:border-b [&>li]:border-ink/10">
                   {ls.map((l) => {
                     const p = progress[l.slug];
                     const done = !!p && p.done >= l.steps.length;
                     return (
                       <li key={l.slug}>
                         <Link href={`/learn/${l.slug}`} className="flex items-center gap-2 px-1 py-1.5 text-[14.5px] hover:bg-ink/[0.04]">
-                          <span className={`grid h-4 w-4 place-items-center border-[1.5px] text-[9px] ${done ? "border-ink bg-ink text-paper" : p?.done ? "border-signal" : "border-ink/30"}`} aria-hidden="true">
+                          <span className={`grid h-4 w-4 place-items-center rounded-lg border text-[9px] ${done ? "border-signal bg-signal text-white" : p?.done ? "border-signal" : "border-ink/30"}`} aria-hidden="true">
                             {done ? "✓" : ""}
                           </span>
                           <span className={done ? "text-ink-soft" : ""}>{l.title}</span>
@@ -251,7 +251,7 @@ export function ProgressPage() {
         </div>
       </section>
       <button
-        className="mt-10 border-[1.5px] border-red-700 px-3 py-1.5 text-[13.5px] font-medium text-red-700 hover:bg-red-50"
+        className="mt-10 rounded-lg border border-red-300 px-3 py-1.5 text-[13.5px] font-medium text-red-700 hover:bg-red-50"
         onClick={() => {
           if (window.confirm("Forget all Lesson, Challenge and exam progress on this device?")) resetAllProgress();
         }}
@@ -282,7 +282,7 @@ export function ExplainerIndex() {
       <div className={RULED}>
         {EXPLAINERS.map((e) => (
           <Link key={e.id} href={`/explainers/${e.id}`} className={ROW}>
-            <span className="grid h-10 w-10 shrink-0 place-items-center border-[1.5px] border-ink">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-ink/10">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
                 {GLYPH[e.id] ?? <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />}
               </svg>

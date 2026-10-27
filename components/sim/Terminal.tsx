@@ -124,7 +124,7 @@ export function Terminal({ sim, autoFocus }: { sim: SimStore; autoFocus?: boolea
               <div className="mt-0.5 flex items-center gap-2 text-[11px] text-ink-soft">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-signal" />
                 streaming… press Ctrl+C or
-                <button onClick={() => sim.stopWatch()} className="border border-ink/30 bg-paper px-1.5 text-ink hover:border-ink">
+                <button onClick={() => sim.stopWatch()} className="rounded-md border border-ink/15 bg-paper px-1.5 text-ink hover:border-ink/40">
                   stop
                 </button>
               </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { heptagon } from "@/lib/heptagon";
 
 const NAV = [
   { href: "/learn", label: "Lessons" },
@@ -18,8 +19,8 @@ export function Logo() {
   return (
     <Link href="/" className="flex shrink-0 items-center gap-2.5">
       <svg viewBox="0 0 28 28" className="h-7 w-7" aria-hidden>
-        <path d="M14 2.5l10 5.75v11.5L14 25.5 4 19.75V8.25L14 2.5z" fill="#172340" />
-        <path d="M14 8l5.2 3v6L14 20l-5.2-3v-6L14 8z" fill="none" stroke="#fff" strokeWidth={1.5} strokeLinejoin="round" />
+        <polygon points={heptagon(14, 14, 12)} fill="#326ce5" stroke="#326ce5" strokeWidth={2.5} strokeLinejoin="round" />
+        <path d="M9.2 11.2l4.8-2.6 4.8 2.6v5.6L14 19.4l-4.8-2.6zM9.2 11.2l4.8 2.6 4.8-2.6M14 13.8v5.6" fill="none" stroke="#fff" strokeWidth={1.5} strokeLinejoin="round" />
       </svg>
       <span className="text-[15px] font-semibold tracking-tight text-ink">kubesim</span>
     </Link>
@@ -56,7 +57,7 @@ export function AppHeader({ center, right, sheet, trail }: {
     };
   }, [menu]);
   return (
-    <header ref={ref} className={`font-sheet flex h-14 shrink-0 items-center gap-3 border-b-[1.5px] border-ink bg-paper px-3 sm:px-4 ${sheet ? "sticky top-0 z-40" : "relative z-40"}`}>
+    <header ref={ref} className={`font-sheet flex h-14 shrink-0 items-center gap-3 border-b border-ink/10 bg-paper px-3 sm:px-4 ${sheet ? "sticky top-0 z-40" : "relative z-40"}`}>
       <a
         href="#main"
         onClick={(e) => {
@@ -82,7 +83,7 @@ export function AppHeader({ center, right, sheet, trail }: {
           <ol className="flex min-w-0 items-center">
             {trail.map((c, i) => (
               <li key={i} className="flex min-w-0 items-center">
-                <span aria-hidden className="px-2 text-ink/30">/</span>
+                <span aria-hidden className="px-2 text-ink/25">/</span>
                 {c.href ? (
                   <Link href={c.href} className="whitespace-nowrap text-ink-soft underline-offset-[5px] hover:text-ink hover:underline">
                     {c.label}
@@ -97,11 +98,11 @@ export function AppHeader({ center, right, sheet, trail }: {
           </ol>
         </nav>
       ) : (
-        <nav className="ml-2 hidden items-center gap-4 text-[14.5px] lg:flex" aria-label="Main">
+        <nav className="ml-3 hidden items-center gap-1 text-[14px] lg:flex" aria-label="Main">
           {NAV.map((n) => {
             const on = path.startsWith(n.href);
             return (
-              <Link key={n.href} href={n.href} aria-current={on ? "page" : undefined} className={`px-1 py-1 underline-offset-[6px] decoration-[1.5px] ${on ? "text-ink underline" : "text-ink-soft hover:text-ink hover:underline"}`}>
+              <Link key={n.href} href={n.href} aria-current={on ? "page" : undefined} className={`rounded-lg px-2.5 py-1.5 transition-colors ${on ? "bg-signal-soft font-medium text-signal" : "text-ink-soft hover:bg-ink/[0.04] hover:text-ink"}`}>
                 {n.label}
               </Link>
             );
@@ -111,12 +112,12 @@ export function AppHeader({ center, right, sheet, trail }: {
       <div className="mx-auto flex min-w-0 items-center gap-2 sm:gap-3">{center}</div>
       <div className="flex shrink-0 items-center gap-2 sm:gap-3">{right}</div>
       {menu && (
-        <nav className={`absolute top-14 z-50 flex flex-col border-b-[1.5px] border-ink bg-paper p-2 ${trail ? "left-0 w-full border-r-[1.5px] sm:w-64" : "inset-x-0 lg:hidden"}`} aria-label="Main">
-          <Link href="/" onClick={() => setMenu(false)} className={`px-3 py-2.5 text-[15px] ${path === "/" ? "text-ink underline underline-offset-4" : "text-ink-soft hover:text-ink"}`}>
+        <nav className={`float-card absolute top-[60px] z-50 flex flex-col p-2 ${trail ? "left-2 w-[calc(100%-1rem)] sm:w-64" : "inset-x-2 lg:hidden"}`} aria-label="Main">
+          <Link href="/" onClick={() => setMenu(false)} className={`rounded-lg px-3 py-2.5 text-[15px] ${path === "/" ? "bg-signal-soft text-signal" : "text-ink-soft hover:bg-ink/[0.04] hover:text-ink"}`}>
             Home
           </Link>
           {NAV.map((n) => (
-            <Link key={n.href} href={n.href} onClick={() => setMenu(false)} className={`px-3 py-2.5 text-[15px] ${path.startsWith(n.href) ? "text-ink underline underline-offset-4" : "text-ink-soft hover:text-ink"}`}>
+            <Link key={n.href} href={n.href} onClick={() => setMenu(false)} className={`rounded-lg px-3 py-2.5 text-[15px] ${path.startsWith(n.href) ? "bg-signal-soft text-signal" : "text-ink-soft hover:bg-ink/[0.04] hover:text-ink"}`}>
               {n.label}
             </Link>
           ))}

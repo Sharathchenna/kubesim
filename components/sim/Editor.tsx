@@ -12,7 +12,7 @@ import { Btn } from "../ui";
 
 const highlight = HighlightStyle.define([
   // Ink on paper: keys in full ink, values a step softer, punctuation and comments faint.
-  { tag: t.propertyName, color: "#172340", fontWeight: "500" },
+  { tag: t.propertyName, color: "#111827", fontWeight: "500" },
   { tag: [t.string, t.content], color: "#5a6680" },
   { tag: [t.number, t.bool, t.null], color: "#5a6680" },
   { tag: t.comment, color: "rgba(23,35,64,.45)", fontStyle: "italic" },
@@ -20,13 +20,13 @@ const highlight = HighlightStyle.define([
 ]);
 
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "12.5px", backgroundColor: "#fbfaf6", color: "#172340" },
+  "&": { height: "100%", fontSize: "12.5px", backgroundColor: "#ffffff", color: "#111827" },
   ".cm-scroller": { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", lineHeight: "1.65" },
-  ".cm-gutters": { backgroundColor: "#fbfaf6", border: "none", color: "rgba(23,35,64,.3)" },
+  ".cm-gutters": { backgroundColor: "#ffffff", border: "none", color: "rgba(17,24,39,.3)" },
   ".cm-activeLine": { backgroundColor: "rgba(23,35,64,.03)" },
   ".cm-activeLineGutter": { backgroundColor: "rgba(23,35,64,.03)", color: "#5a6680" },
   "&.cm-focused": { outline: "2px solid rgba(217,72,15,.5)", outlineOffset: "-2px" },
-  ".cm-cursor": { borderLeftColor: "#172340" },
+  ".cm-cursor": { borderLeftColor: "#111827" },
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(23,35,64,.12)" },
 });
 
@@ -78,7 +78,7 @@ export function Editor({ sim }: { sim: SimStore }) {
     <div className="flex h-full flex-col md:flex-row">
       <div ref={host} className="min-h-0 min-w-0 flex-1 overflow-hidden border-ink/15 md:border-r" />
       <div className="flex shrink-0 flex-col gap-2 border-t border-ink/15 p-3 md:w-64 md:border-t-0">
-        <select value={file} onChange={(e) => sim.openFile(e.target.value)} className="h-7 border border-ink/30 bg-paper px-1.5 font-mono text-[11.5px] text-ink outline-none hover:border-ink focus-visible:border-signal" aria-label="File">
+        <select value={file} onChange={(e) => sim.openFile(e.target.value)} className="h-7 rounded-md border border-ink/15 bg-paper px-1.5 font-mono text-[11.5px] text-ink outline-none hover:border-ink/40 focus-visible:border-signal" aria-label="File">
           {names.map((n) => (
             <option key={n}>{n}</option>
           ))}

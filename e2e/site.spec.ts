@@ -4,7 +4,7 @@ import { run, setSpeed, watchErrors } from "./helpers";
 test("home page links to every way to learn", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("What happens when you delete a Pod");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Learn Kubernetes by breaking it");
   for (const name of ["Lessons", "Challenges", "Exams", "Explainers", "Sandbox", "Progress"]) {
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name })).toBeVisible();
   }
@@ -38,13 +38,42 @@ test("a lesson's progress shows on the progress page", async ({ page }) => {
 test("sandbox: the Ingress scenario routes by path", async ({ page }) => {
   const errors = watchErrors(page);
   await page.goto("/sandbox/");
+  await page.getByRole("button", { name: "Scenarios", exact: true }).click();
   await page.getByRole("button", { name: /Ingress routing/ }).click();
+  await page.getByRole("button", { name: "Terminal", exact: true }).click();
   await setSpeed(page, "30×");
   const log = page.getByRole("log", { name: "Terminal output" });
   await expect(log).toContainText("curl http://localhost/apple", { timeout: 30_000 });
   await expect(log).toContainText("banana");
   await expect(log).toContainText("404 Not Found");
   expect(errors).toEqual([]);
+});
+
+test("sandbox: an untouched cluster says it's free play, and goes away once you start", async ({ page }) => {
+  await page.goto("/sandbox/");
+  await expect(page.getByText("Your cluster. No rules.")).toBeVisible();
+  await page.getByRole("button", { name: "Create a Deployment" }).click();
+  await expect(page.getByText("Your cluster. No rules.")).toBeHidden();
+  await expect(page.getByRole("log", { name: "Terminal output" })).toContainText("deployment.apps/web created");
+});
+
+test("layout: Spotlight and Split switch on every screen and the choice is remembered", async ({ page }) => {
+  await page.goto("/learn/first-pod/");
+  const layout = page.getByRole("group", { name: "Layout" });
+  // Lessons start in Spotlight: the steps and the terminal float over the canvas.
+  await expect(layout.getByRole("button", { name: "Spotlight" })).toHaveAttribute("aria-pressed", "true");
+  await layout.getByRole("button", { name: "Split" }).click();
+  await expect(layout.getByRole("button", { name: "Split" })).toHaveAttribute("aria-pressed", "true");
+  await run(page, "kubectl get nodes");
+  await expect(page.getByText("1/5", { exact: true })).toBeVisible();
+  // The choice carries over to other screens and survives a reload.
+  await page.goto("/sandbox/");
+  await expect(page.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Split" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Spotlight" }).click();
+  await page.reload();
+  await expect(page.getByRole("group", { name: "Layout" }).getByRole("button", { name: "Spotlight" })).toHaveAttribute("aria-pressed", "true");
+  await run(page, "kubectl get nodes");
+  await expect(page.getByRole("log", { name: "Terminal output" })).toContainText("control-plane");
 });
 
 test("sandbox: a shared link opens a copy of the cluster", async ({ page, context }) => {

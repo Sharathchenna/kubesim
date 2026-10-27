@@ -26,7 +26,7 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
       <h1 className="font-display mt-3 text-[34px] leading-tight text-ink">The simulator hit a bug and stopped</h1>
       <p className="mt-3 text-[16px] leading-relaxed text-ink-soft">Nothing you typed caused this. Try again; if it keeps happening, start with a fresh cluster (your Lesson and exam progress is kept).</p>
       <div className="mt-8 flex flex-wrap justify-center gap-3">
-        <button onClick={() => retry()} className="inline-flex h-10 items-center border-[1.5px] border-ink bg-ink px-4 text-[15px] text-paper hover:border-signal hover:bg-signal">
+        <button onClick={() => retry()} className="inline-flex h-10 items-center btn-primary rounded-lg px-4 text-[15px] text-white font-medium">
           Try again
         </button>
         <button
@@ -34,11 +34,11 @@ export default function Error({ error, retry }: { error: Error & { digest?: stri
             clearSavedClusters();
             window.location.reload();
           }}
-          className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] text-ink hover:bg-ink/5"
+          className="inline-flex h-10 items-center rounded-xl border border-ink/10 px-4 text-[15px] text-ink hover:bg-ink/5"
         >
           Start with a fresh cluster
         </button>
-        <Link href="/" className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] text-ink hover:bg-ink/5">
+        <Link href="/" className="inline-flex h-10 items-center rounded-xl border border-ink/10 px-4 text-[15px] text-ink hover:bg-ink/5">
           Home
         </Link>
       </div>

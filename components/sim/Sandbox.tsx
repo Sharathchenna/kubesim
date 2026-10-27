@@ -6,10 +6,11 @@ import * as A from "@/lib/sim/actions";
 import { useSimulation, type SimStore } from "@/lib/sim/useSimulation";
 import { isRollingOut } from "@/lib/sim/status";
 import { AppHeader } from "../AppHeader";
-import { Btn, CAT_COLOR, Card, Dot, Heading, Segmented, inputCls as input } from "../ui";
+import { Btn, CAT_COLOR, Card, Dot, Heading, inputCls as input } from "../ui";
 import type { Selection } from "./ClusterView";
 import { Inspector } from "./Inspector";
-import { MobileTabs, SimControls, Workspace } from "./Workspace";
+import { LayoutToggle, MobileTabs, SimControls, Workspace, useLayoutChoice } from "./Workspace";
+import { SYSTEM_NAMESPACES } from "@/lib/engine/bootstrap";
 import { SHARE_PARAM, decodeCluster, encodeCluster, tokenFromHash } from "@/lib/sim/share";
 
 type Sim = SimStore;
@@ -352,11 +353,11 @@ function ScenariosPanel({ sim, c, onRun }: { sim: Sim; c: Cluster; onRun?: () =>
   return (
     <div>
       <p className="px-5 py-4 text-[14px] leading-snug text-ink-soft">Pick one and watch it play out on the cluster. Each runs real Kubernetes behaviour.</p>
-      <ul className="border-t border-ink/25">
+      <ul className="border-t border-ink/10">
         {SCENARIOS.map((s) => (
-          <li key={s.id} className="border-b border-ink/20">
-            <button onClick={() => { s.go(sim, c); onRun?.(); }} className="group block w-full px-5 py-3 text-left transition-colors hover:bg-ink/[0.04]">
-              <span className="block text-[15px] text-ink underline-offset-4 group-hover:underline">{s.title}</span>
+          <li key={s.id} className="border-b border-ink/10">
+            <button onClick={() => { s.go(sim, c); onRun?.(); }} className="group block w-full px-5 py-3 text-left transition-colors hover:bg-signal-soft/60">
+              <span className="block text-[15px] font-medium text-ink group-hover:text-signal">{s.title}</span>
               <span className="mt-0.5 block text-[13px] leading-snug text-ink-soft">{s.blurb}</span>
             </button>
           </li>
@@ -389,7 +390,7 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
           </div>
           <div className="mt-3 flex items-center gap-3">
             <span className="text-[12.5px] text-ink-soft">Replicas</span>
-            <input type="range" min={1} max={10} value={replicas} onChange={(e) => setReplicas(+e.target.value)} className="flex-1 accent-[#172340]" />
+            <input type="range" min={1} max={10} value={replicas} onChange={(e) => setReplicas(+e.target.value)} className="flex-1 accent-[#326ce5]" />
             <span className="w-5 text-right font-mono text-[12px] tabular-nums text-ink">{replicas}</span>
           </div>
           <Btn tone="primary" className="mt-3 w-full" onClick={() => sim.run((cl) => A.createDeployment(cl, name, image, replicas))}>
@@ -400,7 +401,7 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
 
       <div>
         <Heading right={<Btn tone="ghost" onClick={() => sim.run((cl) => A.runCrashPod(cl))}>+ crashing pod</Btn>}>Deployments · {deployments.length}</Heading>
-        {deployments.length === 0 && <p className="border border-dashed border-ink/25 p-4 text-center text-[13px] text-ink-soft">No deployments yet</p>}
+        {deployments.length === 0 && <p className="border border-dashed border-ink/10 p-4 text-center text-[13px] text-ink-soft">No deployments yet</p>}
         <div className="flex flex-col gap-2">
           {deployments.map((d) => {
             const n = d.metadata.name;
@@ -433,7 +434,7 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
                   </div>
                 </div>
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
-                  <select value="" onChange={(e) => e.target.value && sim.run((cl) => A.setImage(cl, n, e.target.value))} className="h-7 border border-ink/30 bg-paper px-1.5 text-[12.5px] text-ink">
+                  <select value="" onChange={(e) => e.target.value && sim.run((cl) => A.setImage(cl, n, e.target.value))} className="h-7 rounded-md border border-ink/15 bg-paper px-1.5 text-[12.5px] text-ink">
                     <option value="">Change image…</option>
                     {[...A.IMAGES, "ngnix:1.27 (typo)"].filter((i) => i !== img).map((i) => (
                       <option key={i} value={i.split(" ")[0]}>
@@ -544,21 +545,19 @@ function useSharedLink(sim: Sim): { note: LinkNote | null; setNote: (n: LinkNote
 export function Sandbox() {
   const sim = useSimulation({ persistKey: "kubesim.sandbox.v1" });
   const { note, setNote, share } = useSharedLink(sim);
-  const [mobileTab, setMobileTab] = useState<"cluster" | "panel" | "terminal">("cluster");
+  const [mobileTab, setMobileTab] = useState<"cluster" | "scenarios" | "terminal">("cluster");
   const [sel, setSel] = useState<Selection>(null);
-  const [tab, setTab] = useState<"scenarios" | "build" | "inspect">("scenarios");
   const [showSystem, setShowSystem] = useState(false);
+  const [layout, setLayout] = useLayoutChoice("split");
+  const [request, setRequest] = useState<{ id: string; seq: number }>({ id: "terminal", seq: 0 });
+  const [welcome, setWelcome] = useState(true);
   const c = sim.cluster;
+  const openTab = (id: string) => setRequest((r) => ({ id, seq: r.seq + 1 }));
 
-  const select = (s: Selection) => {
-    setSel(s);
-    if (s) {
-      setTab("inspect");
-      setMobileTab("panel");
-    }
-  };
+  if (!c) return <div className="font-sheet flex h-dvh items-center justify-center bg-canvas text-[14px] text-ink-soft">Booting cluster…</div>;
 
-  if (!c) return <div className="font-sheet flex h-dvh items-center justify-center bg-paper text-[14px] text-ink-soft">Booting cluster…</div>;
+  // An untouched cluster says what this page is for: free play, with nothing to pass or fail.
+  const empty = welcome && sim.term.length === 0 && !c.list<Pod>("Pod").some((p) => !SYSTEM_NAMESPACES.has(p.metadata.namespace ?? ""));
 
   return (
     <div className="font-sheet flex h-dvh flex-col overflow-hidden bg-paper text-ink">
@@ -575,9 +574,10 @@ export function Sandbox() {
         }
         right={
           <>
+            <LayoutToggle value={layout} onChange={setLayout} />
             <label className="flex cursor-pointer items-center gap-2 text-[13px] text-ink-soft max-sm:hidden" title="Show system Pods">
-              <button role="switch" aria-label="System pods" aria-checked={showSystem} onClick={() => setShowSystem(!showSystem)} className={`relative h-4 w-7 border transition ${showSystem ? "border-ink bg-ink" : "border-ink/40 bg-paper"}`}>
-                <span className={`absolute top-[1px] h-2.5 w-2.5 transition-all ${showSystem ? "left-3.5 bg-paper" : "left-[1px] bg-ink/50"}`} />
+              <button role="switch" aria-label="System pods" aria-checked={showSystem} onClick={() => setShowSystem(!showSystem)} className={`relative h-5 w-9 rounded-full transition ${showSystem ? "bg-signal" : "bg-ink/15"}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all ${showSystem ? "left-[18px]" : "left-0.5"}`} />
               </button>
               {/* The header is crowded below xl: the switch keeps its name for screen readers and its tooltip. */}
               <span className="hidden xl:inline" aria-hidden>System pods</span>
@@ -599,7 +599,7 @@ export function Sandbox() {
         }
       />
       {(note || sim.hasBackup()) && (
-        <div role="status" className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-1.5 text-[13.5px] ${note?.tone === "error" ? "border-red-600/40 bg-red-50 text-red-900" : "border-ink/20 bg-ink/[0.03] text-ink"}`}>
+        <div role="status" className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b px-4 py-1.5 text-[13.5px] ${note?.tone === "error" ? "border-red-200 bg-red-50 text-red-900" : "border-ink/10 bg-signal-soft text-ink"}`}>
           <span className="min-w-0 flex-1">{note?.text ?? "You opened a shared cluster. Your own cluster from before is kept."}</span>
           {sim.hasBackup() && (
             <>
@@ -631,48 +631,63 @@ export function Sandbox() {
           )}
         </div>
       )}
-      <div className="flex min-h-0 flex-1">
-        <div className={`flex min-h-0 min-w-0 flex-1 ${mobileTab === "panel" ? "max-lg:hidden" : ""}`}>
-          <Workspace sim={sim} selection={sel} onSelect={select} showSystem={showSystem} mobileView={mobileTab === "terminal" ? "dock" : "canvas"} palette />
-        </div>
-        <aside className={`flex w-full shrink-0 flex-col border-l-[1.5px] border-ink bg-paper lg:w-[360px] xl:w-[400px] ${mobileTab !== "panel" ? "max-lg:hidden" : ""}`}>
-          {tab === "inspect" ? (
-            <div className="flex h-11 shrink-0 items-center border-b border-ink/15 px-4">
-              <button
-                onClick={() => {
-                  setTab("scenarios");
-                  setSel(null);
-                }}
-                className="text-[14px] text-ink-soft underline-offset-4 hover:text-ink hover:underline"
-              >
-                ← Back
-              </button>
+      <Workspace
+        sim={sim}
+        selection={sel}
+        onSelect={setSel}
+        inspector={sel && <Inspector sim={sim} c={c} sel={sel} onSelect={setSel} />}
+        onCloseInspector={() => setSel(null)}
+        showSystem={showSystem}
+        layout={layout}
+        palette
+        mobileView={mobileTab === "cluster" ? "canvas" : "dock"}
+        requestTab={request}
+        extraTabs={[
+          { id: "scenarios", label: "Scenarios", render: () => <ScenariosPanel sim={sim} c={c} onRun={() => setMobileTab("cluster")} /> },
+          { id: "build", label: "Build", render: () => <BuildPanel sim={sim} c={c} /> },
+        ]}
+        overlay={
+          empty && (
+            <div className="float-card pointer-events-auto absolute left-1/2 top-1/2 z-10 w-[min(440px,calc(100%-2rem))] -translate-x-1/2 -translate-y-1/2 p-5 max-md:top-[42%]">
+              <div className="text-[17px] font-semibold">Your cluster. No rules.</div>
+              <p className="mt-1.5 text-[14px] leading-relaxed text-ink-soft">This is free play: nothing to pass, nothing you can break for good. Type any kubectl command, apply YAML, drag things in from + Add, switch Nodes off, or let a scenario show you something.</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Btn
+                  tone="primary"
+                  onClick={() => {
+                    sim.exec("kubectl create deployment web --image=nginx --replicas=3");
+                    setWelcome(false);
+                  }}
+                >
+                  Create a Deployment
+                </Btn>
+                <Btn
+                  onClick={() => {
+                    openTab("scenarios");
+                    setMobileTab("scenarios");
+                    setWelcome(false);
+                  }}
+                >
+                  Pick a scenario
+                </Btn>
+                <Btn tone="ghost" onClick={() => setWelcome(false)}>
+                  Dismiss
+                </Btn>
+              </div>
             </div>
-          ) : (
-            <div className="flex h-11 shrink-0 items-stretch border-b border-ink/15 px-5">
-              <Segmented
-                value={tab}
-                onChange={setTab}
-                options={[
-                  { value: "scenarios", label: "Scenarios" },
-                  { value: "build", label: "Build" },
-                ]}
-              />
-            </div>
-          )}
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            {tab === "scenarios" && <ScenariosPanel sim={sim} c={c} onRun={() => setMobileTab("cluster")} />}
-            {tab === "build" && <BuildPanel sim={sim} c={c} />}
-            {tab === "inspect" && <Inspector sim={sim} c={c} sel={sel} onSelect={select} />}
-          </div>
-        </aside>
-      </div>
+          )
+        }
+      />
       <MobileTabs
         value={mobileTab}
-        onChange={setMobileTab}
+        onChange={(v) => {
+          setMobileTab(v);
+          if (v === "scenarios") openTab("scenarios");
+          if (v === "terminal") openTab("terminal");
+        }}
         options={[
           { value: "cluster", label: "Cluster" },
-          { value: "panel", label: tab === "inspect" ? "Inspect" : tab === "build" ? "Build" : "Scenarios" },
+          { value: "scenarios", label: "Scenarios" },
           { value: "terminal", label: "Terminal" },
         ]}
       />

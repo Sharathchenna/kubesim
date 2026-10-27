@@ -1,66 +1,57 @@
 @import "tailwindcss";
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-display);
   --font-mono: var(--font-geist-mono);
   --font-display: var(--font-display);
 }
 
-/* Drafting colours for the home and index pages: paper, one ink, and one signal for the thing that changed. */
+/* One quiet palette: white surfaces on a soft grey canvas, one ink, and Kubernetes blue for the thing that needs you now
+   (the current step, the selection, focus, the main action). Health colours stay semantic. */
 @theme {
-  --color-paper: #fbfaf6;
-  --color-ink: #172340;
-  --color-ink-soft: #5a6680;
-  --color-signal: #d9480f;
-}
-
-/* ---------- marketing surfaces (home and index pages), drawn like a technical drawing ---------- */
-
-/* The drafting grid behind a drawing. */
-.sheet-grid {
-  background-color: var(--color-paper);
-  background-image:
-    linear-gradient(rgb(23 35 64 / 0.07) 1px, transparent 1px),
-    linear-gradient(90deg, rgb(23 35 64 / 0.07) 1px, transparent 1px);
-  background-size: 16px 16px;
+  --color-paper: #ffffff;
+  --color-canvas: #f6f7f9;
+  --color-ink: #111827;
+  --color-ink-soft: #6b7280;
+  --color-signal: #326ce5;
+  --color-signal-soft: #eaf1ff;
 }
 
 .font-display {
-  font-family: var(--font-display), "Arial Narrow", system-ui, sans-serif;
-  font-weight: 500;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
 }
-/* Body text on the drafting pages: the same condensed face, at reading weight. */
-.font-sheet { font-family: var(--font-display), "Arial Narrow", system-ui, sans-serif; }
+/* App screens and pages: the same face, at reading weight. */
+.font-sheet { font-family: var(--font-display), system-ui, sans-serif; }
 .text-balance { text-wrap: balance; }
 .text-pretty { text-wrap: pretty; }
 
-/* Home page drawing: each step's parts are dimmed until the walkthrough reaches them. */
-.bp-part { transition: opacity 0.35s ease; }
-.bp-stepping .bp-part { opacity: 0.18; }
-.bp-stepping .bp-part.bp-on { opacity: 1; }
+/* A floating card over the Cluster View (Spotlight layout, inspector, popovers). */
+.float-card {
+  background: var(--color-paper);
+  border: 1px solid rgb(17 24 39 / 0.1);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 12px 32px rgb(15 23 42 / 0.08);
+}
 
 html,
 body {
-  background: #fbfaf6;
-  color: #172340;
+  background: #ffffff;
+  color: #111827;
   -webkit-font-smoothing: antialiased;
-  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-family: var(--font-display), system-ui, sans-serif;
 }
 
 /* Canvas: soft dotted grid that follows pan/zoom (position/size set inline). */
 .canvas-dots {
-  background-color: #fbfaf6;
-  background-image: radial-gradient(circle, rgb(23 35 64 / 0.16) 1px, transparent 1.2px);
+  background-color: #f6f7f9;
+  background-image: radial-gradient(circle, rgb(17 24 39 / 0.12) 1px, transparent 1.2px);
 }
-/* Cluster View grid: ruled, minor + major lines, following pan/zoom (size/position set inline). */
+/* Cluster View grid: dots, following pan/zoom (size/position set inline). */
 .canvas-grid {
-  background-color: var(--cv-bg, #fbfaf6);
-  background-image:
-    linear-gradient(to right, var(--cv-grid, #eef1f5) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--cv-grid, #eef1f5) 1px, transparent 1px),
-    linear-gradient(to right, var(--cv-grid-major, #e2e7ee) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--cv-grid-major, #e2e7ee) 1px, transparent 1px);
+  background-color: var(--cv-bg, #f6f7f9);
+  background-image: radial-gradient(circle, var(--cv-grid-major, #d5dbe5) 1px, transparent 1.3px);
 }
 
 /* 2D Cluster View */
@@ -73,54 +64,59 @@ body {
 .cv-blink { animation: cv-pulse 0.8s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) {
   .cv-fade, .cv-edge, .cv-pod, .cv-pulse, .cv-blink, .cv-ring { animation: none; transition: none; }
-  .cv-flow { animation: none; stroke-dasharray: none; opacity: 0.35; }
-  .cv-packet { display: none; }
+  .cv-packet, .cv-signal { display: none; }
 }
 
 /* ---------------------------------------------------------------------------
    Cluster View design tokens. Every colour on the canvas comes from here: the
    component sets data-kind on an object's <g>, CSS picks its palette.
-   Health is shown by colour AND shape (disc ok, ring starting, square failing).
+   Objects carry the Kubernetes icon (a blue heptagon); health is shown by colour
+   AND shape (filled icon ok, dashed outline starting, red failing).
 --------------------------------------------------------------------------- */
 .cv-root {
-  font-family: var(--font-display), "Arial Narrow", system-ui, sans-serif;
-  --cv-bg: #fbfaf6;
-  --cv-surface: #fffefb;
-  --cv-grid: rgb(23 35 64 / 0.045);
-  --cv-grid-major: rgb(23 35 64 / 0.08);
-  --cv-line: #b4b9c4;
-  --cv-line-2: #7c859a;
-  --cv-line-3: #172340;
-  --cv-hair: #e6e5df;
-  --cv-text: #172340;
-  --cv-dim: #3d4a66;
-  --cv-faint: #5a6680;
-  --cv-accent: #d9480f;
-  --cv-flow: #172340;
-  --cv-ok: #15803d;
-  --cv-warn: #b45309;
-  --cv-danger: #b91c1c;
-  --cv-muted: #8a93a6;
+  font-family: var(--font-display), system-ui, sans-serif;
+  --cv-bg: #f6f7f9;
+  --cv-surface: #ffffff;
+  --cv-grid: rgb(17 24 39 / 0.05);
+  --cv-grid-major: #d5dbe5;
+  --cv-line: #c3cad6;
+  --cv-line-2: #8a94a6;
+  --cv-line-3: #326ce5;
+  --cv-hair: #e5e7eb;
+  --cv-text: #111827;
+  --cv-dim: #374151;
+  --cv-faint: #6b7280;
+  --cv-accent: #326ce5;
+  --cv-flow: #326ce5;
+  --cv-ok: #16a34a;
+  --cv-warn: #d97706;
+  --cv-danger: #dc2626;
+  --cv-muted: #9ca3af;
+  --cv-k8s: #326ce5;
   --cv-ease-out: cubic-bezier(0.16, 0.84, 0.44, 1);
   --cv-fast: 120ms;
   --cv-base: 160ms;
 }
-/* One drawing language: everything is ink on paper, told apart by its label and icon, not by colour.
-   Colour is kept for health (green, amber, red), the revision stripe on Pods, and the selection (signal). */
-[data-kind] { --k-fill: #fffefb; --k-stroke: #4a556f; --k-tint: #efeeea; --k-ink: #172340; }
-[data-kind="node"], [data-kind="cp"] { --k-stroke: #172340; }
-[data-kind="node"] > .cv-body, [data-kind="cp"] > .cv-body { stroke-width: 1.5px; }
+/* Every card is white with a hairline; the kind is told by its Kubernetes icon and label, not by colour. */
+[data-kind] { --k-fill: #ffffff; --k-stroke: #e3e7ee; --k-tint: #f3f5f8; --k-ink: #111827; }
+[data-kind="node"], [data-kind="cp"] { --k-stroke: #d9dee7; }
+[data-kind="cp"] { --k-fill: #fbfcfd; }
+[data-kind="pod"] { --k-stroke: #e3e7ee; }
+[data-kind="configmap"], [data-kind="secret"], [data-kind="pvc"], [data-kind="networkpolicy"], [data-kind="rolebinding"] { --k-ink: #374151; }
+
+.cv-body { stroke-width: 1.5px; }
 [data-kind="cp"] { --k-fill: #f6f5f0; }
 [data-kind="pod"] { --k-stroke: #a4abba; }
 [data-kind="configmap"], [data-kind="secret"], [data-kind="pvc"], [data-kind="networkpolicy"], [data-kind="rolebinding"] { --k-stroke: #a4abba; --k-ink: #3d4a66; }
 
-.cv-body { fill: var(--k-fill); stroke: var(--k-stroke); stroke-width: 1.25px; transition: stroke-width var(--cv-fast) ease; }
+.cv-body { fill: var(--k-fill); stroke: var(--k-stroke); stroke-width: 1.25px; transition: stroke var(--cv-fast) ease, stroke-width var(--cv-fast) ease; }
+.cv-shadow { filter: drop-shadow(0 1px 1.5px rgb(15 23 42 / 0.06)); }
 .cv-obj { outline: none; }
-.cv-obj:hover > .cv-body { stroke-width: 2px; }
+.cv-obj:hover > .cv-body { stroke: #b8c2d3; }
 .cv-obj:focus-visible > .cv-body { stroke: var(--cv-accent); stroke-width: 2px; }
-.cv-obj.is-bad > .cv-body { fill: #fdf2ef; stroke: #d98b80; }
-.cv-obj.is-down > .cv-body { fill: #fdf2ef; stroke: #d98b80; stroke-dasharray: 5 4; }
-.cv-obj.is-warn > .cv-body { stroke: #d9a55a; }
+.cv-obj.is-bad > .cv-body { fill: #fef2f2; stroke: #f3a5a5; }
+.cv-obj.is-down > .cv-body { fill: #fef2f2; stroke: #f3a5a5; stroke-dasharray: 5 4; }
+.cv-obj.is-warn > .cv-body { stroke: #f2c27a; }
 .cv-obj.is-hot > .cv-body { stroke: var(--cv-line-3); }
 .cv-tint { fill: var(--k-tint); }
 .cv-ink { color: var(--k-ink); fill: var(--k-ink); }
@@ -141,11 +137,9 @@ body {
 .cv-arrow { fill: var(--cv-line); }
 .cv-arrow.is-hot { fill: var(--cv-line-3); }
 .cv-svc-wire { fill: none; stroke: var(--cv-line); stroke-width: 1.25px; }
+.cv-svc-wire.is-live { stroke: #93b4f0; }
 .cv-svc-wire.is-hot { stroke: var(--cv-line-3); stroke-width: 1.8px; }
-.cv-svc-wire.is-notready { stroke: #d98b80; stroke-dasharray: 4 4; }
-/* Traffic: a dash pattern that flows toward the Pod while requests arrive. */
-@keyframes cv-flow { to { stroke-dashoffset: -12; } }
-.cv-flow { fill: none; stroke: var(--cv-flow); stroke-width: 1.5px; stroke-dasharray: 2 10; stroke-linecap: round; animation: cv-flow 0.6s linear infinite; opacity: 0.8; }
+.cv-svc-wire.is-notready { stroke: #f3a5a5; stroke-dasharray: 4 4; }
 
 /* Health marks */
 .cv-mark-ok { fill: var(--cv-ok); }
@@ -162,4 +156,28 @@ body {
 /* Reduced motion: no transitions anywhere, including inline ones (pan/zoom, Pods sliding between slots). */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0s !important; transition-delay: 0s !important; scroll-behavior: auto !important; }
+}
+
+/* ---------------------------------------------------------------------------
+   Motion. Light, quick and purposeful: things arrive with a pop and wins get a
+   burst. Everything here is switched off for reduced motion.
+--------------------------------------------------------------------------- */
+@keyframes cv-pop { 0% { opacity: 0; transform: scale(0.55); } 60% { opacity: 1; transform: scale(1.07); } 100% { transform: scale(1); } }
+.cv-pop { transform-box: fill-box; transform-origin: 50% 50%; animation: cv-pop 0.55s cubic-bezier(0.22, 1.2, 0.36, 1) both; }
+@keyframes cv-ripple { 0% { opacity: 0.55; transform: scale(1); } 100% { opacity: 0; transform: scale(1.55); } }
+.cv-ripple { fill: none; stroke: var(--cv-k8s); stroke-width: 2px; transform-box: fill-box; transform-origin: 50% 50%; animation: cv-ripple 0.9s ease-out 0.1s both; pointer-events: none; }
+.cv-gone .cv-pop { transition: transform 0.6s ease, filter 0.6s ease; transform: scale(0.94); filter: grayscale(1); }
+
+/* The main action: solid Kubernetes blue. */
+.btn-primary { background-color: var(--color-signal); transition: background-color 0.15s ease; }
+.btn-primary:hover { background-color: #2a5bc4; }
+/* Wins: a burst of little heptagons. */
+@keyframes burst { 0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.6); } }
+.burst-piece { position: absolute; width: 12px; height: 12px; animation: burst 1.1s cubic-bezier(0.2, 0.7, 0.3, 1) forwards; }
+@keyframes step-pop { 0% { transform: scale(1); } 40% { transform: scale(1.35); } 100% { transform: scale(1); } }
+.step-pop { animation: step-pop 0.5s cubic-bezier(0.22, 1.2, 0.36, 1); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-pop, .cv-ripple, .burst-piece, .step-pop { animation: none !important; }
+  .cv-ripple, .burst-piece { display: none; }
 }

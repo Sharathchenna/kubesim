@@ -1,0 +1,116 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@700;800&family=IBM+Plex+Sans:wght@600&family=IBM+Plex+Mono:wght@500&family=JetBrains+Mono:wght@500&family=Geist:wght@400;600;700&family=Geist+Mono:wght@500&family=Barlow+Condensed:wght@700&family=Bricolage+Grotesque:opsz,wght@12..96,800&family=Fraunces:ital,opsz,wght@0,9..144,600;1,9..144,600&family=Archivo:wght@800&family=Pixelify+Sans:wght@700&family=DM+Mono:wght@500&display=swap">
+<style>
+.wrap{display:flex;flex-direction:column;gap:30px;padding:2px 0 8px}
+.rules{font-size:13px;line-height:1.5;color:var(--muted-foreground);margin:0}
+.hd{display:flex;align-items:center;gap:10px;margin-bottom:3px}
+.hd b{font-size:15px}
+.num{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);font:600 12px/1 ui-monospace,Menlo,monospace;flex:none}
+.why{color:var(--muted-foreground);font-size:13px;margin:0 0 10px 32px;line-height:1.45}
+.stage{position:relative;overflow:hidden;background:var(--bg);color:var(--ink);border-radius:var(--r);box-shadow:0 0 0 1px var(--line);padding:var(--pt,26px) 24px 18px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.08fr);gap:22px;font-family:var(--body)}
+.eyebrow{display:flex;align-items:center;gap:8px;font:500 10.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+.stage h2{margin:12px 0 10px;font-family:var(--head);font-weight:var(--hw);font-size:var(--hs);line-height:1.04;letter-spacing:var(--ht);text-transform:var(--tt,none)}
+.stage p.sub{margin:0 0 18px;font-size:13px;line-height:1.5;color:var(--soft);max-width:30ch}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.b1{display:inline-flex;align-items:center;height:34px;padding:0 14px;border-radius:var(--br);background:var(--cta);color:var(--ctaInk);font-size:13px;font-weight:600}
+.b2{display:inline-flex;align-items:center;height:34px;padding:0 13px;border-radius:var(--br);border:1px solid var(--line2);color:var(--ink);font-size:13px;font-weight:500}
+.term{background:var(--termBg);color:var(--termInk);border-radius:calc(var(--r) * .6);padding:9px 12px;font:500 11px/1.6 var(--mono);box-shadow:0 0 0 1px var(--line)}
+.term i{font-style:normal;color:var(--termPrompt)}
+.term span{opacity:.65}
+.right svg{display:block;width:100%;height:auto;margin-top:10px}
+.sw{grid-column:1/-1;display:flex;gap:14px;flex-wrap:wrap;padding-top:14px;border-top:1px solid var(--line)}
+.sw div{display:flex;align-items:center;gap:6px;font:500 10px var(--mono);color:var(--soft)}
+.sw s{width:14px;height:14px;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.14)}
+@keyframes pulse{50%{opacity:.35}}
+.pend{animation:pulse 1.4s ease-in-out infinite}
+@media (max-width:560px){.stage{grid-template-columns:1fr}}
+</style></head><body>
+<div class="wrap">
+<p class="rules">Nine more, numbered on from the first five. Same rules: no gradients, glows or blur, one accent per palette, and green, amber and red only ever mean Running, Pending and failing.</p>
+<div id="out" style="display:flex;flex-direction:column;gap:30px"></div>
+</div>
+<script>
+const P=[
+ {name:'Helm',why:'"Kubernetes" is Greek for helmsman. Sailcloth white, deep navy and a signal-flag red, with tall condensed type like dockside signage. It gives the site a one-line story and looks nothing like a SaaS template.',
+  bg:'#f5f3ee',panel:'#fffdf8',line:'rgba(16,42,67,.14)',line2:'rgba(16,42,67,.4)',ink:'#102a43',soft:'#55657a',cta:'#d1462f',ctaInk:'#fff',pod:'#326ce5',v2:'#102a43',run:'#2a7a4b',pend:'#b5740f',fail:'#c0392b',
+  termBg:'#102a43',termInk:'#e7ecf2',termPrompt:'#f2a08f',head:"'Barlow Condensed',sans-serif",hw:700,hs:'42px',ht:'.005em',tt:'uppercase',body:"Inter,sans-serif",mono:"'JetBrains Mono',monospace",r:'4px',br:'3px',
+  em:t=>`<span style="color:#d1462f">${t}</span>`,
+  pre:`<svg width="16" height="12" viewBox="0 0 16 12"><rect width="16" height="12" fill="#fff" stroke="#102a43"/><path d="M0 0L16 12V0z" fill="#d1462f"/></svg>`},
+ {name:'Risograph',why:'Cream paper with two print inks, fluorescent pink and riso blue, and a faint halftone dot. The headline is slightly misregistered like a real print. Feels made by a person, which is the opposite of generated.',
+  bg:'#f6f1e4',panel:'#fbf8ef',line:'rgba(29,29,27,.14)',line2:'rgba(29,29,27,.4)',ink:'#1d1d1b',soft:'#6a655a',cta:'#ff48b0',ctaInk:'#1d1d1b',pod:'#0078bf',v2:'#00456e',run:'#008a4e',pend:'#c07c12',fail:'#e5352b',
+  termBg:'#fbf8ef',termInk:'#1d1d1b',termPrompt:'#0078bf',head:"'Bricolage Grotesque',sans-serif",hw:800,hs:'40px',ht:'-.045em',body:"Inter,sans-serif",mono:"'IBM Plex Mono',monospace",r:'6px',br:'999px',
+  em:t=>`<span style="color:#ff48b0;text-shadow:2px 1.5px 0 rgba(0,120,191,.5)">${t}</span>`,
+  extra:'background-image:radial-gradient(rgba(29,29,27,.07) 1px,transparent 1.2px);background-size:6px 6px'},
+ {name:'Highlighter',why:'Black and white, plus a yellow highlighter pen used only on the words that matter. It looks like someone annotated their notes, which suits a site for learning.',
+  bg:'#ffffff',panel:'#fafafa',line:'#e7e7e7',line2:'#cfcfcf',ink:'#111111',soft:'#666666',cta:'#111111',ctaInk:'#ffe500',pod:'#326ce5',v2:'#1b3a8a',run:'#1a7f37',pend:'#b26b00',fail:'#d1242f',
+  termBg:'#111111',termInk:'#eeeeee',termPrompt:'#ffe500',head:"Geist,sans-serif",hw:700,hs:'38px',ht:'-.045em',body:"Geist,sans-serif",mono:"'Geist Mono',monospace",r:'10px',br:'8px',
+  em:t=>`<span style="box-shadow:inset 0 -.42em 0 #ffe500">${t}</span>`},
+ {name:'Cyanotype',why:'Everything is a shade of one blue, text included, on a pale blue-white page. Calm and on-brand, like very good official docs. Of all these, it is the hardest to make look cheap.',
+  bg:'#eef3fb',panel:'#ffffff',line:'#d3def0',line2:'#9fb4d6',ink:'#0b2a6b',soft:'#4a628f',cta:'#0b2a6b',ctaInk:'#ffffff',pod:'#326ce5',v2:'#0b2a6b',run:'#1a7f5a',pend:'#a86b00',fail:'#c42b3a',
+  termBg:'#0b2a6b',termInk:'#dce6f7',termPrompt:'#8fb2ff',head:"'IBM Plex Sans',sans-serif",hw:600,hs:'36px',ht:'-.025em',body:"Inter,sans-serif",mono:"'IBM Plex Mono',monospace",r:'8px',br:'6px',
+  em:t=>`<span style="color:#326ce5">${t}</span>`},
+ {name:'Clay',why:'Warm stone, terracotta and a soft serif. Friendly and unintimidating, which works if the audience is beginners rather than SREs. Note it sits close to Claude\'s own branding, so some people may read it as borrowed.',
+  bg:'#f4efe7',panel:'#fbf8f3',line:'rgba(43,37,32,.12)',line2:'rgba(43,37,32,.35)',ink:'#2b2520',soft:'#776b5f',cta:'#c4532a',ctaInk:'#fff',pod:'#3a66c4',v2:'#1f3566',run:'#3d7a4a',pend:'#b07414',fail:'#b3261e',
+  termBg:'#2b2520',termInk:'#efe7dc',termPrompt:'#f0a27e',head:"Fraunces,serif",hw:600,hs:'38px',ht:'-.03em',body:"Inter,sans-serif",mono:"'IBM Plex Mono',monospace",r:'14px',br:'10px',
+  em:t=>`<em style="color:#c4532a">${t}</em>`},
+ {name:'Bauhaus',why:'Cream, black and the three primaries, each with a job: the Pods are blue, the button is red and yellow means pending. Geometric and playful without any effects.',
+  bg:'#f2ede1',panel:'#faf7ef',line:'#1a1a1a',line2:'#1a1a1a',ink:'#1a1a1a',soft:'#5c574c',cta:'#d62828',ctaInk:'#fff',pod:'#1f4fd1',v2:'#1a1a1a',run:'#2a7d3f',pend:'#c98a00',fail:'#d62828',
+  termBg:'#1a1a1a',termInk:'#f2ede1',termPrompt:'#f4b400',head:"Archivo,sans-serif",hw:800,hs:'38px',ht:'-.035em',body:"Inter,sans-serif",mono:"'DM Mono',monospace",r:'2px',br:'999px',
+  em:t=>t,
+  pre:`<svg width="40" height="11" viewBox="0 0 40 11"><circle cx="5.5" cy="5.5" r="5.5" fill="#d62828"/><rect x="15" width="11" height="11" fill="#f4b400"/><path d="M29 11L34.5 0L40 11z" fill="#1f4fd1"/></svg>`},
+ {name:'Retro Mac',why:'A one-bit desktop from 1990: black outlines, a striped title bar and pixel type. Nostalgic, easy to spot in a feed, and nothing like a glossy AI site. It might suit the Sandbox better than the whole site.',
+  bg:'#ffffff',panel:'#ffffff',line:'#000',line2:'#000',ink:'#000',soft:'#4a4a4a',cta:'#000',ctaInk:'#fff',pod:'#326ce5',v2:'#000',run:'#00803c',pend:'#a86400',fail:'#d00000',
+  termBg:'#ffffff',termInk:'#000',termPrompt:'#326ce5',head:"'Pixelify Sans',sans-serif",hw:700,hs:'34px',ht:'0',body:"Inter,sans-serif",mono:"'DM Mono',monospace",r:'0px',br:'6px',pt:'46px',
+  em:t=>t,extra:'box-shadow:0 0 0 1px #000,4px 4px 0 #000;margin:0 4px 4px 0',
+  deco:`<div style="position:absolute;left:0;right:0;top:0;height:21px;border-bottom:1px solid #000;background:repeating-linear-gradient(#000 0 1px,#fff 1px 2px) 0 5px/100% 11px no-repeat,#fff">
+   <div style="position:absolute;left:10px;top:4px;width:11px;height:11px;border:1px solid #000;background:#fff;box-sizing:border-box"></div>
+   <div style="position:absolute;left:50%;top:2px;transform:translateX(-50%);background:#fff;padding:0 8px;font:700 12px/16px 'Pixelify Sans',sans-serif">kubesim</div></div>`},
+ {name:'Control plane (dark)',why:'A second dark option: deep navy rather than black, a plain white button and Kubernetes blue Pods. It feels like an ops console at night, and it pairs well with the live-cluster hero ideas.',
+  bg:'#0a1224',panel:'#0f1a31',line:'#1d2a45',line2:'#2e3f63',ink:'#e8eef9',soft:'#8a98b3',cta:'#ffffff',ctaInk:'#0a1224',pod:'#4f86f0',v2:'#c9d6f5',v2Glyph:'#0a1224',run:'#3fb97a',pend:'#e9a23b',fail:'#f2555a',
+  termBg:'#0f1a31',termInk:'#d8e1f2',termPrompt:'#7ea6ff',head:"'Inter Tight',sans-serif",hw:700,hs:'34px',ht:'-.035em',body:"Inter,sans-serif",mono:"'JetBrains Mono',monospace",r:'12px',br:'8px',
+  em:t=>`<span style="color:#7ea6ff">${t}</span>`},
+ {name:'Full blue poster',why:'The whole page is Kubernetes blue, like a poster, with white Pods and a white button. Loud in a feed without a single gradient. Hard to keep up on every page, so it\'s best for the home page and share images.',
+  bg:'#326ce5',panel:'#2b5ed0',line:'rgba(255,255,255,.22)',line2:'rgba(255,255,255,.55)',ink:'#ffffff',soft:'rgba(255,255,255,.78)',cta:'#ffffff',ctaInk:'#123a9c',pod:'#ffffff',podGlyph:'#326ce5',v2:'#0b1f5c',run:'#1f9d55',pend:'#f5b84a',fail:'#e5484d',
+  lab:{run:'#c6f6d5',pend:'#ffe0a3',fail:'#ffc9c9'},
+  termBg:'#0b1f5c',termInk:'#e6edff',termPrompt:'#ffe0a3',head:"'Inter Tight',sans-serif",hw:800,hs:'42px',ht:'-.035em',body:"Inter,sans-serif",mono:"'JetBrains Mono',monospace",r:'14px',br:'999px',
+  em:t=>`<span style="text-decoration:underline;text-decoration-thickness:4px;text-underline-offset:6px">${t}</span>`},
+];
+const hept=(cx,cy,r)=>Array.from({length:7},(_,i)=>{const a=-Math.PI/2+i*2*Math.PI/7;return (cx+r*Math.cos(a)).toFixed(1)+','+(cy+r*Math.sin(a)).toFixed(1)}).join(' ');
+const cube=(x,y,s)=>{const c=.87*s;return `M${x},${y-s}l${c},${s/2}v${s}l${-c},${s/2}l${-c},${-s/2}v${-s}zM${x},${y}v${s}M${x},${y}l${c},${-s/2}M${x},${y}l${-c},${-s/2}`};
+function pod(x,y,st,p){const r=14;
+  if(st==='pend')return `<g class="pend"><polygon points="${hept(x,y,r)}" fill="none" stroke="${p.pod}" stroke-width="1.6" stroke-dasharray="3 3"/></g>`;
+  const f=st==='fail'?p.fail:st==='v2'?p.v2:p.pod;
+  const g=st==='v2'?(p.v2Glyph||'#fff'):(p.podGlyph||'#fff');
+  const glyph=st==='fail'?`<text x="${x}" y="${y+4.5}" text-anchor="middle" font-size="13" font-weight="700" fill="#fff" font-family="Inter">!</text>`:`<path d="${cube(x,y,6.6)}" fill="none" stroke="${g}" stroke-width="1.5" stroke-linejoin="round"/>`;
+  return `<polygon points="${hept(x,y,r)}" fill="${f}"/>${glyph}`}
+function cluster(p){
+  const L=p.lab||{run:p.run,pend:p.pend,fail:p.fail};
+  const nodes=[{x:0,name:'node-1',pods:[['run',0],['run',1],['v2',2],['pend',3]]},{x:196,name:'node-2',pods:[['run',0],['fail',1],['v2',2]]}];
+  let s=`<svg viewBox="0 0 382 196" xmlns="http://www.w3.org/2000/svg" font-family="${p.mono.replace(/'/g,'')}">`;
+  const targets=[];
+  for(const n of nodes){s+=`<rect x="${n.x+.5}" y="62.5" width="185" height="128" rx="${parseFloat(p.r)*.7}" fill="${p.panel}" stroke="${p.line}"/>`;
+    s+=`<line x1="${n.x+.5}" x2="${n.x+185.5}" y1="154.5" y2="154.5" stroke="${p.line}"/>`;
+    s+=`<polygon points="${hept(n.x+18,172,6.5)}" fill="${p.pod}"/><text x="${n.x+30}" y="176" font-size="10.5" font-weight="500" fill="${p.ink}">${n.name}</text><text x="${n.x+174}" y="176" font-size="10" text-anchor="end" fill="${L.run}">Ready</text>`;
+    n.pods.forEach(([st,i])=>{const x=n.x+30+i*42,y=103;targets.push([x,y,st]);s+=pod(x,y,st,p);
+      const lab={run:['Running',L.run],v2:['Running',L.run],pend:['Pending',L.pend],fail:['Error',L.fail]}[st];s+=`<text x="${x}" y="137" font-size="8" text-anchor="middle" fill="${lab[1]}">${lab[0]}</text>`;});}
+  const sx=191,sy=22;
+  targets.filter(t=>t[2]==='run'||t[2]==='v2').forEach(([x,y],k)=>{const d=`M${sx},${sy+11} L${x},${y-15}`;s+=`<path d="${d}" stroke="${p.line2}" stroke-width="1" stroke-dasharray="2 3" fill="none"/>`;
+    s+=`<circle r="3" fill="${p.pod}"><animateMotion dur="1.6s" begin="${k*.37}s" repeatCount="indefinite" path="${d}"/></circle>`});
+  s+=`<rect x="${sx-42}" y="${sy-11}" width="84" height="22" rx="${Math.min(11,parseFloat(p.r))}" fill="${p.panel}" stroke="${p.ink}" stroke-opacity=".7"/><text x="${sx}" y="${sy+3.5}" font-size="10" text-anchor="middle" fill="${p.ink}">svc/web</text>`;
+  return s+'</svg>'}
+const out=document.getElementById('out');
+P.forEach((p,i)=>{
+  const vars=Object.entries({bg:p.bg,panel:p.panel,line:p.line,line2:p.line2,ink:p.ink,soft:p.soft,cta:p.cta,ctaInk:p.ctaInk,termBg:p.termBg,termInk:p.termInk,termPrompt:p.termPrompt,head:p.head,hw:p.hw,hs:p.hs,ht:p.ht,tt:p.tt||'none',body:p.body,mono:p.mono,r:p.r,br:p.br,pt:p.pt||'26px'}).map(([k,v])=>`--${k}:${v}`).join(';');
+  const sw=[['paper',p.bg],['ink',p.ink],['accent',p.cta],['pod',p.pod],['v2',p.v2],['running',p.run],['pending',p.pend],['failing',p.fail]].filter((x,j,a)=>a.findIndex(y=>y[1]===x[1])===j);
+  out.insertAdjacentHTML('beforeend',`<section><div class="hd"><span class="num">${i+6}</span><b>${p.name}</b></div><p class="why">${p.why}</p>
+  <div class="stage" style="${vars};${p.extra||''}">${p.deco||''}
+   <div><div class="eyebrow">${p.pre||''}<span>kubesim · Kubernetes in your browser</span></div>
+    <h2>Learn Kubernetes on a ${p.em('cluster you can see')}.</h2>
+    <p class="sub">A real-feeling cluster running in this tab. Break it, fix it, and watch every Pod as it happens.</p>
+    <div class="btns"><span class="b1">Start lesson 1 →</span><span class="b2">Open the Sandbox</span></div></div>
+   <div class="right"><div class="term"><i>$</i> kubectl set image deploy/web web=web:v2<br><span>deployment.apps/web image updated</span></div>${cluster(p)}</div>
+   <div class="sw">${sw.map(([n,c])=>`<div><s style="background:${c}"></s>${n} ${c}</div>`).join('')}</div>
+  </div></section>`)});
+</script>
+</body></html>

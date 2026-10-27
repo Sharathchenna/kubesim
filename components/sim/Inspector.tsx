@@ -65,7 +65,7 @@ function EventList({ events, now }: { events: KubeEvent[]; now: number }) {
     <ol className="relative flex flex-col gap-2.5 border-l border-ink/15 pl-3">
       {events.slice(-12).map((e) => (
         <li key={e.metadata.uid} className="relative text-[12px] leading-snug">
-          <span className="absolute -left-[16.5px] top-1.5 h-2 w-2 rounded-full border-2 border-paper" style={{ background: e.type === "Warning" ? CAT_COLOR.starting : "rgba(23,35,64,.3)" }} />
+          <span className="absolute -left-[16.5px] top-1.5 h-2 w-2 rounded-full border-2 border-paper" style={{ background: e.type === "Warning" ? CAT_COLOR.starting : "rgba(17,24,39,.3)" }} />
           <div className="flex items-baseline gap-2">
             <span className={`font-medium ${e.type === "Warning" ? "text-amber-700" : "text-ink"}`}>{e.reason}</span>
             {e.count > 1 && <span className="text-[11px] text-ink-soft">×{e.count}</span>}
@@ -104,7 +104,7 @@ function Section({ title, children, right }: { title: string; children: React.Re
 }
 
 function Explain({ children }: { children: React.ReactNode }) {
-  return <p className="mb-3 border border-ink/20 bg-ink/[0.03] p-2.5 text-[12px] leading-relaxed text-ink">{children}</p>;
+  return <p className="mb-3 border border-ink/10 bg-ink/[0.03] p-2.5 text-[12px] leading-relaxed text-ink">{children}</p>;
 }
 
 function Yaml({ obj }: { obj: AnyObject }) {
@@ -262,7 +262,7 @@ function PodInspector({ sim, c, onSelect, p }: P & { p: Pod }) {
         {cs?.state.waiting?.message && <p className="mt-2 border border-red-600/40 bg-red-50 p-2 font-mono text-[11px] leading-snug text-red-900">{cs.state.waiting.message}</p>}
         {cs?.lastState.terminated?.reason === "OOMKilled" && <p className="mt-2 border border-red-600/40 bg-red-50 p-2 text-[12px] leading-snug text-red-900">The last run went over its memory limit and was <b>OOMKilled</b> (exit code 137).</p>}
         {policies.length > 0 && (
-          <p className="mt-2 border border-ink/20 bg-ink/[0.03] p-2 text-[12px] leading-snug text-ink">
+          <p className="mt-2 border border-ink/10 bg-ink/[0.03] p-2 text-[12px] leading-snug text-ink">
             Isolated by {policies.length === 1 ? "NetworkPolicy" : "NetworkPolicies"}{" "}
             {[...new Set(policies.map((x) => x.metadata.name))].map((n, i) => (
               <span key={n}>
@@ -280,7 +280,7 @@ function PodInspector({ sim, c, onSelect, p }: P & { p: Pod }) {
           containers.length > 1 ? (
             <div className="flex gap-1">
               {containers.map((x) => (
-                <button key={x.name} onClick={() => setCname(x.name)} className={`border px-1.5 font-mono text-[10.5px] ${x.name === ct.name ? "border-ink bg-ink text-paper" : "border-ink/30 bg-paper text-ink-soft hover:border-ink hover:text-ink"}`}>
+                <button key={x.name} onClick={() => setCname(x.name)} className={`border px-1.5 font-mono text-[10.5px] ${x.name === ct.name ? "border-signal bg-signal text-white" : "border-ink/30 bg-paper text-ink-soft hover:border-ink/40 hover:text-ink"}`}>
                   {x.name}
                 </button>
               ))}
@@ -616,7 +616,7 @@ function IngressInspector({ sim, c, onSelect, ing }: P & { ing: Ingress }) {
               <span className="text-ink/30">{r.type}</span>
               <span className="text-ink/30">→</span>
               {svc ? <Link onClick={() => onSelect({ kind: "service", ns, name: svc.metadata.name })}>{`${r.svc}:${r.port}`}</Link> : <span className="text-red-700">{r.svc} (missing)</span>}
-              <button className="ml-auto border border-ink/30 bg-paper px-1.5 text-[10.5px] text-ink hover:border-ink" onClick={() => sim.exec(curlFor(r.host, r.path))}>
+              <button className="ml-auto rounded-md border border-ink/15 bg-paper px-1.5 text-[10.5px] text-ink hover:border-ink/40" onClick={() => sim.exec(curlFor(r.host, r.path))}>
                 curl
               </button>
             </div>

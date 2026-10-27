@@ -13,13 +13,13 @@ export default function NotFound() {
         <h1 className="font-display mt-3 text-[36px] leading-tight">This page doesn&apos;t exist</h1>
         <p className="mt-3 text-[16px] leading-relaxed text-ink-soft">Like a Pod that was never scheduled. Try one of these instead:</p>
         <div className="mt-8 flex justify-center gap-3">
-          <Link href="/learn" className="inline-flex h-10 items-center border-[1.5px] border-ink bg-ink px-4 text-[15px] text-paper hover:border-signal hover:bg-signal">
+          <Link href="/learn" className="inline-flex h-10 items-center btn-primary rounded-lg px-4 text-[15px] text-white font-medium">
             Lessons
           </Link>
-          <Link href="/sandbox" className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] hover:bg-ink/5">
+          <Link href="/sandbox" className="inline-flex h-10 items-center rounded-xl border border-ink/10 px-4 text-[15px] hover:bg-ink/5">
             Sandbox
           </Link>
-          <Link href="/" className="inline-flex h-10 items-center border-[1.5px] border-ink px-4 text-[15px] hover:bg-ink/5">
+          <Link href="/" className="inline-flex h-10 items-center rounded-xl border border-ink/10 px-4 text-[15px] hover:bg-ink/5">
             Home
           </Link>
         </div>

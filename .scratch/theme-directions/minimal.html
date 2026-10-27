@@ -1,0 +1,231 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+<style>
+  body{margin:0;font-family:var(--font-sans,Inter,system-ui,sans-serif)}
+  .frame{position:relative;width:100%;overflow:hidden;border-radius:10px;border:1px solid #ddd;margin-top:12px}
+  .frame>.screen{position:absolute;top:0;left:0;width:1280px;transform-origin:0 0;overflow:hidden}
+  .screen *{box-sizing:border-box}
+  .mono{font-family:'JetBrains Mono',ui-monospace,Menlo,monospace}
+  .serif{font-family:'Source Serif 4',Georgia,serif}
+  .pre{white-space:pre}
+  @keyframes pulse{50%{opacity:.35}} .pulse{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes dash{to{stroke-dashoffset:-24}} .flow{stroke-dasharray:4 8;animation:dash 1s linear infinite}
+  @keyframes blink{50%{opacity:0}} .caret{display:inline-block;width:8px;height:16px;vertical-align:-3px;animation:blink 1s steps(1) infinite}
+  section{margin:0 0 56px} h2{font-size:18px;margin:0 0 4px} p.d{margin:0;font-size:13.5px;line-height:1.55;color:#666}
+  .cap{font-size:12px;color:#777;margin-top:5px}
+</style></head><body><div id="root"></div>
+<script>
+const TAU=Math.PI*2;
+const P=(cx,cy,r)=>{let a=[];for(let i=0;i<7;i++){const t=-Math.PI/2+i*TAU/7;a.push((cx+r*Math.cos(t)).toFixed(1)+','+(cy+r*Math.sin(t)).toFixed(1))}return a.join(' ')};
+const wheel=(cx,cy,r,bg,fg)=>{let s=`<polygon points="${P(cx,cy,r)}" fill="${bg}" stroke="${bg}" stroke-width="${r*.22}" stroke-linejoin="round"/><circle cx="${cx}" cy="${cy}" r="${r*.44}" fill="none" stroke="${fg}" stroke-width="${r*.12}"/>`;for(let i=0;i<7;i++){const t=-Math.PI/2+i*TAU/7;s+=`<line x1="${cx+r*.14*Math.cos(t)}" y1="${cy+r*.14*Math.sin(t)}" x2="${cx+r*.72*Math.cos(t)}" y2="${cy+r*.72*Math.sin(t)}" stroke="${fg}" stroke-width="${r*.1}" stroke-linecap="round"/>`}return s+`<circle cx="${cx}" cy="${cy}" r="${r*.14}" fill="${fg}"/>`};
+const logo=(size,bg='#326ce5',fg='#fff')=>`<svg width="${size}" height="${size}" viewBox="0 0 40 40" style="display:block;flex:none">${wheel(20,20,16,bg,fg)}</svg>`;
+const pad=(s,n)=>String(s).padEnd(n,' ');
+
+/* Official-style Kubernetes icon: rounded blue heptagon, white glyph, lowercase label. */
+function kicon(cx,cy,r,kind,o={}){const fill=o.fill||'#326ce5',bg=o.bg||'#fff',ghost=o.ghost,col=o.col||fill,g=ghost?col:'#fff';
+ let s=`<polygon points="${P(cx,cy,r)}" fill="${ghost?bg:fill}" stroke="${ghost?col:fill}" stroke-width="${ghost?1.6:r*.24}" stroke-linejoin="round" ${o.dash?'stroke-dasharray="3 3"':''} ${o.cls?`class="${o.cls}"`:''} opacity="${o.op??1}"/>`;
+ const w=Math.max(1.2,r*.08);
+ if(kind=='pod')s+=`<path d="M ${cx-r*.36} ${cy-r*.3} l ${r*.36} ${-r*.18} l ${r*.36} ${r*.18} v ${r*.42} l ${-r*.36} ${r*.18} l ${-r*.36} ${-r*.18} z M ${cx-r*.36} ${cy-r*.3} l ${r*.36} ${r*.18} l ${r*.36} ${-r*.18} M ${cx} ${cy-r*.12} v ${r*.6}" fill="none" stroke="${g}" stroke-width="${w}" stroke-linejoin="round" opacity="${o.op??1}"/>`;
+ else if(kind=='svc')s+=`<rect x="${cx-r*.42}" y="${cy-r*.12}" width="${r*.84}" height="${r*.32}" fill="none" stroke="${g}" stroke-width="${w}"/><path d="M ${cx} ${cy-r*.12} v ${-r*.24} M ${cx-r*.3} ${cy+r*.2} v ${r*.18} M ${cx+r*.3} ${cy+r*.2} v ${r*.18}" stroke="${g}" stroke-width="${w}"/>`;
+ else if(kind=='node')s+=`<rect x="${cx-r*.4}" y="${cy-r*.36}" width="${r*.8}" height="${r*.6}" rx="${r*.06}" fill="none" stroke="${g}" stroke-width="${w}"/><path d="M ${cx-r*.25} ${cy-r*.1} h ${r*.5}" stroke="${g}" stroke-width="${w}"/>`;
+ else if(kind=='rs'||kind=='deploy')s+=`<rect x="${cx-r*.28}" y="${cy-r*.36}" width="${r*.5}" height="${r*.5}" fill="none" stroke="${g}" stroke-width="${w}"/><rect x="${cx-r*.18}" y="${cy-r*.24}" width="${r*.5}" height="${r*.5}" fill="${ghost?bg:fill}" stroke="${g}" stroke-width="${w}"/>`;
+ if(o.label!==false&&r>=16)s+=`<text x="${cx}" y="${cy+r*.66}" text-anchor="middle" font-family="Inter" font-weight="600" font-size="${r*.28}" fill="${g}" opacity="${o.op??1}">${kind}</text>`;return s}
+
+const LIGHT={bg:'#fff',node:'#fff',ink:'#111827',dim:'#6b7280',line:'#e5e7eb',accent:'#326ce5',ok:'#16a34a',warn:'#d97706',bad:'#dc2626',sys:'#c7ccd6'};
+const DARK={bg:'#0b0d12',node:'#11141b',ink:'#e5e7eb',dim:'#8b93a7',line:'#232838',accent:'#4f86ff',ok:'#4ade80',warn:'#fbbf24',bad:'#f87171',sys:'#3a4152'};
+
+/* The same cluster moment for every direction: 4jcsx Terminating, x7k2m ContainerCreating. */
+function cluster(W,H,t,o={}){const padX=o.padX??30,gap=o.gap??28,nw=(W-2*padX-2*gap)/3,nh=o.nh??150,y0=o.y0??20,pr=o.pr??22,svcY=o.svcY??(y0+nh+70);
+ let s='';const pods=[];
+ ['control-plane','worker-1','worker-2'].forEach((n,i)=>{const x=padX+i*(nw+gap);
+  s+=`<rect x="${x}" y="${y0}" width="${nw}" height="${nh}" rx="${o.rx??12}" fill="${t.node}" stroke="${t.line}" stroke-width="1.2"/>`;
+  s+=`<text x="${x+16}" y="${y0+26}" font-family="Inter" font-weight="500" font-size="${o.fs??13}" fill="${t.ink}">${n}</text><circle cx="${x+nw-20}" cy="${y0+22}" r="3.5" fill="${t.ok}"/>`;
+  if(i==0){for(let k=0;k<4;k++)s+=kicon(x+nw/2-54+k*36,y0+nh*.56,11,'pod',{fill:t.sys,label:false});s+=`<text x="${x+nw/2}" y="${y0+nh*.56+30}" text-anchor="middle" font-family="Inter" font-size="11" fill="${t.dim}">system</text>`}
+  else [.33,.67].forEach((f,k)=>pods.push({x:x+nw*f,y:y0+nh*.55,st:i==1?(k==0?'run':'term'):(k==0?'run':'new'),id:i==1?(k==0?'hbzf9':'4jcsx'):(k==0?'8r7g5':'x7k2m')}))});
+ // service
+ const sx=W/2,sr=o.svcR??18;
+ pods.filter(p=>p.st=='run').forEach(p=>s+=`<path d="M ${sx} ${svcY-sr} C ${sx} ${svcY-sr-50}, ${p.x} ${p.y+pr+60}, ${p.x} ${p.y+pr+(o.podLabel===false?6:26)}" fill="none" stroke="${t.accent}" stroke-opacity=".55" stroke-width="1.3" class="flow"/>`);
+ s+=kicon(sx,svcY,sr,'svc',{fill:t.accent,bg:t.bg})+`<text x="${sx+sr+10}" y="${svcY+4}" font-family="Inter" font-weight="500" font-size="12" fill="${t.ink}">web</text>`;
+ pods.forEach(p=>{const ks=p.st=='run'?{fill:t.accent}:p.st=='term'?{ghost:1,col:t.bad,dash:1,bg:t.node,op:.75}:{ghost:1,col:t.accent,bg:t.node,cls:'pulse'};
+  s+=kicon(p.x,p.y,pr,'pod',ks);
+  if(o.podLabel!==false){s+=`<text x="${p.x}" y="${p.y+pr+18}" text-anchor="middle" font-family="JetBrains Mono" font-size="10.5" fill="${t.dim}">${p.id}</text>`;
+   if(p.st!='run')s+=`<text x="${p.x}" y="${p.y+pr+32}" text-anchor="middle" font-family="Inter" font-size="10.5" fill="${p.st=='term'?t.bad:t.warn}">${p.st=='term'?'Terminating':'Creating'}</text>`}});
+ return {svg:`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block">${s}</svg>`,pods}}
+
+const PODS=[['NAME','READY','STATUS','AGE'],['web-…hbzf9','1/1','Running','41s'],['web-…4jcsx','1/1','Terminating','41s'],['web-…8r7g5','1/1','Running','41s'],['web-…x7k2m','0/1','ContainerCreating','1s']];
+const table=t=>PODS.map((r,i)=>`<div style="color:${i?t.ink:t.dim}">${pad(r[0],14)}${pad(r[1],8)}<span style="color:${i==0?t.dim:r[2]=='Running'?t.ok:r[2]=='Terminating'?t.bad:t.warn}">${pad(r[2],20)}</span>${r[3]}</div>`).join('');
+const dots=(t,n=4,done=1,cur=1)=>`<span style="display:inline-flex;gap:5px;vertical-align:middle">${Array.from({length:n},(_,i)=>`<svg width="10" height="10" viewBox="0 0 10 10"><polygon points="${P(5,5,4.3)}" fill="${i<done?t.accent:i==cur?t.bg:t.line}" stroke="${i<=cur?t.accent:t.line}" stroke-width="1.2"/></svg>`).join('')}</span>`;
+
+/* ===================== E · QUIET ===================== */
+function E_app(){const t=LIGHT,c=cluster(1000,300,t,{y0:16,nh:150,pr:24,svcY:262});
+ return `<div style="width:1280px;height:760px;background:#fff;font-family:Inter;color:${t.ink};display:flex;flex-direction:column">
+ <div style="height:52px;display:flex;align-items:center;padding:0 24px;gap:10px;border-bottom:1px solid ${t.line}">${logo(22)}<span style="font-weight:600;font-size:15px">kubesim</span><span style="flex:1;text-align:center;font-size:13.5px;color:${t.dim}">Self-healing &nbsp; ${dots(t)}</span><span class="mono" style="font-size:12.5px;color:${t.dim}">0:41</span><span style="font-size:13px;color:${t.dim};margin-left:14px">Exit</span></div>
+ <div style="text-align:center;padding:26px 0 6px"><div style="font-size:13px;color:${t.dim}">Step 2 of 4</div><div style="font-size:28px;font-weight:600;letter-spacing:-.6px;margin:6px 0 6px">Delete one of the web Pods.</div><div style="font-size:15.5px;color:${t.dim}">Pick any of the three, then watch what the cluster does about it.</div></div>
+ <div style="display:flex;justify-content:center">${c.svg}</div>
+ <div style="text-align:center;font-size:14px;color:${t.ink};margin-top:-4px"><span style="display:inline-block;width:7px;height:7px;border-radius:7px;background:${t.accent};margin-right:8px;vertical-align:1px"></span>The ReplicaSet saw 2 of 3 Pods and is creating <b class="mono" style="font-weight:500">x7k2m</b> on worker-2.</div>
+ <div style="flex:1"></div>
+ <div style="border-top:1px solid ${t.line};background:#fafafa;padding:12px 32px 14px;display:flex;gap:24px">
+  <div class="mono pre" style="flex:1;font-size:12.5px;line-height:1.6"><div style="color:${t.dim}">$ kubectl delete pod web-5c5687b4dd-4jcsx</div><div style="color:${t.dim}">pod "web-5c5687b4dd-4jcsx" deleted</div><div style="color:${t.dim}">$ kubectl get pods</div>${table(t)}<div><span style="color:${t.accent}">$</span> <span class="caret" style="background:${t.ink}"></span></div></div>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:13px;color:${t.dim};text-align:right"><span>Hint</span><span>YAML</span><span>Full terminal ↑</span></div></div></div>`}
+function E_home(){const t=LIGHT,c=cluster(820,250,t,{y0:10,nh:130,pr:20,svcY:210,podLabel:false});
+ return `<div style="width:1280px;height:600px;background:#fff;font-family:Inter;color:${t.ink};position:relative">
+ <div style="height:64px;display:flex;align-items:center;padding:0 40px;gap:10px">${logo(26)}<span style="font-weight:600;font-size:16px">kubesim</span><span style="flex:1"></span><span style="font-size:14px;color:${t.dim};margin-right:24px">Lessons</span><span style="font-size:14px;color:${t.dim}">Sandbox</span></div>
+ <div style="text-align:center;padding-top:56px"><div style="font-size:52px;font-weight:600;letter-spacing:-2px;line-height:1.08">Learn Kubernetes<br>on a cluster you can see.</div>
+ <div style="font-size:17px;color:${t.dim};margin:16px 0 26px">It runs in this tab. Nothing to install, nothing to sign up for.</div>
+ <span style="display:inline-block;background:${t.ink};color:#fff;border-radius:10px;padding:13px 22px;font-size:15px;font-weight:500">Start the first lesson</span><span style="font-size:14.5px;color:${t.dim};margin-left:18px">or open an empty cluster</span></div>
+ <div style="position:absolute;left:230px;bottom:-40px;opacity:.9">${c.svg}</div><div style="position:absolute;left:0;right:0;bottom:0;height:90px;background:linear-gradient(#fff0,#fff)"></div></div>`}
+
+/* ===================== F · NOTEBOOK ===================== */
+function F_app(){const t=LIGHT,c=cluster(640,420,t,{padX:20,gap:18,y0:20,nh:170,pr:24,svcY:320});
+ const done=(n,tx)=>`<div style="display:flex;gap:12px;align-items:center;color:${t.dim};font-size:15px;margin:0 0 14px"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="${P(10,10,8.5)}" fill="${t.accent}" stroke="${t.accent}" stroke-width="2" stroke-linejoin="round"/><path d="M6.3 10.4l2.4 2.3 5-5" stroke="#fff" stroke-width="1.7" fill="none"/></svg>${tx}</div>`;
+ const todo=(n,tx)=>`<div style="display:flex;gap:12px;align-items:center;color:#9ca3af;font-size:15px;margin:0 0 12px"><svg width="20" height="20" viewBox="0 0 20 20"><polygon points="${P(10,10,8.5)}" fill="none" stroke="#d1d5db" stroke-width="1.3"/><text x="10" y="13.5" text-anchor="middle" font-size="9.5" font-family="Inter" fill="#9ca3af">${n}</text></svg>${tx}</div>`;
+ return `<div style="width:1280px;height:760px;background:#fff;font-family:Inter;color:${t.ink};display:flex">
+ <div style="width:600px;padding:30px 56px 0 64px;display:flex;flex-direction:column">
+  <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:${t.dim}">${logo(20)}<span>Foundations</span><span>·</span><span>Lesson 3 of 5</span></div>
+  <div class="serif" style="font-size:42px;font-weight:600;letter-spacing:-.6px;margin:30px 0 12px">Self-healing</div>
+  <div class="serif" style="font-size:17.5px;line-height:1.65;color:#374151;margin-bottom:26px">A Deployment doesn't run Pods itself. It asks a <b style="font-weight:600">ReplicaSet</b> to keep a number of them alive, and the ReplicaSet keeps checking. Take one away and see how long it lasts.</div>
+  ${done(1,'Create a Deployment called web with 3 replicas')}
+  <div style="display:flex;gap:12px;align-items:flex-start;margin:4px 0 16px"><svg width="20" height="20" viewBox="0 0 20 20" style="flex:none;margin-top:2px"><polygon points="${P(10,10,8.5)}" fill="#fff" stroke="${t.accent}" stroke-width="1.8"/><text x="10" y="13.5" text-anchor="middle" font-size="9.5" font-weight="700" font-family="Inter" fill="${t.accent}">2</text></svg><div style="flex:1"><div style="font-size:16px;font-weight:600">Delete one of the web Pods</div>
+   <div class="mono pre" style="margin-top:12px;background:#f6f7f9;border-radius:10px;padding:14px 16px;font-size:12.5px;line-height:1.65"><div><span style="color:${t.accent}">$</span> kubectl delete pod web-5c5687b4dd-4jcsx</div><div style="color:${t.dim}">pod "web-5c5687b4dd-4jcsx" deleted</div><div><span style="color:${t.accent}">$</span> <span class="caret" style="background:${t.ink}"></span></div></div>
+   <div style="font-size:13.5px;color:${t.ok};margin-top:10px">Done. Look right: a new Pod is already on its way.</div></div></div>
+  ${todo(3,'Watch the ReplicaSet replace it')}${todo(4,'Scale web to 5 replicas')}
+  <div style="flex:1"></div><div style="display:flex;justify-content:space-between;font-size:13.5px;color:${t.dim};padding:18px 0;border-top:1px solid ${t.line}"><span>← Health checks</span><span>Hint</span><span style="color:#9ca3af">Rolling updates →</span></div></div>
+ <div style="flex:1;background:#f7f8fa;border-left:1px solid ${t.line};padding:24px 20px;display:flex;flex-direction:column">
+  <div style="display:flex;font-size:12.5px;color:${t.dim};padding:0 20px"><span>Your cluster</span><span style="flex:1"></span><span class="mono">0:41 · 1×</span></div>
+  <div style="margin-top:14px">${c.svg.replace(/fill="#fff" stroke="#e5e7eb"/g,'fill="#fff" stroke="#e5e7eb"')}</div>
+  <div style="flex:1"></div>
+  <div class="serif" style="font-size:15.5px;line-height:1.6;color:#374151;padding:0 20px 8px;font-style:italic">The ReplicaSet counted 2 of 3 Pods and created x7k2m. The scheduler put it on worker-2, which had the fewest Pods.</div></div></div>`}
+function F_home(){const t=LIGHT;const tracks=[['Foundations','Pods, Deployments, Services, self-healing',5],['Workloads','Jobs, CronJobs, DaemonSets, probes',4],['Configuration','ConfigMaps and Secrets',2],['Networking','Ingress and NetworkPolicy',2],['Storage','Volumes and StatefulSets',2],['Operations','Scheduling, draining, autoscaling',3],['Security','RBAC',1]];
+ return `<div style="width:1280px;height:600px;background:#fff;font-family:Inter;color:${t.ink};display:flex;padding:0 80px">
+ <div style="width:520px;padding-top:44px"><div style="display:flex;align-items:center;gap:10px">${logo(26)}<span style="font-weight:600;font-size:16px">kubesim</span></div>
+ <div class="serif" style="font-size:54px;font-weight:600;letter-spacing:-1.2px;line-height:1.06;margin:84px 0 20px">Learn Kubernetes,<br>one Pod at a time.</div>
+ <div class="serif" style="font-size:18.5px;line-height:1.6;color:#4b5563">Short lessons on a real-feeling cluster that runs in your browser. Each one says what to do, checks that you did it, and explains what happened.</div>
+ <div style="margin-top:30px;font-size:15px"><span style="background:${t.accent};color:#fff;border-radius:10px;padding:13px 22px;font-weight:500">Start lesson 1</span><span style="color:${t.dim};margin-left:18px">Free · no account</span></div></div>
+ <div style="flex:1;padding:118px 0 0 90px"><div style="font-size:13px;color:${t.dim};margin-bottom:10px">The path</div>
+ ${tracks.map((r,i)=>`<div style="display:flex;align-items:baseline;gap:16px;padding:11px 0;border-top:1px solid ${t.line}"><span class="mono" style="font-size:12px;color:${i==0?t.accent:'#9ca3af'};width:20px">0${i+1}</span><span style="font-size:16px;font-weight:500;width:140px">${r[0]}</span><span style="font-size:14px;color:${t.dim};flex:1">${r[1]}</span><span style="font-size:13px;color:#9ca3af">${r[2]}</span></div>`).join('')}</div></div>`}
+
+/* ===================== G · GUIDED SHELL (dark) ===================== */
+function G_app(){const t=DARK,c=cluster(1100,250,t,{padX:20,gap:28,y0:14,nh:150,pr:22,svcY:214,rx:10});
+ const L=(x,col)=>`<div style="color:${col||t.ink}">${x}</div>`;
+ return `<div style="width:1280px;height:760px;background:${t.bg};font-family:Inter;color:${t.ink};display:flex;flex-direction:column">
+ <div style="height:48px;display:flex;align-items:center;padding:0 28px;gap:10px;border-bottom:1px solid ${t.line}">${logo(20,t.accent)}<span style="font-weight:600;font-size:14.5px">kubesim</span><span style="color:${t.dim};font-size:13.5px;margin-left:10px">Self-healing</span><span style="margin-left:12px">${dots(t)}</span><span style="flex:1"></span><span class="mono" style="font-size:12.5px;color:${t.dim}">0:41</span></div>
+ <div style="display:flex;justify-content:center;padding-top:14px">${c.svg}</div>
+ <div class="mono pre" style="flex:1;margin:10px 90px 0;padding:18px 0;border-top:1px solid ${t.line};font-size:13.5px;line-height:1.72">
+${L('# Step 2 of 4 · Delete one of the web Pods',t.accent)}${L('# The Deployment wants 3. Remove one and see what happens.',t.dim)}${L('<span style="color:'+t.dim+'">$</span> kubectl delete pod web-5c5687b4dd-4jcsx')}${L('pod "web-5c5687b4dd-4jcsx" deleted',t.dim)}${L('✓ Step 2 done. The ReplicaSet is already creating x7k2m.',t.ok)}${L('')}${L('# Step 3 of 4 · Watch it get replaced. Try: kubectl get pods -w',t.accent)}${L('<span style="color:'+t.dim+'">$</span> <span class="caret" style="background:'+t.ink+'"></span>')}</div>
+ <div style="height:40px;display:flex;align-items:center;gap:22px;padding:0 90px;font-size:12.5px;color:${t.dim};border-top:1px solid ${t.line}"><span>Tab completes</span><span>hint</span><span>yaml</span><span>Ctrl+C stops a watch</span></div></div>`}
+function G_home(){const t=DARK;return `<div style="width:1280px;height:600px;background:${t.bg};font-family:Inter;color:${t.ink};position:relative">
+ <div style="height:64px;display:flex;align-items:center;padding:0 40px;gap:10px">${logo(24,t.accent)}<span style="font-weight:600;font-size:15.5px">kubesim</span><span style="flex:1"></span><span style="font-size:14px;color:${t.dim};margin-right:24px">Lessons</span><span style="font-size:14px;color:${t.dim}">Sandbox</span></div>
+ <div style="padding:90px 0 0 200px" class="mono"><div style="font-size:15px;color:${t.dim}">$ kubectl get nodes</div><div class="pre" style="font-size:15px;color:${t.dim};line-height:1.6;margin:6px 0 34px">NAME            STATUS   ROLES           AGE
+control-plane   Ready    control-plane   0s
+worker-1        Ready    &lt;none&gt;          0s
+worker-2        Ready    &lt;none&gt;          0s</div>
+ <div style="font-family:Inter;font-size:46px;font-weight:600;letter-spacing:-1.6px;line-height:1.1">A Kubernetes cluster just started<br>in this tab. It's yours to learn on.</div>
+ <div style="margin-top:34px;font-size:16px"><span style="color:${t.accent}">$</span> <span style="color:${t.ink}">press Enter to start lesson 1</span><span class="caret" style="background:${t.ink};margin-left:6px"></span></div></div></div>`}
+
+/* ===================== H · SPOTLIGHT ===================== */
+function H_app(){const t={...LIGHT,node:'#fff'},c=cluster(1120,470,t,{padX:20,gap:36,y0:30,nh:230,pr:34,svcY:410,svcR:24,fs:15});
+ const nw=c.pods.find(p=>p.id=='x7k2m'),ox=80;
+ return `<div style="width:1280px;height:760px;background:#f7f8fa;font-family:Inter;color:${t.ink};position:relative">
+ <div style="position:absolute;top:20px;left:28px;display:flex;align-items:center;gap:10px">${logo(22)}<span style="font-weight:600;font-size:15px">kubesim</span><span style="color:${t.dim};font-size:13.5px;margin-left:8px">Self-healing</span></div>
+ <div style="position:absolute;top:22px;right:28px;display:flex;gap:18px;font-size:13px;color:${t.dim}"><span class="mono">0:41</span><span>1×</span><span>Exit</span></div>
+ <div style="position:absolute;left:${ox}px;top:66px">${c.svg}</div>
+ <div style="position:absolute;left:${ox+nw.x-60}px;top:${66+290}px;width:200px;font-size:12.5px;line-height:1.45;color:${t.ink};border-left:2px solid ${t.accent};padding-left:10px"><b style="font-weight:600">New Pod</b><br><span style="color:${t.dim}">The ReplicaSet created it a second ago to get back to 3.</span></div>
+ <div style="position:absolute;left:50%;bottom:28px;transform:translateX(-50%);width:660px;background:#fff;border:1px solid ${t.line};border-radius:16px;box-shadow:0 12px 32px #0f172a14;padding:18px 20px">
+  <div style="display:flex;align-items:center;gap:12px"><span style="font-size:12.5px;color:${t.dim}">${dots(t)}</span><span style="font-size:17px;font-weight:600">Delete one of the web Pods</span><span style="flex:1"></span><span style="font-size:13px;color:${t.dim}">Hint</span></div>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:14px"><div class="mono" style="flex:1;font-size:13px;background:#f6f7f9;border:1px solid ${t.line};border-radius:10px;padding:10px 12px"><span style="color:${t.dim}">$</span> kubectl delete pod web-5c5687b4dd-4jcsx <span style="color:${t.ok};float:right">✓</span></div><span style="background:${t.accent};color:#fff;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:500">Next</span></div>
+  <div style="font-size:12.5px;color:${t.dim};margin-top:10px">pod "web-5c5687b4dd-4jcsx" deleted · <span style="text-decoration:underline">open the full terminal</span></div></div></div>`}
+function H_home(){const t=LIGHT,c=cluster(1100,330,t,{padX:20,gap:36,y0:16,nh:170,pr:28,svcY:290,svcR:20,fs:14});
+ return `<div style="width:1280px;height:600px;background:#f7f8fa;font-family:Inter;color:${t.ink};position:relative">
+ <div style="position:absolute;top:22px;left:40px;right:40px;display:flex;align-items:center;gap:10px">${logo(24)}<span style="font-weight:600;font-size:15.5px">kubesim</span><span style="flex:1"></span><span style="font-size:14px;color:${t.dim};margin-right:24px">Lessons</span><span style="font-size:14px;color:${t.dim}">Sandbox</span></div>
+ <div style="position:absolute;left:90px;top:84px">${c.svg}</div>
+ <div style="position:absolute;left:0;right:0;bottom:0;padding:0 0 56px 110px;display:flex;align-items:flex-end;gap:40px"><div><div style="font-size:44px;font-weight:600;letter-spacing:-1.6px;line-height:1.08">Delete a Pod.<br>Watch Kubernetes bring it back.</div>
+ <div style="font-size:16px;color:${t.dim};margin-top:12px">This cluster is live. Click any Pod, or start with lesson 1.</div></div>
+ <span style="background:${t.ink};color:#fff;border-radius:10px;padding:13px 22px;font-size:15px;font-weight:500;margin-bottom:6px">Start lesson 1</span></div></div>`}
+
+
+/* ===================== I · SPLIT ===================== */
+function I_app(){const t=LIGHT,c=cluster(600,400,t,{padX:16,gap:14,y0:16,nh:170,pr:21,svcY:320,fs:12.5});
+ return `<div style="width:1280px;height:760px;background:#f7f8fa;font-family:Inter;color:${t.ink};display:flex;flex-direction:column">
+ <div style="height:52px;display:flex;align-items:center;padding:0 24px;gap:10px;background:#fff;border-bottom:1px solid ${t.line}">${logo(22)}<span style="font-weight:600;font-size:15px">kubesim</span><span style="color:${t.dim};font-size:13.5px;margin-left:8px">Self-healing</span><span style="flex:1"></span><span class="mono" style="font-size:12.5px;color:${t.dim}">0:41</span></div>
+ <div style="margin:18px 24px 0;background:#fff;border:1px solid ${t.line};border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:16px">${dots(t)}<div><div style="font-size:12.5px;color:${t.dim}">Step 2 of 4</div><div style="font-size:18px;font-weight:600;margin-top:2px">Delete one of the web Pods</div></div><span style="flex:1"></span><span style="font-size:13.5px;color:${t.dim}">Hint</span><span style="font-size:13.5px;color:${t.dim}">Answer</span></div>
+ <div style="flex:1;display:flex;gap:16px;margin:16px 24px 24px;min-height:0">
+  <div style="flex:1;background:#fff;border:1px solid ${t.line};border-radius:14px;padding:14px 0 0;position:relative"><div style="font-size:12.5px;color:${t.dim};padding:0 18px">Cluster</div><div style="padding:4px 4px 0">${c.svg}</div><div style="position:absolute;left:18px;right:18px;bottom:16px;font-size:13.5px;line-height:1.5;color:${t.ink};background:#f5f8ff;border-radius:10px;padding:10px 12px">The ReplicaSet saw 2 of 3 Pods and is creating <span class="mono">x7k2m</span>.</div></div>
+  <div style="flex:1;background:#0f172a;border-radius:14px;padding:16px 20px;color:#e2e8f0" class="mono"><div style="font-family:Inter;font-size:12.5px;color:#94a3b8;margin-bottom:10px">Terminal</div><div class="pre" style="font-size:12.5px;line-height:1.7"><div><span style="color:#7aa5ff">$</span> kubectl delete pod web-5c5687b4dd-4jcsx</div><div style="color:#94a3b8">pod "web-5c5687b4dd-4jcsx" deleted</div><div><span style="color:#7aa5ff">$</span> kubectl get pods</div>${table({...DARK,ink:'#e2e8f0'})}<div><span style="color:#7aa5ff">$</span> <span class="caret" style="background:#e2e8f0"></span></div></div></div></div></div>`}
+function I_home(){const t=LIGHT,c=cluster(560,300,t,{padX:16,gap:14,y0:14,nh:150,pr:20,svcY:260,fs:12,podLabel:false});
+ return `<div style="width:1280px;height:600px;background:#f7f8fa;font-family:Inter;color:${t.ink};position:relative">
+ <div style="height:64px;display:flex;align-items:center;padding:0 48px;gap:10px">${logo(24)}<span style="font-weight:600;font-size:15.5px">kubesim</span><span style="flex:1"></span><span style="font-size:14px;color:${t.dim};margin-right:24px">Lessons</span><span style="font-size:14px;color:${t.dim}">Sandbox</span></div>
+ <div style="position:absolute;left:80px;top:170px;width:440px"><div style="font-size:48px;font-weight:600;letter-spacing:-1.8px;line-height:1.08">Type kubectl.<br>See the cluster react.</div><div style="font-size:16.5px;line-height:1.6;color:${t.dim};margin:18px 0 28px">The terminal on one side, the cluster on the other, and one clear step at a time.</div><span style="background:${t.accent};color:#fff;border-radius:10px;padding:13px 22px;font-size:15px;font-weight:500">Start lesson 1</span></div>
+ <div style="position:absolute;left:600px;top:100px;width:600px;height:340px;background:#fff;border:1px solid ${t.line};border-radius:16px;padding:10px 4px">${c.svg}</div>
+ <div class="mono pre" style="position:absolute;left:560px;top:380px;width:420px;background:#0f172a;color:#e2e8f0;border-radius:14px;padding:16px 18px;font-size:12.5px;line-height:1.7;box-shadow:0 16px 40px #0f172a29"><div><span style="color:#7aa5ff">$</span> kubectl delete pod web-…4jcsx</div><div style="color:#94a3b8">pod "web-…4jcsx" deleted</div><div><span style="color:#7aa5ff">$</span> <span class="caret" style="background:#e2e8f0"></span></div></div></div>`}
+
+/* ===================== J · TUTOR ===================== */
+const bubble=(t,html)=>`<div style="display:flex;gap:10px;margin-bottom:12px">${logo(26)}<div style="background:#f3f4f6;border-radius:4px 14px 14px 14px;padding:10px 14px;font-size:14.5px;line-height:1.55;max-width:330px">${html}</div></div>`;
+const mine=(t,html)=>`<div style="display:flex;justify-content:flex-end;margin-bottom:6px"><div class="mono" style="background:${t.accent};color:#fff;border-radius:14px 4px 14px 14px;padding:9px 13px;font-size:12.5px">${html}</div></div>`;
+function J_app(){const t=LIGHT,c=cluster(760,430,t,{padX:20,gap:20,y0:20,nh:180,pr:26,svcY:340});
+ return `<div style="width:1280px;height:760px;background:#fff;font-family:Inter;color:${t.ink};display:flex">
+ <div style="width:460px;border-right:1px solid ${t.line};display:flex;flex-direction:column">
+  <div style="height:56px;display:flex;align-items:center;gap:10px;padding:0 22px;border-bottom:1px solid ${t.line}"><span style="font-weight:600;font-size:15px">Self-healing</span><span style="flex:1"></span>${dots(t)}</div>
+  <div style="flex:1;padding:22px 22px 0;overflow:hidden">
+   ${bubble(t,'A Deployment promises 3 copies of your app. Let\'s see if it keeps that promise.')}
+   ${bubble(t,'<b>Delete one of the web Pods.</b> Any of the three will do.')}
+   ${mine(t,'kubectl delete pod web-…4jcsx')}<div class="mono" style="text-align:right;font-size:11.5px;color:${t.dim};margin-bottom:14px">pod "web-…4jcsx" deleted</div>
+   ${bubble(t,'Look at worker-2: a new Pod already appeared. <b>Which object created it?</b>')}
+   <div style="display:flex;gap:8px;margin-left:36px"><span style="border:1px solid ${t.line};border-radius:99px;padding:6px 11px;font-size:12.5px;white-space:nowrap">The Deployment</span><span style="border:1.5px solid ${t.accent};color:${t.accent};border-radius:99px;padding:6px 11px;font-size:12.5px;white-space:nowrap;font-weight:500">The ReplicaSet</span><span style="border:1px solid ${t.line};border-radius:99px;padding:6px 11px;font-size:12.5px;white-space:nowrap">The scheduler</span></div></div>
+  <div style="margin:0 18px 18px;border:1px solid ${t.line};border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:8px" class="mono"><span style="color:${t.accent}">$</span><span style="font-size:13px;color:#9ca3af;flex:1">type a kubectl command, or ask a question</span><span style="font-family:Inter;font-size:12px;color:${t.dim};border:1px solid ${t.line};border-radius:6px;padding:2px 6px">↵</span></div></div>
+ <div style="flex:1;background:#f7f8fa;position:relative"><div style="display:flex;align-items:center;gap:10px;padding:18px 22px">${logo(22)}<span style="font-weight:600;font-size:15px">kubesim</span><span style="flex:1"></span><span class="mono" style="font-size:12.5px;color:${t.dim}">0:41 · 1×</span></div><div style="padding:30px 0 0">${c.svg}</div></div></div>`}
+function J_home(){const t=LIGHT;return `<div style="width:1280px;height:600px;background:#fff;font-family:Inter;color:${t.ink};position:relative">
+ <div style="height:64px;display:flex;align-items:center;padding:0 48px;gap:10px">${logo(24)}<span style="font-weight:600;font-size:15.5px">kubesim</span><span style="flex:1"></span><span style="font-size:14px;color:${t.dim};margin-right:24px">Lessons</span><span style="font-size:14px;color:${t.dim}">Sandbox</span></div>
+ <div style="position:absolute;left:80px;top:160px;width:500px"><div style="font-size:50px;font-weight:600;letter-spacing:-1.8px;line-height:1.08">A patient tutor<br>and a real-feeling cluster.</div><div style="font-size:16.5px;line-height:1.6;color:${t.dim};margin:18px 0 28px">It tells you what to try, watches what you type, and asks you what you just saw.</div><span style="background:${t.ink};color:#fff;border-radius:10px;padding:13px 22px;font-size:15px;font-weight:500">Start lesson 1</span></div>
+ <div style="position:absolute;left:700px;top:110px;width:440px">${bubble(t,'Hi. A cluster with 3 Nodes is running in this tab.')}${bubble(t,'Let\'s start one Pod. Try <span class="mono" style="font-size:13px">kubectl run web --image=nginx</span>')}${mine(t,'kubectl run web --image=nginx')}<div class="mono" style="text-align:right;font-size:11.5px;color:${t.dim};margin-bottom:14px">pod/web created</div>${bubble(t,'There it is, on worker-1. <b>Why not on the control plane?</b>')}</div></div>`}
+
+/* ===================== K · STORYBOARD ===================== */
+function K_app(){const t=LIGHT,c=cluster(1000,300,t,{y0:10,nh:150,pr:24,svcY:262});
+ const fr=[['0:40','You','deleted 4jcsx. It gets 30s to shut down.',t.bad,1],['0:40','ReplicaSet','counted 2 of 3 and created x7k2m.',t.accent,1],['0:41','Scheduler','put x7k2m on worker-2: fewest Pods.',t.accent,1],['next','Kubelet','pulls nginx and starts the container.',t.line,0]];
+ return `<div style="width:1280px;height:760px;background:#fff;font-family:Inter;color:${t.ink};display:flex;flex-direction:column">
+ <div style="height:52px;display:flex;align-items:center;padding:0 28px;gap:10px">${logo(22)}<span style="font-weight:600;font-size:15px">kubesim</span><span style="color:${t.dim};font-size:13.5px;margin-left:8px">Self-healing</span><span style="flex:1"></span><span class="mono" style="font-size:12.5px;color:${t.dim}">0:41</span></div>
+ <div style="padding:14px 60px 0;display:flex;align-items:baseline;gap:14px"><span style="font-size:13px;color:${t.dim}">Step 3 of 4</span><span style="font-size:22px;font-weight:600;letter-spacing:-.4px">Watch the ReplicaSet replace it</span><span style="flex:1"></span>${dots(t,4,2,2)}</div>
+ <div style="display:flex;justify-content:center;margin-top:8px">${c.svg}</div>
+ <div style="margin:4px 60px 0;position:relative"><div style="position:absolute;left:0;right:0;top:11px;height:1.5px;background:${t.line}"></div><div style="position:absolute;left:0;width:72%;top:11px;height:1.5px;background:${t.accent}"></div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;position:relative">${fr.map(f=>`<div><svg width="22" height="22" viewBox="0 0 22 22"><polygon points="${P(11,11,9)}" fill="${f[4]?f[3]:'#fff'}" stroke="${f[3]}" stroke-width="1.5" stroke-linejoin="round"/></svg><div style="margin-top:8px;font-size:12px;color:${t.dim}" class="mono">${f[0]}</div><div style="font-size:14px;line-height:1.5;margin-top:2px;${f[4]?'':'color:#9ca3af'}"><b style="font-weight:600">${f[1]}</b> ${f[2]}</div></div>`).join('')}</div></div>
+ <div style="flex:1"></div>
+ <div style="margin:0 60px 22px;border:1px solid ${t.line};border-radius:12px;padding:12px 14px;display:flex;align-items:center;gap:10px" class="mono"><span style="color:${t.accent}">$</span><span style="font-size:13px">kubectl get pods -w</span><span class="caret" style="background:${t.ink}"></span><span style="flex:1"></span><span style="font-family:Inter;font-size:12.5px;color:${t.dim}">◀ Replay</span></div></div>`}
+function K_home(){const t=LIGHT;const mini=(x,st)=>{let s=`<rect x="${x}" y="0" width="250" height="150" rx="12" fill="#fff" stroke="${t.line}"/>`;const ps=[['run','run','run'],['run','term','run'],['run','term','new'],['run','run','run']][st];ps.forEach((p,i)=>s+=kicon(x+55+i*70,62,22,'pod',p=='run'?{}:p=='term'?{ghost:1,col:t.bad,dash:1,op:.75}:{ghost:1,col:t.accent,cls:'pulse'}));return s};
+ const cap=['3 Pods running','You delete one','A replacement is created','Back to 3'];
+ return `<div style="width:1280px;height:600px;background:#fff;font-family:Inter;color:${t.ink};position:relative">
+ <div style="height:64px;display:flex;align-items:center;padding:0 48px;gap:10px">${logo(24)}<span style="font-weight:600;font-size:15.5px">kubesim</span><span style="flex:1"></span><span style="font-size:14px;color:${t.dim};margin-right:24px">Lessons</span><span style="font-size:14px;color:${t.dim}">Sandbox</span></div>
+ <div style="text-align:center;padding-top:44px"><div style="font-size:48px;font-weight:600;letter-spacing:-1.8px;line-height:1.08">See every step Kubernetes takes.</div><div style="font-size:16.5px;color:${t.dim};margin:14px 0 26px">You type one command. The cluster takes four steps. kubesim shows you each one.</div><span style="background:${t.ink};color:#fff;border-radius:10px;padding:13px 22px;font-size:15px;font-weight:500">Start lesson 1</span></div>
+ <svg width="1120" height="200" viewBox="0 0 1120 200" style="position:absolute;left:80px;top:370px">${[0,1,2,3].map(i=>mini(i*290,i)+`<text x="${i*290+125}" y="132" text-anchor="middle" font-family="Inter" font-size="13" fill="${t.dim}">${cap[i]}</text>`+(i<3?`<path d="M ${i*290+256} 75 h 28" stroke="#cbd5e1" stroke-width="1.5"/>`:'')).join('')}</svg></div>`}
+
+/* ===================== L · TEXTBOOK ===================== */
+function L_app(){const t={...LIGHT,ink:'#000',line:'#e7e7e7',node:'#fff'},c=cluster(760,470,t,{padX:10,gap:20,y0:40,nh:190,pr:26,svcY:380,rx:4});
+ return `<div style="width:1280px;height:760px;background:#fff;font-family:Inter;color:#000;display:flex">
+ <div style="width:480px;padding:36px 48px;display:flex;flex-direction:column;border-right:1px solid #e7e7e7">
+  <div style="display:flex;align-items:center;gap:10px;font-size:13px">${logo(20,'#000','#fff')}<span style="font-weight:600">kubesim</span><span style="color:#888;margin-left:6px">3 · Self-healing</span></div>
+  <div style="font-size:150px;font-weight:300;letter-spacing:-8px;line-height:1;margin:56px 0 0 -8px">02</div>
+  <div style="font-size:30px;font-weight:600;letter-spacing:-.8px;line-height:1.15;margin:8px 0 14px">Delete one of the web&nbsp;Pods.</div>
+  <div style="font-size:16px;line-height:1.6;color:#555">The Deployment asked for three. Take one away and look at the cluster.</div>
+  <div class="mono" style="margin-top:26px;border-bottom:2px solid #000;padding:8px 0;font-size:14px;display:flex;gap:8px"><span>$</span><span>kubectl delete pod web-…4jcsx</span><span style="flex:1"></span><span style="color:${t.ok}">✓</span></div>
+  <div class="mono" style="font-size:12px;color:#888;margin-top:8px">pod "web-5c5687b4dd-4jcsx" deleted</div>
+  <div style="flex:1"></div>
+  <div style="display:flex;gap:18px;font-size:13px;color:#888"><span style="color:#000">01 ✓</span><span style="color:#000;font-weight:600">02</span><span>03</span><span>04</span><span style="flex:1"></span><span>Hint</span></div></div>
+ <div style="flex:1;padding:30px 30px 0;position:relative"><div style="display:flex;font-size:12.5px;color:#888"><span>Fig. 3 — your cluster, live</span><span style="flex:1"></span><span class="mono">0:41</span></div>${c.svg}<div style="font-size:14px;line-height:1.55;color:#000;max-width:520px;margin:6px 0 0 10px"><b>Note.</b> The ReplicaSet counted 2 of 3 and created <span class="mono">x7k2m</span>. It doesn't bring the old Pod back; it makes a new one with a new name.</div></div></div>`}
+function L_home(){return `<div style="width:1280px;height:600px;background:#fff;font-family:Inter;color:#000;position:relative;padding:0 80px">
+ <div style="height:72px;display:flex;align-items:center;gap:10px;font-size:14px">${logo(24,'#000','#fff')}<span style="font-weight:600;font-size:15.5px">kubesim</span><span style="flex:1"></span><span style="margin-right:24px;color:#555">Lessons</span><span style="color:#555">Sandbox</span></div>
+ <div style="font-size:112px;font-weight:600;letter-spacing:-5.5px;line-height:.95;margin-top:58px">Kubernetes,<br><span style="color:#326ce5">learned by doing.</span></div>
+ <div style="display:flex;align-items:flex-end;gap:60px;margin-top:44px"><div style="font-size:17px;line-height:1.6;color:#555;width:460px">19 lessons on a cluster simulated in your browser. Each step checks itself as you type.</div><span style="background:#000;color:#fff;padding:14px 24px;font-size:15px;font-weight:500">Start lesson 01 →</span></div>
+ <svg width="200" height="200" viewBox="0 0 200 200" style="position:absolute;right:80px;top:330px">${kicon(100,100,80,'pod')}</svg></div>`}
+
+const DIRS=[['E','Quiet','One column: what to do (top), the cluster (middle), the terminal (bottom). No side panels. The current step is one sentence; a single caption says what just changed.',E_home,E_app],
+ ['F','Notebook','The lesson reads like a page of a good book, with the terminal inside the step you are on. The cluster sits on the right with a one-line narration. Home is the learning path itself.',F_home,F_app],
+ ['G','Guided shell','Dark. The lesson lives inside the terminal as comments, so the Learner never looks away from where they type. A small live cluster strip sits above.',G_home,G_app],
+ ['H','Spotlight','The cluster fills the screen. One floating card holds the step and the command; a callout points at whatever just changed. The full terminal is one click away.',H_home,H_app],
+ ['I','Split','A thin step bar on top, then the cluster and the terminal side by side as two calm cards. The most conventional layout, so nothing needs explaining.',I_home,I_app],
+ ['J','Tutor','The lesson is a conversation. The tutor gives a step, your commands appear as your messages, and it asks quick check questions about what you just saw.',J_home,J_app],
+ ['K','Storyboard','Under the cluster, a timeline shows each step the control plane took after your command, in order. It teaches cause and effect, and you can replay it.',K_home,K_app],
+ ['L','Textbook','Black and white, like a well-set textbook. A huge step number, one instruction, one input line, and the cluster as a captioned figure. Kubernetes blue appears only on the icons.',L_home,L_app]];
+const root=document.getElementById('root');
+DIRS.forEach(([k,n,d,h,a])=>{const s=document.createElement('section');s.innerHTML=`<h2>${k} · ${n}</h2><p class="d">${d}</p><div class="frame" data-h="600"><div class="screen">${h()}</div></div><div class="cap">Home</div><div class="frame" data-h="760"><div class="screen">${a()}</div></div><div class="cap">Lesson screen</div>`;root.appendChild(s)});
+function fit(){document.querySelectorAll('.frame').forEach(f=>{const s=f.clientWidth/1280;f.firstElementChild.style.transform=`scale(${s})`;f.style.height=(+f.dataset.h*s)+'px'})}
+fit();addEventListener('resize',fit);document.fonts&&document.fonts.ready.then(fit);
+</script></body></html>

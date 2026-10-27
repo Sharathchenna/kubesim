@@ -11,11 +11,12 @@ import { solutionCommands } from "@/lib/lessons/lessons";
 import { replaySteps } from "@/lib/lessons/replay";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { AppHeader } from "../AppHeader";
-import { Btn } from "../ui";
+import { Btn, StepMark } from "../ui";
 import type { Selection } from "../sim/ClusterView";
 import { Inspector } from "../sim/Inspector";
-import { MobileTabs, SimControls, Workspace } from "../sim/Workspace";
+import { LayoutToggle, MobileTabs, SimControls, Workspace, useLayoutChoice } from "../sim/Workspace";
 import { Prose } from "./Prose";
+import { Burst } from "../Burst";
 import { challengeKey, loadPassed, savePassed } from "./progress";
 import { DIFFICULTY } from "./difficulty";
 import { safeCheck } from "./checks";
@@ -52,8 +53,10 @@ export function ChallengePlayer({ slug }: { slug: string }) {
   });
   const [sel, setSel] = useState<Selection>(null);
   const [hints, setHints] = useState<number[]>([]);
+  /** Goals met in this visit: each one gets a little burst. */
+  const [celebrate, setCelebrate] = useState(0);
   const [revealed, setRevealed] = useState<number[]>([]);
-  const [panel, setPanel] = useState<"goals" | "inspect">("goals");
+  const [layout, setLayout] = useLayoutChoice("spotlight");
   const [mobileTab, setMobileTab] = useState<"goals" | "cluster" | "terminal">("goals");
   const c = sim.cluster;
   const idx = CHALLENGES.findIndex((x) => x.slug === slug);
@@ -70,6 +73,7 @@ export function ChallengePlayer({ slug }: { slug: string }) {
         savePassed(key, nextPassed, ch.steps.length);
         return nextPassed;
       });
+      setCelebrate((n) => n + 1);
     }, 450);
     return () => clearTimeout(t);
   }, [newly.join(","), key, ch.steps.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,50 +93,44 @@ export function ChallengePlayer({ slug }: { slug: string }) {
         trail={[{ href: "/challenges", label: "Challenges" }, { label: ch.title }]}
         center={<SimControls sim={sim} />}
         right={
-          <Btn
-            onClick={() => {
-              if ((passed.length || sim.history.length) && !window.confirm("Start this challenge over? The cluster is broken again and your progress in it is reset.")) return;
-              sim.reset();
-              setSel(null);
-              setHints([]);
-              setRevealed([]);
-            }}
-          >
-            Start over
-          </Btn>
+          <>
+            <LayoutToggle value={layout} onChange={setLayout} />
+            <Btn
+              onClick={() => {
+                if ((passed.length || sim.history.length) && !window.confirm("Start this challenge over? The cluster is broken again and your progress in it is reset.")) return;
+                sim.reset();
+                setSel(null);
+                setHints([]);
+                setRevealed([]);
+              }}
+            >
+              Start over
+            </Btn>
+          </>
         }
       />
-      <div className="flex min-h-0 flex-1">
-        <aside className={`flex w-full shrink-0 flex-col border-r-[1.5px] border-ink bg-paper lg:w-[380px] xl:w-[440px] ${mobileTab !== "goals" ? "max-lg:hidden" : ""}`}>
-          {panel === "inspect" ? (
-            <>
-              <div className="flex h-11 shrink-0 items-center border-b border-ink/15 px-4">
-                <button
-                  onClick={() => {
-                    setPanel("goals");
-                    setSel(null);
-                  }}
-                  className="text-[14px] text-ink-soft underline-offset-4 hover:text-ink hover:underline"
-                >
-                  ← Back to the goals
-                </button>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto">
-                <Inspector sim={sim} c={c} sel={sel} onSelect={setSel} />
-              </div>
-            </>
-          ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              <div className="px-6 pb-5 pt-5">
+      <Workspace
+        sim={sim}
+        selection={sel}
+        onSelect={setSel}
+        inspector={sel && <Inspector sim={sim} c={c} sel={sel} onSelect={setSel} />}
+        onCloseInspector={() => setSel(null)}
+        tabs={["terminal", "editor", "events", "resources"]}
+        layout={layout}
+        mobileView={mobileTab === "cluster" ? "canvas" : mobileTab === "goals" ? "side" : "dock"}
+        sideLabel="Challenge"
+        side={
+          <>
+              <div className="sticky top-0 z-10 border-b border-ink/10 bg-paper px-5 pb-3.5 pt-4">
                 <p className="text-[13.5px] text-ink-soft">
                   <Link href="/challenges" className="underline-offset-4 hover:text-ink hover:underline md:no-underline">
                     Challenge
                   </Link>{" "}
                   · {d.label} · <span className="font-mono tabular-nums">{passed.length}/{ch.steps.length}</span> goals
                 </p>
-                <h1 className="font-display mt-1 text-[26px] leading-tight">{ch.title}</h1>
+                <h1 className="font-display mt-0.5 text-[22px] leading-tight">{ch.title}</h1>
               </div>
-              <div className="border-t-[1.5px] border-ink px-6 py-5">
+              <div className="px-5 py-4">
                 <h2 className="mb-2 text-[15.5px]">The situation</h2>
                 <Prose text={ch.brief} onRun={run} />
                 {!done && passed.length === 0 && (
@@ -142,14 +140,14 @@ export function ChallengePlayer({ slug }: { slug: string }) {
                   </div>
                 )}
               </div>
-              <ol className="border-t-[1.5px] border-ink" aria-label="Goals">
+              <ol className="border-t border-ink/10" aria-label="Goals">
                 {ch.steps.map((g, i) => {
                   const isDone = passed.includes(i);
                   return (
-                    <li key={i} className="border-b border-ink/20 px-6 py-4">
+                    <li key={i} className="border-b border-ink/10 px-5 py-4">
                       <div className="flex items-start gap-3">
-                        <span className={`mt-0.5 grid h-6 w-6 shrink-0 place-items-center border font-mono text-[11.5px] ${isDone ? "border-ink bg-ink text-paper" : "border-ink/25 text-ink-soft"}`} aria-label={isDone ? "Done" : "Not done yet"}>
-                          {isDone ? "✓" : i + 1}
+                        <span className="mt-0.5" role="img" aria-label={isDone ? "Done" : "Not done yet"}>
+                          <StepMark n={i + 1} state={isDone ? "done" : "current"} />
                         </span>
                         <div className="min-w-0 flex-1">
                           <div className={`text-[15.5px] ${isDone ? "text-ink-soft line-through decoration-ink/30" : "text-ink"}`}>{g.title}</div>
@@ -168,7 +166,7 @@ export function ChallengePlayer({ slug }: { slug: string }) {
                               </div>
                             </>
                           )}
-                          {hints.includes(i) && !isDone && <p className="mt-2 border border-amber-600/40 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">{g.hint}</p>}
+                          {hints.includes(i) && !isDone && <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-900">{g.hint}</p>}
                           {revealed.includes(i) && !isDone && (
                             <div className="mt-3">
                               <div className="mb-1.5 text-[13px] text-ink-soft">One way to fix it:</div>
@@ -182,35 +180,22 @@ export function ChallengePlayer({ slug }: { slug: string }) {
                 })}
               </ol>
               {done && (
-                <div className="mx-6 my-6 border-[1.5px] border-ink p-5" role="status">
+                <div className="relative mx-5 my-5 rounded-xl bg-signal-soft p-5" role="status">
+                  <Burst shot={celebrate} pieces={30} spread={150} />
                   <div className="font-display text-[20px]">Challenge solved</div>
                   <p className="mt-1 text-[14px] text-ink-soft">
                     {revealed.length ? "You got there, with a peek at the fix. Try Start over to do it from memory." : "Solved without looking at the fix."} You practised: {ch.concepts.join(", ")}.
                   </p>
                   <div className="mt-4 flex gap-2">
-                    <Link href={next ? `/challenges/${next.slug}` : "/challenges"} className="inline-flex h-9 items-center border border-ink bg-ink px-3.5 text-[14px] text-paper hover:border-signal hover:bg-signal">
+                    <Link href={next ? `/challenges/${next.slug}` : "/challenges"} className="inline-flex h-9 items-center btn-primary rounded-lg px-3.5 text-[14px] text-white font-medium">
                       {next ? `Next: ${next.title} →` : "All challenges →"}
                     </Link>
                   </div>
                 </div>
               )}
-            </div>
-          )}
-        </aside>
-        <div className={`flex min-h-0 min-w-0 flex-1 ${mobileTab === "goals" ? "max-lg:hidden" : ""}`}>
-          <Workspace
-            sim={sim}
-            selection={sel}
-            onSelect={(s) => {
-              setSel(s);
-              if (s) setPanel("inspect");
-            }}
-            tabs={["terminal", "editor", "events", "resources"]}
-            dockHeight="h-[38%]"
-            mobileView={mobileTab === "cluster" ? "canvas" : "dock"}
-          />
-        </div>
-      </div>
+                      </>
+        }
+      />
       <MobileTabs
         value={mobileTab}
         onChange={setMobileTab}

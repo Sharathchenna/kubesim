@@ -1,0 +1,482 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,sans-serif}
+.wrap{display:flex;flex-direction:column;gap:30px;padding:2px 0 8px}
+.hd{display:flex;align-items:center;gap:10px;margin-bottom:3px}
+.hd b{font-size:15px}
+.letter{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:7px;background:linear-gradient(135deg,#326ce5,#7c3aed);color:#fff;font:700 12px/1 ui-monospace,Menlo,monospace;flex:none}
+.why{color:var(--muted-foreground);font-size:13px;margin:0 0 10px 32px;line-height:1.45}
+.stage{position:relative;height:360px;border-radius:16px;overflow:hidden;background:#f6f7f9;color:#111827;box-shadow:0 0 0 1px rgba(17,24,39,.08);font-family:Inter,ui-sans-serif,system-ui,sans-serif}
+.stage>svg{position:absolute;inset:0;width:100%;height:100%}
+.dots{background-color:#f6f7f9;background-image:radial-gradient(#d3dae5 1px,transparent 1.3px);background-size:18px 18px}
+.mesh{background:#fbfcff}
+.blob{position:absolute;width:320px;height:320px;border-radius:50%;filter:blur(60px);opacity:.42;animation:drift 12s ease-in-out infinite alternate;pointer-events:none}
+.b1{background:#326ce5;left:-90px;top:-140px}.b2{background:#a78bfa;right:-70px;top:-60px;animation-delay:-4s}.b3{background:#67e8f9;left:32%;bottom:-200px;animation-delay:-8s}
+@keyframes drift{to{transform:translate(70px,40px) scale(1.15)}}
+.shine{background:linear-gradient(90deg,#326ce5,#7c3aed,#06b6d4,#326ce5);background-size:300% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shine 6s linear infinite}
+@keyframes shine{to{background-position:300% 0}}
+.btn{display:inline-flex;align-items:center;gap:6px;background:linear-gradient(135deg,#326ce5,#7c3aed);color:#fff;font:600 12.5px/1 Inter,system-ui;padding:9px 13px;border-radius:9px;box-shadow:0 8px 20px -8px rgba(50,108,229,.8)}
+.btn2{display:inline-flex;background:#fff;border:1px solid rgba(17,24,39,.14);color:#111827;font:500 12.5px/1 Inter,system-ui;padding:8px 12px;border-radius:9px}
+.badge{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid #e3e7ee;border-radius:999px;padding:4px 10px 4px 8px;font-size:11px;color:#374151}
+.ping{position:relative;width:7px;height:7px;border-radius:50%;background:#22c55e}
+.ping::after{content:"";position:absolute;inset:0;border-radius:50%;background:#22c55e;animation:ping 1.4s cubic-bezier(0,0,.2,1) infinite}
+@keyframes ping{75%,100%{transform:scale(2.6);opacity:0}}
+.caret{display:inline-block;width:.55em;height:1.05em;background:currentColor;vertical-align:-.15em;margin-left:1px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* svg cluster bits */
+.nrect{fill:#fff;stroke:#e3e7ee;filter:drop-shadow(0 6px 14px rgba(17,24,39,.06));transition:fill .4s,stroke .4s}
+.node{transition:opacity .4s}
+.node.down .nrect{fill:#fef2f2;stroke:#fca5a5}
+.node.down{animation:shake .45s}
+@keyframes shake{20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+.nlabel{font:600 11px ui-monospace,Menlo,monospace;fill:#111827}
+.nstatus{font:600 10px ui-monospace,Menlo,monospace;fill:#16a34a}
+.node.down .nstatus{fill:#dc2626}
+.pod{transition:transform .85s cubic-bezier(.3,1.25,.5,1)}
+.pod .in{transform-box:fill-box;transform-origin:center;animation:pop .6s cubic-bezier(.3,1.6,.5,1) both}
+.pod .in.still{animation:none}
+.pod polygon,.pod circle{transition:fill .35s}
+@keyframes pop{from{transform:scale(0) rotate(-70deg)}}
+.pod.dying .in{animation:die .75s ease-in forwards}
+.pod.fade .in{animation:fadeout .6s ease-in forwards}
+@keyframes die{0%{transform:scale(1)}25%{transform:scale(1.18)}100%{transform:scale(0) rotate(50deg);opacity:0}}
+@keyframes fadeout{to{transform:scale(.2);opacity:0}}
+.halo{opacity:.14}
+.cube{fill:none;stroke:#fff;stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
+.ripple{fill:none;stroke-width:2;transform-box:fill-box;transform-origin:center;animation:ripple .9s ease-out forwards}
+@keyframes ripple{from{transform:scale(.5);opacity:.7}to{transform:scale(2.7);opacity:0}}
+.beam{stroke-width:1.4;stroke-dasharray:3 4;animation:beam .9s ease-out forwards}
+@keyframes beam{from{opacity:.5}to{opacity:0}}
+.pkt{stroke:#fff;stroke-width:1.5}
+.svc{fill:#fff;stroke:#326ce5;stroke-width:1.5;filter:drop-shadow(0 4px 10px rgba(50,108,229,.25))}
+.svct{font:600 11px ui-monospace,Menlo,monospace;fill:#326ce5}
+
+/* A */
+.a-head{position:absolute;left:22px;top:20px;width:min(56%,410px)}
+.a-head h2{margin:10px 0 12px;font-size:27px;line-height:1.1;letter-spacing:-.02em;font-weight:750}
+.a-head .cta{display:flex;gap:8px}
+.term{position:absolute;right:16px;top:16px;width:min(38%,290px);min-height:78px;background:#0f172a;color:#e5e7eb;font:10.5px/1.65 ui-monospace,Menlo,monospace;padding:10px 12px;border-radius:12px;box-shadow:0 14px 30px -12px rgba(15,23,42,.5)}
+.term div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.term i{color:#7aa2ff;font-style:normal}
+.term .o{color:#94a3b8}
+
+/* B */
+.b-top{position:absolute;left:0;right:0;top:26px;text-align:center}
+.b-eye{font:600 11px ui-monospace,Menlo,monospace;color:#326ce5;letter-spacing:.06em;text-transform:uppercase}
+.b-h{margin:8px 0 0;font-size:28px;letter-spacing:-.02em;font-weight:750}
+.b-prompt{position:absolute;left:50%;top:122px;transform:translateX(-50%);width:min(78%,560px);background:rgba(255,255,255,.85);backdrop-filter:blur(8px);border:1px solid #e3e7ee;border-radius:14px;padding:14px 18px;font:500 17px ui-monospace,Menlo,monospace;color:#111827;box-shadow:0 18px 40px -20px rgba(50,108,229,.45);white-space:nowrap;overflow:hidden}
+.b-prompt .pr{color:#326ce5}
+.b-node{position:absolute;left:50%;bottom:20px;transform:translateX(-50%);width:min(84%,430px);background:#fff;border:1px solid #e3e7ee;border-radius:14px;padding:10px 14px 12px;box-shadow:0 10px 30px -18px rgba(17,24,39,.4)}
+.b-nl{display:flex;align-items:center;gap:7px;font:600 11px ui-monospace,Menlo,monospace}
+.b-nl .ok{margin-left:auto;color:#16a34a}
+.b-slots{display:flex;justify-content:space-around;margin-top:6px}
+.slot{display:flex;flex-direction:column;align-items:center;gap:6px;width:31%}
+.ph{width:40px;height:40px}
+.chip{font:600 10px ui-monospace,Menlo,monospace;padding:3px 7px;border-radius:999px;min-height:12px}
+.chip.pend{background:#fef3c7;color:#92400e}.chip.cc{background:#eaf1ff;color:#326ce5}.chip.run{background:#dcfce7;color:#15803d}
+.fly{position:absolute;left:0;top:0;width:40px;height:40px;z-index:5;filter:drop-shadow(0 8px 14px rgba(50,108,229,.45))}
+
+/* C */
+.bob{animation:bob 5s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-6px)}}
+.isogrid{stroke:#eef1f6;stroke-width:1}
+.isolabel{font:600 8.5px ui-monospace,Menlo,monospace;fill:#64748b}
+.c-head{position:absolute;left:20px;top:18px}
+.c-head h2{margin:0;font-size:20px;letter-spacing:-.02em;font-weight:750}
+.c-head p{margin:3px 0 0;font-size:12px;color:#6b7280}
+.c-pills{position:absolute;right:16px;top:18px;display:flex;gap:6px}
+
+/* D */
+.d-top{position:absolute;left:0;right:0;top:22px;display:flex;flex-direction:column;align-items:center;gap:10px;z-index:3}
+.kill{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none;background:linear-gradient(#ff5d5d,#dc2626);color:#fff;font:700 15px/1 Inter,system-ui;padding:14px 24px;border-radius:999px;box-shadow:0 12px 30px -8px rgba(220,38,38,.7),inset 0 1px 0 rgba(255,255,255,.35);animation:throb 1.6s ease-in-out infinite;transition:transform .12s}
+.kill.pressed{transform:scale(.92)}
+@keyframes throb{50%{box-shadow:0 12px 40px -4px rgba(220,38,38,.85),0 0 0 9px rgba(239,68,68,.12),inset 0 1px 0 rgba(255,255,255,.35)}}
+.d-stat{font:600 11.5px ui-monospace,Menlo,monospace;padding:5px 11px;border-radius:999px;background:#fff;border:1px solid #e3e7ee;color:#374151;transition:background .3s,color .3s}
+.d-stat.bad{background:#fee2e2;border-color:#fecaca;color:#b91c1c}.d-stat.work{background:#fef3c7;border-color:#fde68a;color:#92400e}.d-stat.good{background:#dcfce7;border-color:#bbf7d0;color:#15803d}
+
+/* E */
+.e-rail{position:absolute;left:0;top:0;bottom:0;width:200px;background:#fff;border-right:1px solid #e9edf3;padding:22px 0 0 18px;box-sizing:border-box}
+.e-rail ol{list-style:none;margin:0;padding:0;position:relative}
+.e-rail li{display:flex;align-items:center;gap:10px;height:52px;font-size:13px;color:#9ca3af;transition:color .3s}
+.e-rail li b{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#f1f4f9;font:700 11px ui-monospace,Menlo,monospace;color:#9ca3af;transition:all .3s;position:relative;z-index:1}
+.e-rail li.on{color:#111827;font-weight:600}
+.e-rail li.on b{background:linear-gradient(135deg,#326ce5,#7c3aed);color:#fff;box-shadow:0 0 0 5px rgba(50,108,229,.15)}
+.e-rail li.done b{background:#326ce5;color:#fff}
+.e-line{position:absolute;left:11px;top:26px;width:2px;height:208px;background:#eef1f6}
+.e-fill{width:100%;height:0;background:linear-gradient(#326ce5,#7c3aed);transition:height .6s}
+.e-main{position:absolute;left:200px;right:22px;top:0;bottom:0}
+.e-kick{position:absolute;left:24px;top:24px;font:600 11px ui-monospace,Menlo,monospace;color:#326ce5;letter-spacing:.06em;text-transform:uppercase}
+.e-title{position:absolute;left:24px;top:42px;margin:0;font-size:30px;font-weight:750;letter-spacing:-.025em}
+.e-title.swap{animation:swap .55s cubic-bezier(.2,.8,.2,1)}
+@keyframes swap{from{opacity:0;transform:translateY(14px);filter:blur(4px)}}
+.e-main svg{position:absolute;inset:0;width:100%;height:100%}
+.e-scroll{position:absolute;right:8px;top:14px;bottom:14px;width:4px;border-radius:4px;background:#e9edf3}
+.e-thumb{position:absolute;left:0;width:100%;height:22%;border-radius:4px;background:#9aa6b8;transition:top .6s}
+.crash{font:700 10px ui-monospace,Menlo,monospace;fill:#dc2626}
+
+/* F */
+.bento{position:absolute;inset:12px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:10px}
+.tile{position:relative;background:#fff;border-radius:12px;box-shadow:0 0 0 1px #e6eaf0}
+.tile .tt{position:absolute;left:12px;right:12px;top:10px;display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:650}
+.tile .tt .stat{margin-left:auto;font:500 10.5px ui-monospace,Menlo,monospace;color:#6b7280}
+.tile .live{width:6px;height:6px;border-radius:50%;background:#22c55e;box-shadow:0 0 0 3px #dcfce7}
+.tile svg{position:absolute;left:0;right:0;top:32px;bottom:0;width:100%;height:calc(100% - 32px)}
+.cpu{fill:none;stroke:#326ce5;stroke-width:2;stroke-linejoin:round}
+.area{fill:url(#cpuFill)}
+.thr{stroke:#f59e0b;stroke-dasharray:4 4}
+.thrt{font:600 9px ui-monospace,Menlo,monospace;fill:#b45309}
+.pill{fill:#fff;stroke-width:1.5}
+.pillt{font:600 10px ui-monospace,Menlo,monospace}
+
+/* G */
+#G canvas{position:absolute;inset:0;cursor:none}
+.g-card{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;background:rgba(255,255,255,.82);backdrop-filter:blur(10px);border:1px solid rgba(17,24,39,.06);border-radius:18px;padding:18px 24px;box-shadow:0 20px 50px -24px rgba(50,108,229,.5);pointer-events:none}
+.g-card h2{margin:0;font-size:26px;letter-spacing:-.02em;font-weight:750}
+.g-card p{margin:6px 0 0;font-size:12.5px;color:#6b7280}
+
+/* H */
+.h-card{position:absolute;left:18px;top:18px;bottom:18px;width:58%;padding:2px;border-radius:18px;background:linear-gradient(120deg,#326ce5,#7c3aed,#06b6d4,#326ce5);background-size:300% 300%;animation:shine 6s linear infinite;box-shadow:0 24px 50px -24px rgba(124,58,237,.55)}
+.h-in{height:100%;box-sizing:border-box;background:#fff;border-radius:16px;padding:16px 18px;display:flex;flex-direction:column}
+.h-top{display:flex;align-items:center;gap:7px;font-size:12.5px}
+.h-top .h-handle{margin-left:auto;color:#6b7280;font:500 11px ui-monospace,Menlo,monospace}
+.h-title{font-size:22px;font-weight:750;letter-spacing:-.02em;margin-top:8px}
+.h-grid{flex:1;position:relative}
+.h-grid svg{position:absolute;inset:0;width:100%;height:100%}
+.h-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.h-stats b{display:block;font-size:19px;font-weight:750;letter-spacing:-.02em}
+.h-stats span{font-size:10.5px;color:#6b7280}
+.h-xp{display:flex;align-items:center;gap:9px;margin-top:10px;font:600 11px ui-monospace,Menlo,monospace;color:#7c3aed}
+.h-xp .bar{flex:1;height:7px;border-radius:9px;background:#f1effd;overflow:hidden}
+.h-xp .fill{height:100%;width:0;border-radius:9px;background:linear-gradient(90deg,#326ce5,#7c3aed);transition:width .7s cubic-bezier(.2,.8,.2,1)}
+.h-side{position:absolute;right:18px;top:18px;bottom:18px;width:calc(42% - 50px);display:flex;flex-direction:column;justify-content:flex-end;gap:10px}
+.toasts{display:flex;flex-direction:column;gap:8px}
+.toast{background:#fff;border-radius:12px;padding:10px 12px;box-shadow:0 12px 30px -14px rgba(17,24,39,.35),0 0 0 1px #eef1f6;font-size:12px;animation:tin .5s cubic-bezier(.2,1.3,.4,1) both}
+.toast small{display:block;font:600 9.5px ui-monospace,Menlo,monospace;letter-spacing:.06em;text-transform:uppercase;color:#7c3aed;margin-bottom:2px}
+@keyframes tin{from{opacity:0;transform:translateX(40px) scale(.9)}}
+.xbtn{justify-content:center;padding:12px 14px;font-size:13px;transition:transform .2s}
+.xbtn.hot{animation:hot .9s ease-in-out 2}
+@keyframes hot{50%{transform:scale(1.06);box-shadow:0 14px 34px -8px rgba(124,58,237,.9)}}
+</style></head>
+<body>
+<div class="wrap">
+
+<section>
+  <div class="hd"><span class="letter">A</span><b>The page is the cluster</b></div>
+  <p class="why">The hero isn't a picture of Kubernetes, it's running. A terminal types real commands and the cluster behind the headline answers: scale out, a Pod deleted and replaced, a rolling update. Every visit and every screenshot looks different.</p>
+  <div class="stage dots" id="A"><svg></svg>
+    <div class="a-head"><span class="badge"><span class="ping"></span>Live. This hero is a running cluster.</span>
+      <h2>Learn Kubernetes on a <span class="shine">cluster you can see.</span></h2>
+      <div class="cta"><span class="btn">Start lesson 1 →</span><span class="btn2">Open the Sandbox</span></div></div>
+    <div class="term"></div>
+  </div>
+</section>
+
+<section>
+  <div class="hd"><span class="letter">B</span><b>Type to begin</b></div>
+  <p class="why">The hero is a prompt. Each command turns into a Pod that flies into a Node and goes Pending → ContainerCreating → Running. It explains the whole product in about five seconds, which is roughly what a scroll on X gives you.</p>
+  <div class="stage mesh" id="B"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <div class="b-top"><div class="b-eye">kubesim · no install</div><h2 class="b-h"></h2></div>
+    <div class="b-prompt"><span class="pr">$</span> <span class="typed"></span><span class="caret big"></span></div>
+    <div class="b-node"><div class="b-nl"><svg width="16" height="16" viewBox="-8 -8 16 16"><polygon fill="#326ce5" points=""/><circle r="2.4" fill="#fff"/></svg>node-1<span class="ok">Ready</span></div>
+      <div class="b-slots"><div class="slot"><svg class="ph" viewBox="-20 -20 40 40"><polygon fill="none" stroke="#c7d2e3" stroke-dasharray="3 3" stroke-width="1.5"/></svg><span class="chip"></span></div><div class="slot"><svg class="ph" viewBox="-20 -20 40 40"><polygon fill="none" stroke="#c7d2e3" stroke-dasharray="3 3" stroke-width="1.5"/></svg><span class="chip"></span></div><div class="slot"><svg class="ph" viewBox="-20 -20 40 40"><polygon fill="none" stroke="#c7d2e3" stroke-dasharray="3 3" stroke-width="1.5"/></svg><span class="chip"></span></div></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="hd"><span class="letter">C</span><b>3D cluster</b></div>
+  <p class="why">Nodes as isometric slabs, Pods as cubes that drop in and bounce, Ingress traffic beaming down. A crashed Pod turns red and a new one falls in. The most eye-catching option for a looping clip.</p>
+  <div class="stage mesh" id="C"><div class="blob b1"></div><div class="blob b2"></div><svg></svg>
+    <div class="c-head"><h2>Your cluster, <span class="shine">in 3D.</span></h2><p>Three Nodes. Every cube is a Pod.</p></div>
+    <div class="c-pills"><span class="badge"><span class="ping"></span><span class="c-count">0 Pods</span></span></div>
+  </div>
+</section>
+
+<section>
+  <div class="hd"><span class="letter">D</span><b>Break it</b></div>
+  <p class="why">One big red button. A Node dies, its Pods are rescheduled onto the others, and the site times the recovery while traffic keeps flowing. Nobody can resist a button labelled "Kill". Click it.</p>
+  <div class="stage dots" id="D"><svg></svg>
+    <div class="d-top"><span class="kill"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>Kill a node</span><span class="d-stat">All 3 Nodes Ready</span></div>
+  </div>
+</section>
+
+<section>
+  <div class="hd"><span class="letter">E</span><b>Scroll story</b></div>
+  <p class="why">The home page tells one Pod's life as you scroll: it's born, it crashes, Kubernetes brings it back, it scales, it rolls out a new version. Apple-style sticky storytelling. Shown auto-playing here; on the site the scroll drives it.</p>
+  <div class="stage" id="E">
+    <div class="e-rail"><div class="e-line"><div class="e-fill"></div></div><ol></ol></div>
+    <div class="e-main"><svg></svg><div class="e-kick">Chapter <span class="n">1</span> of 5</div><h3 class="e-title"></h3></div>
+    <div class="e-scroll"><div class="e-thumb"></div></div>
+  </div>
+</section>
+
+<section>
+  <div class="hd"><span class="letter">F</span><b>Live bento</b></div>
+  <p class="why">A grid of tiny simulations of the big ideas that never stop running. It works as a single screenshot, and each tile links to the lesson that teaches it.</p>
+  <div class="stage" id="F" style="height:380px"><div class="bento">
+    <div class="tile" id="F1"><div class="tt"><span class="live"></span>Self-healing<span class="stat">restarts 0</span></div><svg></svg></div>
+    <div class="tile" id="F2"><div class="tt"><span class="live"></span>Rolling update<span class="stat">v1 → v2</span></div><svg></svg></div>
+    <div class="tile" id="F3"><div class="tt"><span class="live"></span>Autoscaling<span class="stat"></span></div><svg><defs><linearGradient id="cpuFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#326ce5" stop-opacity=".22"/><stop offset="1" stop-color="#326ce5" stop-opacity="0"/></linearGradient></defs></svg></div>
+    <div class="tile" id="F4"><div class="tt"><span class="live"></span>Ingress routing<span class="stat"></span></div><svg></svg></div>
+  </div></div>
+</section>
+
+<section>
+  <div class="hd"><span class="letter">G</span><b>Touchable background</b></div>
+  <p class="why">The heptagon grid behind the hero lights up under your cursor and a click sends a wave through it. It's small, but it's the thing people screen-record. Hover and click inside; it plays by itself otherwise.</p>
+  <div class="stage" id="G" style="background:#fbfcff"><canvas></canvas>
+    <div class="g-card"><h2>Kubernetes you can <span class="shine">touch.</span></h2><p>Move your mouse. Click to send traffic.</p></div>
+  </div>
+</section>
+
+<section>
+  <div class="hd"><span class="letter">H</span><b>Your progress is a cluster</b></div>
+  <p class="why">Every lesson you finish adds a Pod to your own cluster, coloured by track, with levels and achievements. One click makes a share card for X. This is the idea most likely to get <em>other people</em> posting kubesim, not just you.</p>
+  <div class="stage mesh" id="H"><div class="blob b1"></div><div class="blob b2"></div><div class="blob b3"></div>
+    <div class="h-card"><div class="h-in">
+      <div class="h-top"><svg width="18" height="18" viewBox="-9 -9 18 18"><polygon fill="#326ce5" points=""/><circle r="2.6" fill="#fff"/></svg><b>kubesim</b><span class="h-handle">@you · 6-day streak</span></div>
+      <div class="h-title">My cluster</div>
+      <div class="h-grid"><svg></svg></div>
+      <div class="h-stats"><div><b class="n-pods">0</b><span>Pods running</span></div><div><b class="n-les">0</b><span>lessons</span></div><div><b>5</b><span>challenges</span></div><div><b>86%</b><span>exam</span></div></div>
+      <div class="h-xp"><span class="lvl">Level 3</span><div class="bar"><div class="fill"></div></div></div>
+    </div></div>
+    <div class="h-side"><div class="toasts"></div><span class="btn xbtn">Share my cluster on 𝕏</span></div>
+  </div>
+</section>
+
+</div>
+<script>
+const NS='http://www.w3.org/2000/svg',K='#326ce5',V='#7c3aed',CY='#06b6d4',RED='#ef4444',COLORS=[K,V,CY,'#22c55e','#f59e0b','#ec4899'];
+const $=s=>document.querySelector(s);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const hept=(cx,cy,r)=>Array.from({length:7},(_,i)=>{const a=-Math.PI/2+i*2*Math.PI/7;return (cx+r*Math.cos(a)).toFixed(1)+','+(cy+r*Math.sin(a)).toFixed(1)}).join(' ');
+function el(t,a,p){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e}
+const cube=s=>{const c=.87*s;return `M0,${-s}L${c},${-s/2}L${c},${s/2}L0,${s}L${-c},${s/2}L${-c},${-s/2}ZM0,0L0,${s}M0,0L${c},${-s/2}M0,0L${-c},${-s/2}`};
+const podSVG=(c)=>`<svg viewBox="-20 -20 40 40" width="40" height="40"><circle r="19" fill="${c}" opacity=".14"/><polygon points="${hept(0,0,15)}" fill="${c}"/><path d="${cube(7.2)}" fill="none" stroke="#fff" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+document.querySelectorAll('.b-nl polygon,.h-top polygon').forEach(p=>p.setAttribute('points',hept(0,0,7.5)));
+document.querySelectorAll('.ph polygon').forEach(p=>p.setAttribute('points',hept(0,0,15)));
+
+function podG(parent,x,y,r,color,pop=true){const o=el('g',{class:'pod'},parent);o.style.transform=`translate(${x}px,${y}px)`;const i=el('g',{class:pop?'in':'in still'},o);const halo=el('circle',{r:r+6,class:'halo',fill:color},i);const poly=el('polygon',{points:hept(0,0,r),fill:color},i);el('path',{d:cube(r*.48),class:'cube'},i);return {g:o,poly,halo,x,y,color}}
+function setColor(p,c){p.color=c;p.poly.setAttribute('fill',c);p.halo.setAttribute('fill',c)}
+function ripple(parent,x,y,color,r=14){const c=el('circle',{cx:x,cy:y,r,class:'ripple',stroke:color},parent);setTimeout(()=>c.remove(),950)}
+function killG(p,then,red=true){p.g.classList.add(red?'dying':'fade');if(red)setColor(p,RED);setTimeout(()=>{p.g.remove();then&&then()},760)}
+const PK=[];
+function packet(parent,from,to,color=K,dur=650){const b=el('line',{x1:from[0],y1:from[1],x2:to[0],y2:to[1],class:'beam',stroke:color},parent);setTimeout(()=>b.remove(),900);const c=el('circle',{r:3.6,class:'pkt',fill:color,cx:from[0],cy:from[1]},parent);c.style.filter=`drop-shadow(0 0 4px ${color})`;PK.push({c,from,to,t0:performance.now(),dur})}
+(function tick(now){for(let i=PK.length-1;i>=0;i--){const p=PK[i];let u=(now-p.t0)/p.dur;if(u>=1){p.c.remove();PK.splice(i,1);continue}u=u<.5?2*u*u:1-Math.pow(-2*u+2,2)/2;p.c.setAttribute('cx',p.from[0]+(p.to[0]-p.from[0])*u);p.c.setAttribute('cy',p.from[1]+(p.to[1]-p.from[1])*u)}requestAnimationFrame(tick)})(performance.now());
+function burst(box,x,y,n=18,spread=80){for(let i=0;i<n;i++){const s=document.createElementNS(NS,'svg');s.setAttribute('viewBox','0 0 12 12');s.style.cssText=`position:absolute;left:${x-6}px;top:${y-6}px;width:12px;height:12px;pointer-events:none;z-index:20`;el('polygon',{points:hept(6,6,5),fill:COLORS[i%6]},s);box.append(s);const a=i/n*Math.PI*2+(i*37%10)/20,d=spread*(.6+(i*53%10)/20),sg=i%2?1:-1;s.animate([{transform:'translate(0,0) scale(.4)',opacity:1},{transform:`translate(${Math.cos(a)*d}px,${Math.sin(a)*d-spread*.25}px) rotate(${sg*(120+i*17)}deg) scale(1)`,opacity:1,offset:.65},{transform:`translate(${Math.cos(a)*d}px,${Math.sin(a)*d+spread*.25}px) rotate(${sg*(220+i*17)}deg) scale(.8)`,opacity:0}],{duration:1250,easing:'cubic-bezier(.2,.7,.3,1)'}).onfinish=()=>s.remove()}}
+function fit(st,svg){const W=svg.clientWidth||st.clientWidth,H=svg.clientHeight||st.clientHeight;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);return [W,H]}
+
+function MiniCluster(svg,{nodes,cols,gap=30,r=11,pad=[26,52]}){
+  const nodesG=el('g',{},svg),fx=el('g',{},svg),podsG=el('g',{},svg),top=el('g',{},svg);
+  const N=nodes.map((n,i)=>{const g=el('g',{class:'node'},nodesG);el('rect',{x:n.x,y:n.y,width:n.w,height:n.h,rx:14,class:'nrect'},g);el('polygon',{points:hept(n.x+20,n.y+20,8),fill:K},g);el('circle',{cx:n.x+20,cy:n.y+20,r:2.6,fill:'#fff'},g);const t=el('text',{x:n.x+34,y:n.y+24,class:'nlabel'},g);t.textContent=n.name||`node-${i+1}`;const s=el('text',{x:n.x+n.w-14,y:n.y+24,class:'nstatus','text-anchor':'end'},g);s.textContent='Ready';return {g,s}});
+  const pods=[],up=new Set(nodes.map((_,i)=>i));
+  const pos=(ni,s)=>[nodes[ni].x+pad[0]+(s%cols)*gap,nodes[ni].y+pad[1]+Math.floor(s/cols)*gap];
+  const live=()=>pods.filter(p=>!p.dead);
+  const count=ni=>live().filter(p=>p.node===ni).length;
+  const free=ni=>{const u=new Set(live().filter(p=>p.node===ni).map(p=>p.slot));let s=0;while(u.has(s))s++;return s};
+  const least=()=>[...up].sort((a,b)=>count(a)-count(b)||a-b)[0];
+  function add(ni,color=K,from){if(ni===undefined)ni=least();const slot=free(ni);const [x,y]=pos(ni,slot);const st=from||[x,y];const p=podG(podsG,st[0],st[1],r,color);Object.assign(p,{node:ni,slot,x,y,dead:false});if(from){getComputedStyle(p.g).transform;requestAnimationFrame(()=>{p.g.style.transform=`translate(${x}px,${y}px)`});setTimeout(()=>ripple(fx,x,y,color),700)}else ripple(fx,x,y,color);pods.push(p);return p}
+  function kill(p,red=true){if(p.dead)return;p.dead=true;killG(p,()=>pods.splice(pods.indexOf(p),1),red)}
+  function down(ni,d){N[ni].g.classList.toggle('down',d);N[ni].s.textContent=d?'NotReady':'Ready';d?up.delete(ni):up.add(ni)}
+  return {add,kill,down,live,count,fx,top}
+}
+function trafficFrom(C,parent,at,every=280){setInterval(()=>{const L=C.live();if(!L.length)return;const p=L[Math.random()*L.length|0];packet(parent,at,[p.x,p.y])},every)}
+const run=(name,f)=>f().catch(e=>console.error(name,e));
+
+// A: the page is the cluster
+run('A',async()=>{const st=$('#A'),svg=st.querySelector('svg');const [W,H]=fit(st,svg);
+  const m=16,gx=12,w=(W-2*m-2*gx)/3,h=124,y=H-h-16,cols=Math.max(3,Math.floor((w-26)/30));
+  const C=MiniCluster(svg,{nodes:[0,1,2].map(i=>({x:m+i*(w+gx),y,w,h})),cols});
+  const sx=Math.max(W*.66,W-160),sy=y-40;el('rect',{x:sx-46,y:sy-13,width:92,height:26,rx:13,class:'svc'},C.top);const t=el('text',{x:sx,y:sy+4,'text-anchor':'middle',class:'svct'},C.top);t.textContent='svc/web';
+  trafficFrom(C,C.fx,[sx,sy+13]);
+  const term=st.querySelector('.term');const trim=()=>{while(term.children.length>5)term.firstChild.remove()};
+  const cmd=async s=>{const l=document.createElement('div');term.append(l);trim();for(let i=0;i<=s.length;i++){l.innerHTML=`<i>$</i> ${s.slice(0,i)}<span class="caret"></span>`;await sleep(24)}l.innerHTML=`<i>$</i> ${s}`};
+  const out=s=>{const l=document.createElement('div');l.className='o';l.textContent=s;term.append(l);trim()};
+  for(let i=0;i<5;i++){C.add();await sleep(90)}
+  let ver=K,alt=V,tag='v1';
+  while(true){await sleep(900);
+    await cmd('kubectl scale deploy web --replicas=9');out('deployment.apps/web scaled');while(C.live().length<9){C.add(undefined,ver);await sleep(140)}
+    await sleep(1500);
+    const L=C.live(),victim=L[Math.random()*L.length|0];await cmd('kubectl delete pod web-7f9c-x2kq');C.kill(victim);out('pod "web-7f9c-x2kq" deleted');await sleep(800);C.add(undefined,ver);out('↻ ReplicaSet made web-7f9c-m4tz');
+    await sleep(1600);
+    const nt=tag==='v1'?'v2':'v1';await cmd(`kubectl set image deploy/web web=web:${nt}`);
+    for(const p of C.live().filter(p=>p.color===ver)){C.add(undefined,alt);await sleep(260);C.kill(p,false);await sleep(200)}
+    out(`rollout to ${nt} complete`);[ver,alt]=[alt,ver];tag=nt;
+    await sleep(1500);
+    await cmd('kubectl scale deploy web --replicas=5');for(const p of C.live().slice(5)){C.kill(p,false);await sleep(120)}
+  }
+});
+
+// B: type to begin
+run('B',async()=>{const st=$('#B'),typed=st.querySelector('.typed'),h=st.querySelector('.b-h'),slots=[...st.querySelectorAll('.slot')],car=st.querySelector('.caret.big');
+  const cmds=[['hello','nginx'],['api','node:22'],['db','postgres']];
+  while(true){
+    h.innerHTML='Type a command. <span class="shine">Watch it happen.</span>';
+    st.querySelectorAll('.fly').forEach(f=>f.remove());slots.forEach(s=>{const c=s.querySelector('.chip');c.textContent='';c.className='chip'});
+    for(let k=0;k<3;k++){const c=`kubectl run ${cmds[k][0]} --image=${cmds[k][1]}`;
+      await sleep(600);for(let i=0;i<=c.length;i++){typed.textContent=c.slice(0,i);await sleep(36)}
+      await sleep(350);
+      const sr=st.getBoundingClientRect(),cr=car.getBoundingClientRect(),tr=slots[k].querySelector('.ph').getBoundingClientRect();
+      typed.textContent='';
+      const f=document.createElement('div');f.className='fly';f.innerHTML=podSVG(K);st.append(f);
+      const x0=cr.left-sr.left-20,y0=cr.top-sr.top-8,x1=tr.left-sr.left,y1=tr.top-sr.top;
+      await f.animate([{transform:`translate(${x0}px,${y0}px) scale(.3)`},{transform:`translate(${(x0+x1)/2}px,${Math.min(y0,y1)-40}px) scale(1.4) rotate(200deg)`,offset:.5},{transform:`translate(${x1}px,${y1}px) scale(1) rotate(360deg)`}],{duration:950,easing:'cubic-bezier(.45,0,.2,1)',fill:'forwards'}).finished;
+      burst(st,x1+20,y1+20,16,70);
+      const chip=slots[k].querySelector('.chip');
+      for(const [t,cls] of [['Pending','pend'],['ContainerCreating','cc'],['Running','run']]){chip.textContent=t;chip.className='chip '+cls;if(t!=='Running')await sleep(650)}
+      if(k===0)h.innerHTML='That\'s a Pod. <span class="shine">You just made it.</span>';
+    }
+    await sleep(2800);
+  }
+});
+
+// C: isometric cluster
+run('C',async()=>{const st=$('#C'),svg=st.querySelector('svg');const [W,H]=fit(st,svg);
+  const cell=Math.min(38,W/16),T=12,X=11*cell,Y=3*cell,ox=W/2-(X-Y)/2*.866,oy=H/2-(X+Y)/4+36;
+  const P=(x,y,z=0)=>[ox+(x-y)*.866,oy+(x+y)*.5-z],L=(x,y,z)=>[(x-y)*.866,(x+y)*.5-z];
+  const pts=a=>a.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' '),xy=(a,b)=>({x1:a[0],y1:a[1],x2:b[0],y2:b[1]});
+  const scene=el('g',{class:'bob'},svg),slabG=el('g',{},scene),shG=el('g',{},scene),cubeG=el('g',{},scene),beamG=el('g',{},scene);
+  for(let i=0;i<3;i++){const x0=i*4*cell,x1=x0+3*cell,y0=0,y1=3*cell;
+    el('polygon',{points:pts([P(x0,y1),P(x1,y1),P(x1,y1,-T),P(x0,y1,-T)]),fill:'#d6deea'},slabG);
+    el('polygon',{points:pts([P(x1,y0),P(x1,y1),P(x1,y1,-T),P(x1,y0,-T)]),fill:'#e8edf5'},slabG);
+    el('polygon',{points:pts([P(x0,y0),P(x1,y0),P(x1,y1),P(x0,y1)]),fill:'#fff',stroke:'#dfe5ee'},slabG);
+    for(let k=1;k<3;k++){el('line',{...xy(P(x0+k*cell,y0),P(x0+k*cell,y1)),class:'isogrid'},slabG);el('line',{...xy(P(x0,y0+k*cell),P(x1,y0+k*cell)),class:'isogrid'},slabG)}
+    const [lx,ly]=P(x0+8,y1,-T+2.5);const t=el('text',{class:'isolabel',transform:`matrix(.866,.5,0,1,${lx},${ly})`},slabG);t.textContent=`node-${i+1}`}
+  const s=cell*.56,hs=s/2,BLUE=['#7aa2ff','#2453b8','#326ce5'],REDC=['#fca5a5','#b91c1c','#ef4444'],VIO=['#b39bff','#5b21b6','#7c3aed'];
+  const cells=[];for(let i=0;i<3;i++)for(let a=0;a<3;a++)for(let b=0;b<3;b++)cells.push({gx:i*4*cell+(a+.5)*cell,gy:(b+.5)*cell,cube:null});
+  const paint=(k,c)=>{k.f[0].setAttribute('fill',c[1]);k.f[1].setAttribute('fill',c[2]);k.f[2].setAttribute('fill',c[0])};
+  function mk(c,col){const [px,py]=P(c.gx,c.gy);
+    const sh=el('polygon',{points:pts([L(-hs,-hs,0),L(hs,-hs,0),L(hs,hs,0),L(-hs,hs,0)]),fill:'rgba(17,24,39,.2)',transform:`translate(${px},${py})`},shG);
+    const g=el('g',{transform:`translate(${px},${py})`}),inner=el('g',{},g);
+    const f=[el('polygon',{points:pts([L(hs,-hs,0),L(hs,hs,0),L(hs,hs,s),L(hs,-hs,s)])},inner),el('polygon',{points:pts([L(-hs,hs,0),L(hs,hs,0),L(hs,hs,s),L(-hs,hs,s)])},inner),el('polygon',{points:pts([L(-hs,-hs,s),L(hs,-hs,s),L(hs,hs,s),L(-hs,hs,s)])},inner)];
+    el('polygon',{points:pts(Array.from({length:7},(_,i)=>{const a=-Math.PI/2+i*2*Math.PI/7;return L(Math.cos(a)*hs*.62,Math.sin(a)*hs*.62,s)})),fill:'none',stroke:'#fff','stroke-width':1.3},inner);
+    const d=c.gx+c.gy;g.dataset.d=d;cubeG.insertBefore(g,[...cubeG.children].find(ch=>+ch.dataset.d>d)||null);
+    c.cube={g,inner,sh,f,t0:performance.now()};paint(c.cube,col)}
+  const bounce=u=>{const n=7.5625,d=2.75;if(u<1/d)return n*u*u;if(u<2/d)return n*(u-=1.5/d)*u+.75;if(u<2.5/d)return n*(u-=2.25/d)*u+.9375;return n*(u-=2.625/d)*u+.984375};
+  const count=st.querySelector('.c-count');
+  (function frame(now){let n=0;for(const c of cells){const k=c.cube;if(!k)continue;
+      if(k.dying){const u=Math.min(1,(now-k.dying)/600);k.inner.setAttribute('transform',`translate(0,${-u*24}) scale(${1-u*.9})`);k.g.style.opacity=1-u;k.sh.style.opacity=1-u;if(u>=1){k.g.remove();k.sh.remove();c.cube=null}continue}
+      n++;const u=Math.min(1,(now-k.t0)/950),z=(1-bounce(u))*260;k.settled=u>=1;k.inner.setAttribute('transform',`translate(0,${-z})`);k.sh.style.opacity=.25+.75*(1-z/260)}
+    count.textContent=`${n} Pods running`;requestAnimationFrame(frame)})(performance.now());
+  const bx=P(X/2,Y/2,175);const bg=el('g',{},beamG);el('circle',{cx:bx[0],cy:bx[1],r:26,fill:K,opacity:.12},bg);el('polygon',{points:hept(bx[0],bx[1],17),fill:K},bg);el('path',{d:cube(8),transform:`translate(${bx[0]},${bx[1]})`,class:'cube'},bg);
+  const lt=el('text',{x:bx[0]+26,y:bx[1]+4,class:'svct'},bg);lt.textContent='ingress';
+  setInterval(()=>{const ok=cells.filter(c=>c.cube&&c.cube.settled&&!c.cube.dying);if(!ok.length)return;const c=ok[Math.random()*ok.length|0];packet(beamG,[bx[0],bx[1]+16],P(c.gx,c.gy,s),Math.random()<.5?K:CY,520)},240);
+  const order=cells.map((_,i)=>i).sort(()=>Math.random()-.5);
+  for(const i of order.slice(0,17)){mk(cells[i],Math.random()<.25?VIO:BLUE);await sleep(240)}
+  while(true){await sleep(1000);const full=cells.filter(c=>c.cube&&c.cube.settled&&!c.cube.dying);const v=full[Math.random()*full.length|0];if(!v)continue;
+    paint(v.cube,REDC);await sleep(500);v.cube.dying=performance.now();await sleep(700);
+    const empty=cells.filter(c=>!c.cube);mk(empty[Math.random()*empty.length|0],Math.random()<.3?VIO:BLUE)}
+});
+
+// D: break it
+run('D',async()=>{const st=$('#D'),svg=st.querySelector('svg');const [W,H]=fit(st,svg);
+  const m=16,gx=12,w=(W-2*m-2*gx)/3,h=124,y=H-h-16,cols=Math.max(3,Math.floor((w-26)/30));
+  const C=MiniCluster(svg,{nodes:[0,1,2].map(i=>({x:m+i*(w+gx),y,w,h})),cols});
+  const sx=W/2,sy=y-34;el('rect',{x:sx-46,y:sy-13,width:92,height:26,rx:13,class:'svc'},C.top);const t=el('text',{x:sx,y:sy+4,'text-anchor':'middle',class:'svct'},C.top);t.textContent='svc/web';
+  trafficFrom(C,C.fx,[sx,sy+13],220);
+  const btn=st.querySelector('.kill'),stat=st.querySelector('.d-stat');let go=null;btn.onclick=()=>go&&go();
+  for(let i=0;i<10;i++){C.add();await sleep(70)}
+  let victim=1;
+  while(true){await new Promise(r=>{go=r;setTimeout(r,2600)});go=null;
+    btn.classList.add('pressed');setTimeout(()=>btn.classList.remove('pressed'),160);
+    const t0=performance.now();C.down(victim,true);stat.className='d-stat bad';stat.textContent=`node-${victim+1} is down`;
+    const lost=C.live().filter(p=>p.node===victim);lost.forEach(p=>C.kill(p));
+    await sleep(900);stat.className='d-stat work';stat.textContent=`Rescheduling ${lost.length} Pods…`;
+    for(const p of lost){C.add(undefined,K,[p.x,p.y]);await sleep(150)}
+    await sleep(900);
+    stat.className='d-stat good';stat.textContent=`Recovered in ${((performance.now()-t0)/1000).toFixed(1)}s · 0 requests dropped`;
+    const sr=st.getBoundingClientRect(),r=stat.getBoundingClientRect();burst(st,r.left-sr.left+r.width/2,r.top-sr.top+r.height/2,20,90);
+    await sleep(2000);C.down(victim,false);stat.className='d-stat';stat.textContent='All 3 Nodes Ready';victim=(victim+1)%3}
+});
+
+// E: scroll story
+run('E',async()=>{const st=$('#E'),main=st.querySelector('.e-main'),svg=main.querySelector('svg');const [W,H]=fit(main,svg);
+  const titles=['A Pod is born','It crashes','Kubernetes brings it back','Scale to 6','Roll out v2'];
+  const ol=st.querySelector('ol');ol.innerHTML=titles.map((t,i)=>`<li><b>${i+1}</b>${t}</li>`).join('');const lis=[...ol.children];
+  const m=24,gx=12,w=(W-2*m-gx)/2,h=150,y=H-h-22;
+  const C=MiniCluster(svg,{nodes:[0,1].map(i=>({x:m+i*(w+gx),y,w,h})),cols:Math.max(3,Math.floor((w-30)/36)),gap:36,r:13,pad:[30,60]});
+  const kick=st.querySelector('.n'),title=st.querySelector('.e-title'),fill=st.querySelector('.e-fill'),thumb=st.querySelector('.e-thumb');
+  let p0,label;
+  const acts=[async()=>{p0=C.add(0)},
+    async()=>{setColor(p0,RED);p0.g.querySelector('.in').animate([{transform:'translateX(-4px)'},{transform:'translateX(4px)'},{transform:'translateX(0)'}],{duration:180,iterations:3});label=el('text',{x:p0.x+20,y:p0.y+4,class:'crash'},C.top);label.textContent='CrashLoopBackOff · restarts 1'},
+    async()=>{label.remove();setColor(p0,K);ripple(C.fx,p0.x,p0.y,K);ripple(C.fx,p0.x,p0.y,'#22c55e',20)},
+    async()=>{for(let i=0;i<5;i++){C.add(undefined,K);await sleep(150)}},
+    async()=>{for(const p of C.live()){C.add(undefined,V);await sleep(200);C.kill(p,false);await sleep(150)}}];
+  while(true){
+    for(let i=0;i<5;i++){lis.forEach((li,j)=>li.className=j<i?'done':j===i?'on':'');kick.textContent=i+1;title.textContent=titles[i];title.classList.remove('swap');void title.offsetWidth;title.classList.add('swap');fill.style.height=`${i/4*100}%`;thumb.style.top=`${i/4*78}%`;
+      await sleep(400);await acts[i]();await sleep(2200)}
+    await sleep(800);C.live().forEach(p=>C.kill(p,false));await sleep(900)}
+});
+
+// F: bento
+function tile(id){const t=$(id),svg=t.querySelector('svg');const [w,h]=fit(t,svg);return {svg,w,h,stat:t.querySelector('.stat')}}
+run('F1',async()=>{const {svg,w,h,stat}=tile('#F1');const fx=el('g',{},svg),pg=el('g',{},svg);const xs=[0,1,2,3].map(i=>w/2+(i-1.5)*50),y=h/2;const ps=xs.map(x=>podG(pg,x,y,15,K));let r=0;
+  while(true){await sleep(1900);const i=Math.random()*4|0;killG(ps[i]);stat.textContent=`restarts ${++r}`;await sleep(650);ps[i]=podG(pg,xs[i],y,15,K);ripple(fx,xs[i],y,K,16)}});
+run('F2',async()=>{const {svg,w,h,stat}=tile('#F2');const fx=el('g',{},svg),pg=el('g',{},svg);const xs=[0,1,2,3,4,5].map(i=>w/2+(i-2.5)*42),y=h/2;const ps=xs.map(x=>podG(pg,x,y,13,K));const cs=[K,V,CY];let v=1;
+  while(true){const to=cs[v%3];for(let i=0;i<6;i++){await sleep(480);const old=ps[i];ps[i]=podG(pg,xs[i],y,13,to);ripple(fx,xs[i],y,to,14);killG(old,null,false);pg.append(ps[i].g);stat.textContent=`v${v} → v${v+1} · ${i+1}/6`}await sleep(1400);v++}});
+run('F3',async()=>{const {svg,w,h,stat}=tile('#F3');const top=6,ch=h*.5,thrY=top+ch*(1-.6);
+  el('line',{x1:10,x2:w-10,y1:thrY,y2:thrY,class:'thr'},svg);const tt=el('text',{x:w-12,y:thrY-4,'text-anchor':'end',class:'thrt'},svg);tt.textContent='target 60%';
+  const area=el('path',{class:'area'},svg),line=el('polyline',{class:'cpu'},svg),fx=el('g',{},svg),pg=el('g',{},svg);
+  const pods=[],max=Math.max(3,Math.floor((w-24)/30));let cpu=35,last=0;const pts=[];
+  const setN=n=>{if(pods.length<n){const i=pods.length,x=22+i*30,y=h-20;pods.push(podG(pg,x,y,10,K));ripple(fx,x,y,K,11)}else if(pods.length>n)killG(pods.pop(),null,false)};
+  setN(1);setN(2);
+  setInterval(()=>{const t=performance.now()/1000;cpu=Math.max(8,Math.min(96,cpu+(Math.random()-.5)*10+Math.sin(t/2.4)*5));pts.push(cpu);if(pts.length>40)pts.shift();
+    const dx=(w-20)/39,P=pts.map((v,i)=>[10+(i+40-pts.length)*dx,top+ch*(1-v/100)]);line.setAttribute('points',P.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join(' '));
+    area.setAttribute('d',`M${P[0][0]},${top+ch}L`+P.map(p=>p[0].toFixed(1)+','+p[1].toFixed(1)).join('L')+`L${P[P.length-1][0]},${top+ch}Z`);
+    const target=Math.max(2,Math.min(max,Math.round(cpu/11)));if(target!==pods.length&&t-last>.6){setN(target);last=t}
+    stat.textContent=`CPU ${cpu|0}% · ${pods.length} replicas`},200)});
+run('F4',async()=>{const {svg,w,h,stat}=tile('#F4');const fx=el('g',{},svg),g=el('g',{},svg);
+  const ix=46,iy=h/2,sx=w*.52,px=w-34;
+  const pill=(x,y,label,c)=>{el('rect',{x:x-30,y:y-11,width:60,height:22,rx:11,class:'pill',stroke:c},g);const t=el('text',{x,y:y+3.5,'text-anchor':'middle',class:'pillt',fill:c},g);t.textContent=label};
+  pill(ix,iy,'ingress','#111827');
+  const svcs=[{y:h*.27,label:'/api',c:V},{y:h*.73,label:'/web',c:K}];
+  for(const s of svcs){pill(sx,s.y,s.label,s.c);s.pods=[-13,13].map(d=>{podG(g,px,s.y+d,9,s.c,false);return [px,s.y+d]})}
+  let n=0;setInterval(()=>{const s=svcs[Math.random()<.5?0:1];packet(fx,[ix+30,iy],[sx-30,s.y],s.c,480);setTimeout(()=>{packet(fx,[sx+30,s.y],s.pods[Math.random()*2|0],s.c,360)},480);n++},230);
+  setInterval(()=>{stat.textContent=`${n*2+Math.random()*4|0} req/s`;n=0},500)});
+
+// G: touchable grid
+run('G',async()=>{const st=$('#G'),cv=st.querySelector('canvas');const W=st.clientWidth,H=st.clientHeight,dpr=devicePixelRatio||1;cv.width=W*dpr;cv.height=H*dpr;cv.style.width=W+'px';cv.style.height=H+'px';const x=cv.getContext('2d');x.scale(dpr,dpr);
+  const S=30,cells=[];for(let r=0,y=S/2;y<H+S;r++,y+=S*.88)for(let X=(r%2?S/2:0);X<W+S;X+=S)cells.push([X,y]);
+  const hp=Array.from({length:7},(_,i)=>{const a=-Math.PI/2+i*2*Math.PI/7;return [Math.cos(a),Math.sin(a)]});
+  const poly=(cx,cy,r)=>{x.beginPath();hp.forEach(([a,b],i)=>i?x.lineTo(cx+a*r,cy+b*r):x.moveTo(cx+a*r,cy+b*r));x.closePath()};
+  let mouse=null,cur=[W/2,H/2],lastW=0;const waves=[];
+  st.onpointermove=e=>{const b=st.getBoundingClientRect();mouse=[e.clientX-b.left,e.clientY-b.top]};st.onpointerleave=()=>mouse=null;st.onpointerdown=()=>waves.push({p:cur.slice(),t:performance.now()});
+  const base=[229,234,242],c1=[50,108,229],c2=[124,58,237];
+  (function frame(now){const auto=[W/2+W*.38*Math.sin(now/1500),H/2+H*.34*Math.sin(now/950+1)],tg=mouse||auto;cur[0]+=(tg[0]-cur[0])*.14;cur[1]+=(tg[1]-cur[1])*.14;
+    if(!mouse&&now-lastW>2300){waves.push({p:cur.slice(),t:now});lastW=now}
+    while(waves.length&&now-waves[0].t>1700)waves.shift();
+    x.clearRect(0,0,W,H);
+    for(const [cx,cy] of cells){let l=Math.max(0,1-Math.hypot(cx-cur[0],cy-cur[1])/150);
+      for(const w of waves){const R=(now-w.t)*.36,dd=Math.abs(Math.hypot(cx-w.p[0],cy-w.p[1])-R);l=Math.max(l,Math.max(0,1-dd/28)*(1-(now-w.t)/1700))}
+      const e=l*l*(3-2*l),k=cx/W,tc=c1.map((v,i)=>v+(c2[i]-v)*k),col=base.map((v,i)=>Math.round(v+(tc[i]-v)*e));
+      const r=8.5+e*5,yy=cy-e*4;
+      if(e>.25){x.fillStyle=`rgba(${tc.join(',')},${(e-.25)*.25})`;poly(cx,yy+3,r+3);x.fill()}
+      x.fillStyle=`rgb(${col})`;poly(cx,yy,r);x.fill();
+      if(e>.45){const a=Math.min(1,(e-.45)*2.2),s=r*.46,c=.87*s;x.strokeStyle=`rgba(255,255,255,${a})`;x.lineWidth=1.3;x.lineJoin='round';x.beginPath();x.moveTo(cx,yy-s);x.lineTo(cx+c,yy-s/2);x.lineTo(cx+c,yy+s/2);x.lineTo(cx,yy+s);x.lineTo(cx-c,yy+s/2);x.lineTo(cx-c,yy-s/2);x.closePath();x.moveTo(cx,yy);x.lineTo(cx,yy+s);x.moveTo(cx,yy);x.lineTo(cx+c,yy-s/2);x.moveTo(cx,yy);x.lineTo(cx-c,yy-s/2);x.stroke()}}
+    const [mx,my]=mouse||cur;x.save();x.translate(mx,my);x.beginPath();x.moveTo(0,0);x.lineTo(0,17);x.lineTo(4.6,12.6);x.lineTo(8,19.6);x.lineTo(10.8,18.4);x.lineTo(7.4,11.6);x.lineTo(13,11.6);x.closePath();x.fillStyle='#111827';x.strokeStyle='#fff';x.lineWidth=1.5;x.fill();x.stroke();x.restore();
+    requestAnimationFrame(frame)})(performance.now());
+});
+
+// H: progress is a cluster
+run('H',async()=>{const st=$('#H'),grid=st.querySelector('.h-grid'),svg=grid.querySelector('svg');const [W,H]=fit(grid,svg);
+  const cols=8,rows=3,gp=Math.min(34,(W-16)/cols,(H-8)/rows),x0=W/2-(cols-1)*gp/2,y0=H/2-(rows-1)*gp/2;const fx=el('g',{},svg),pg=el('g',{},svg);
+  const slots=[];for(let i=0;i<cols*rows;i++){const x=x0+(i%cols)*gp,y=y0+Math.floor(i/cols)*gp;el('polygon',{points:hept(x,y,gp*.36),fill:'none',stroke:'#dbe2ec','stroke-dasharray':'3 3'},svg);slots.push([x,y])}
+  svg.append(fx,pg);
+  const np=st.querySelector('.n-pods'),nl=st.querySelector('.n-les'),bar=st.querySelector('.fill'),lvl=st.querySelector('.lvl'),toasts=st.querySelector('.toasts'),xb=st.querySelector('.xbtn');
+  const toast=(k,t)=>{const d=document.createElement('div');d.className='toast';d.innerHTML=`<small>${k}</small>${t}`;toasts.append(d);while(toasts.children.length>3)toasts.firstChild.remove()};
+  const track=i=>i<6?K:i<10?CY:i<14?V:'#22c55e';
+  while(true){pg.innerHTML='';toasts.innerHTML='';np.textContent=nl.textContent='0';bar.style.width='0%';lvl.textContent='Level 3';xb.classList.remove('hot');
+    await sleep(700);
+    for(let i=0;i<16;i++){const [x,y]=slots[i];podG(pg,x,y,gp*.36,track(i));ripple(fx,x,y,track(i),gp*.36);np.textContent=i+1;nl.textContent=Math.min(i+1,14);bar.style.width=`${Math.min(92,(i+1)*6)}%`;
+      if(i===6)toast('Achievement','Survived a node failure');
+      if(i===11)toast('Streak','6 days in a row');
+      await sleep(i<15?190:400)}
+    bar.style.width='100%';await sleep(600);
+    lvl.textContent='Level 4';toast('Level up','Level 4 · Replica Wrangler');
+    const sr=st.getBoundingClientRect(),r=lvl.getBoundingClientRect();burst(st,r.left-sr.left+r.width/2,r.top-sr.top+5,24,110);
+    await sleep(700);bar.style.transition='none';bar.style.width='0%';void bar.offsetWidth;bar.style.transition='';bar.style.width='18%';
+    xb.classList.add('hot');await sleep(3800)}
+});
+</script>
+</body></html>

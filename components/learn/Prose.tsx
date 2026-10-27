@@ -36,13 +36,13 @@ export function Prose({ text, onRun, onEdit }: { text: string; onRun?: (cmd: str
         ) : b.kind === "illustration" ? (
           SCENES[b.text] ? <Illustration key={i} scene={SCENES[b.text]} /> : null
         ) : b.kind === "bash" ? (
-          <div key={i} className="border border-ink/20 bg-ink/[0.03]">
+          <div key={i} className="border border-ink/10 bg-ink/[0.03]">
             {b.text.split("\n").map((line, j) => (
               <div key={j} className="group flex items-center gap-2 border-t border-ink/15 px-3 py-1.5 first:border-0">
                 <span className="select-none font-mono text-[12px] text-ink/30">$</span>
                 <code className="min-w-0 flex-1 break-all font-mono text-[12px] text-ink">{line}</code>
                 {onRun && !line.includes("<") && (
-                  <button onClick={() => onRun(line)} className="shrink-0 border border-ink/30 bg-paper px-2 py-0.5 text-[11.5px] text-ink transition-colors hover:border-ink">
+                  <button onClick={() => onRun(line)} className="shrink-0 rounded-md border border-ink/15 bg-paper px-2 py-0.5 text-[11.5px] text-ink transition-colors hover:border-ink/40">
                     Run
                   </button>
                 )}
@@ -50,11 +50,11 @@ export function Prose({ text, onRun, onEdit }: { text: string; onRun?: (cmd: str
             ))}
           </div>
         ) : (
-          <div key={i} className="border border-ink/20 bg-ink/[0.03]">
+          <div key={i} className="border border-ink/10 bg-ink/[0.03]">
             <div className="flex items-center justify-between border-b border-ink/15 px-3 py-1">
               <span className="font-mono text-[11px] text-ink-soft">yaml</span>
               {onEdit && (
-                <button onClick={() => onEdit(b.text + "\n")} className="border border-ink/30 bg-paper px-2 py-0.5 text-[11.5px] text-ink transition-colors hover:border-ink">
+                <button onClick={() => onEdit(b.text + "\n")} className="rounded-md border border-ink/15 bg-paper px-2 py-0.5 text-[11.5px] text-ink transition-colors hover:border-ink/40">
                   Open in editor
                 </button>
               )}

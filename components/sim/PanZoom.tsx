@@ -104,11 +104,11 @@ export function PanZoom({
     let x = b.w * k <= w ? i.left + w / 2 - (b.x + b.w / 2) * k : m ? i.left + w / 2 - (m.x + m.w / 2) * k : i.left + 24 - b.x * k;
     let y = b.h * k <= h ? i.top + h / 2 - (b.y + b.h / 2) * k : i.top + 8 - b.y * k;
     if (m) {
-      // Keep the whole Node area inside the visible rectangle.
-      x = Math.min(x, i.left + 16 - m.x * k);
-      x = Math.max(x, i.left + w - 16 - (m.x + m.w) * k);
-      y = Math.max(y, i.top + h - 16 - (m.y + m.h) * k);
-      y = Math.min(y, i.top + 16 - m.y * k);
+      // Keep the whole Node area inside the visible rectangle: its left/top edge no further left/up than the
+      // margin, its right/bottom edge no further right/down. If it can't fit at all, centre it.
+      const keep = (v: number, lo: number, hi: number) => (lo > hi ? (lo + hi) / 2 : Math.min(Math.max(v, lo), hi));
+      x = keep(x, i.left + 16 - m.x * k, i.left + w - 16 - (m.x + m.w) * k);
+      y = keep(y, i.top + 16 - m.y * k, i.top + h - 16 - (m.y + m.h) * k);
     }
     setView({ k, x, y });
   }, []);
@@ -279,7 +279,7 @@ export function PanZoom({
         </g>
       </svg>
 
-      <div data-overlay="zoom" className="font-sheet absolute bottom-4 right-4 flex items-center border border-ink/30 bg-paper" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+      <div data-overlay="zoom" className="font-sheet absolute bottom-4 right-4 flex items-center rounded-md border border-ink/15 bg-paper" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
         <IconBtn label="Zoom out" onClick={() => zoomCenter(1 / 1.25)}>
           <path d="M5 10h10" />
         </IconBtn>
