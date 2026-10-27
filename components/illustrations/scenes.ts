@@ -37,7 +37,7 @@ const architecture: Scene = {
     { id: "e-px", from: "p1", to: "pb" },
   ],
   steps: [
-    { title: "Two halves", text: "A cluster has a control plane that makes decisions and worker Nodes that run your containers. The Cluster View shows the control plane as the purple Node.", on: [] },
+    { title: "Two halves", text: "A cluster has a control plane that makes decisions and worker Nodes that run your containers. The Cluster View shows the control plane as the shaded Node on the left, with the Kubernetes wheel.", on: [] },
     { title: "Everything goes through the API server", text: "kubectl, dashboards and CI all talk to one place: the kube-apiserver. It checks your request and records the change. Nothing else talks to you directly.", on: ["user", "api", "e-user"], flow: ["e-user"] },
     { title: "etcd remembers", text: "The API server stores every object (Deployments, Pods, Services…) in etcd, a small, reliable key-value database. It is the cluster's single source of truth.", on: ["api", "etcd", "e-etcd"], flow: ["e-etcd"] },
     { title: "Controllers and the scheduler watch", text: "The scheduler and controllers don't receive orders; they watch the API server for changes and act. The scheduler assigns new Pods to Nodes; controllers create or delete objects until reality matches what you asked for.", on: ["api", "sched", "cm", "e-sched", "e-cm"], flow: ["e-sched", "e-cm"] },
