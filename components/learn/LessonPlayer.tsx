@@ -15,6 +15,7 @@ import { Burst } from "../Burst";
 import { loadPassed, savePassed } from "./progress";
 import { replaySteps } from "@/lib/lessons/replay";
 import { prefersReducedMotion, safeCheck } from "./checks";
+import { capture } from "@/lib/posthog-client";
 
 export function LessonPlayer({ slug }: { slug: string }) {
   const lesson = lessonBySlug(slug)!;
@@ -90,6 +91,7 @@ export function LessonPlayer({ slug }: { slug: string }) {
     setMobileTab("terminal");
   };
   const showMe = () => {
+    capture("lesson_solution_requested", { lesson_slug: slug, step_number: current + 1 });
     const s = lesson.steps[current].solution;
     // A solution can depend on what earlier commands created (e.g. a NodePort
     // is only known after `expose`): re-plan until it asks for nothing new.

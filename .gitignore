@@ -54,3 +54,4 @@ next-env.d.ts
 /.scratch/fact-check/
 # promo film workspace (kept locally, not part of the site)
 /videos/
+.env

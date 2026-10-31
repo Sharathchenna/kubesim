@@ -16,6 +16,7 @@ import { Inspector } from "../sim/Inspector";
 import { LayoutToggle, MobileTabs, Workspace, useLayoutChoice } from "../sim/Workspace";
 import { Prose } from "./Prose";
 import { getItem, loadExamResults, removeItem, saveExamResult, setItem, type ExamResult } from "./progress";
+import { capture } from "@/lib/posthog-client";
 
 const startKey = (slug: string) => `kubesim.exam.${slug}.started.v1`;
 const gradedKey = (slug: string) => `kubesim.exam.${slug}.graded.v1`;
@@ -56,6 +57,7 @@ export function ExamPlayer({ slug }: { slug: string }) {
       <ExamIntro
         exam={exam}
         onStart={() => {
+          capture("exam_started", { duration_minutes: exam.minutes, task_count: exam.tasks.length });
           setItem(startKey(slug), String(Date.now()));
           removeItem(`kubesim.exam.${slug}.cluster.v1`);
           notifyLocal();
@@ -145,12 +147,12 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
   const [flags, setFlags] = useState<number[]>([]);
   const [result, setResult] = useState<{ passed: boolean[]; score: number; seconds: number } | null>(null);
   const [wall, setWall] = useState(() => Date.now());
-  const submitRef = useRef<() => void>(() => {});
+  const submitRef = useRef<(submissionSource: "manual" | "time_limit") => void>(() => {});
   useEffect(() => {
     const t = setInterval(() => {
       setWall(Date.now());
       // Time's up: grade what's there.
-      if (Date.now() >= startedAt + exam.minutes * 60_000) submitRef.current();
+      if (Date.now() >= startedAt + exam.minutes * 60_000) submitRef.current("time_limit");
     }, 500);
     return () => clearInterval(t);
   }, [startedAt, exam.minutes]);
@@ -158,7 +160,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
   const left = startedAt + exam.minutes * 60_000 - wall;
   const total = exam.tasks.reduce((a, t) => a + t.points, 0);
 
-  const submit = () => {
+  const submit = (submissionSource: "manual" | "time_limit") => {
     if (!c || result) return;
     const passed = exam.tasks.map((t) => {
       try {
@@ -170,6 +172,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
     const got = exam.tasks.reduce((a, t, i) => a + (passed[i] ? t.points : 0), 0);
     const score = Math.round((got / total) * 100);
     const seconds = Math.round((Date.now() - startedAt) / 1000);
+    capture("exam_submitted", { score, passed: score >= exam.passPercent, duration_seconds: seconds, submission_source: submissionSource });
     saveExamResult(exam.slug, { score, passed: score >= exam.passPercent, at: Date.now(), seconds });
     setResult({ passed, score, seconds });
     onGraded();
@@ -208,7 +211,7 @@ function ExamRun({ exam, startedAt, onExit, onGraded }: { exam: Exam; startedAt:
             <Btn
               tone="primary"
               onClick={() => {
-                if (window.confirm("Submit your exam for grading now?")) submit();
+                if (window.confirm("Submit your exam for grading now?")) submit("manual");
               }}
             >
               Submit exam

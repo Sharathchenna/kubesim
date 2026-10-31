@@ -13,6 +13,8 @@ import { saveClusterImage } from "./saveImage";
 import { LayoutToggle, MobileTabs, SimControls, Workspace, useLayoutChoice } from "./Workspace";
 import { SYSTEM_NAMESPACES } from "@/lib/engine/bootstrap";
 import { SHARE_PARAM, decodeCluster, encodeCluster, tokenFromHash } from "@/lib/sim/share";
+import { capture } from "@/lib/posthog-client";
+import { posthogLogger } from "@/lib/posthog-logger";
 
 type Sim = SimStore;
 
@@ -357,7 +359,7 @@ function ScenariosPanel({ sim, c, onRun }: { sim: Sim; c: Cluster; onRun?: () =>
       <ul className="border-t border-ink/10">
         {SCENARIOS.map((s) => (
           <li key={s.id} className="border-b border-ink/10">
-            <button onClick={() => { s.go(sim, c); onRun?.(); }} className="group block w-full px-5 py-3 text-left transition-colors hover:bg-signal-soft/60">
+            <button onClick={() => { capture("sandbox_scenario_started", { scenario_id: s.id }); posthogLogger.info("sandbox scenario started", { scenario_id: s.id }); s.go(sim, c); onRun?.(); }} className="group block w-full px-5 py-3 text-left transition-colors hover:bg-signal-soft/60">
               <span className="block text-[15px] font-medium text-ink group-hover:text-signal">{s.title}</span>
               <span className="mt-0.5 block text-[13px] leading-snug text-ink-soft">{s.blurb}</span>
             </button>
@@ -394,7 +396,7 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
             <input type="range" min={1} max={10} value={replicas} onChange={(e) => setReplicas(+e.target.value)} className="flex-1 accent-[#326ce5]" />
             <span className="w-5 text-right font-mono text-[12px] tabular-nums text-ink">{replicas}</span>
           </div>
-          <Btn tone="primary" className="mt-3 w-full" onClick={() => sim.run((cl) => A.createDeployment(cl, name, image, replicas))}>
+          <Btn tone="primary" className="mt-3 w-full" onClick={() => { capture("deployment_created", { replica_count: replicas }); sim.run((cl) => A.createDeployment(cl, name, image, replicas)); }}>
             Create deployment
           </Btn>
         </Card>
@@ -423,13 +425,13 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
                     <div className="mt-0.5 truncate font-mono text-[11.5px] text-ink-soft">{img}</div>
                   </div>
                   <div className="flex items-center border border-ink/30">
-                    <button className="h-7 w-7 text-ink-soft hover:bg-ink/[0.05] hover:text-ink disabled:opacity-30" disabled={want <= 0} onClick={() => sim.run((cl) => A.scale(cl, n, Math.max(0, want - 1)))} aria-label="Scale down">
+                    <button className="h-7 w-7 text-ink-soft hover:bg-ink/[0.05] hover:text-ink disabled:opacity-30" disabled={want <= 0} onClick={() => { capture("deployment_scaled", { replica_count: Math.max(0, want - 1) }); sim.run((cl) => A.scale(cl, n, Math.max(0, want - 1))); }} aria-label="Scale down">
                       −
                     </button>
                     <span className="w-9 text-center font-mono text-[11.5px] tabular-nums text-ink">
                       {ready}/{want}
                     </span>
-                    <button className="h-7 w-7 text-ink-soft hover:bg-ink/[0.05] hover:text-ink" onClick={() => sim.run((cl) => A.scale(cl, n, want + 1))} aria-label="Scale up">
+                    <button className="h-7 w-7 text-ink-soft hover:bg-ink/[0.05] hover:text-ink" onClick={() => { capture("deployment_scaled", { replica_count: want + 1 }); sim.run((cl) => A.scale(cl, n, want + 1)); }} aria-label="Scale up">
                       +
                     </button>
                   </div>
@@ -444,7 +446,7 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
                     ))}
                   </select>
                   <Btn onClick={() => sim.run((cl) => A.rolloutUndo(cl, n))} title="kubectl rollout undo: go back to the previous Pod template">Undo rollout</Btn>
-                  {svc ? <Btn onClick={() => sim.curl(`http://${n}`, 10)} title="curl the Service 10 times and watch which Pods answer">Send 10 requests</Btn> : <Btn onClick={() => sim.run((cl) => A.expose(cl, n, "NodePort"))} title="kubectl expose: give these Pods one stable address (a NodePort Service)">Expose via Service</Btn>}
+                  {svc ? <Btn onClick={() => sim.curl(`http://${n}`, 10)} title="curl the Service 10 times and watch which Pods answer">Send 10 requests</Btn> : <Btn onClick={() => { capture("deployment_service_exposed"); sim.run((cl) => A.expose(cl, n, "NodePort")); }} title="kubectl expose: give these Pods one stable address (a NodePort Service)">Expose via Service</Btn>}
                   <Btn tone="danger" className="ml-auto" onClick={() => sim.run((cl) => A.deleteDeployment(cl, n))}>
                     Delete
                   </Btn>
@@ -472,7 +474,7 @@ function BuildPanel({ sim, c }: { sim: Sim; c: Cluster }) {
                   <div className="text-[12px] text-ink-soft">{label}</div>
                 </div>
                 {up ? (
-                  <Btn tone="danger" onClick={() => sim.run((cl) => A.chaosKill(cl, nm))} title="Chaos: switch this Node off to watch the cluster react. Bring it back any time.">
+                  <Btn tone="danger" onClick={() => { capture("node_failure_simulated"); sim.run((cl) => A.chaosKill(cl, nm)); }} title="Chaos: switch this Node off to watch the cluster react. Bring it back any time.">
                     Simulate failure
                   </Btn>
                 ) : (
@@ -531,6 +533,7 @@ function useSharedLink(sim: Sim): { note: LinkNote | null; setNote: (n: LinkNote
     encodeCluster(snap)
       .then(async (token) => {
         const url = `${window.location.origin}${window.location.pathname}#${SHARE_PARAM}=${token}`;
+        capture("sandbox_shared");
         try {
           await navigator.clipboard.writeText(url);
           setNote({ text: `Link copied (${Math.ceil(url.length / 1024)} KB). Anyone who opens it gets a copy of this cluster.`, tone: "info" });
@@ -596,6 +599,8 @@ export function Sandbox() {
             <Btn
               onClick={() => {
                 if (!window.confirm("Start over with a fresh cluster? This deletes everything in your current Sandbox cluster.")) return;
+                capture("sandbox_reset");
+                posthogLogger.info("sandbox reset requested");
                 sim.reset();
                 setSel(null);
                 setNote(null);

@@ -20,6 +20,7 @@ import { Burst } from "../Burst";
 import { challengeKey, loadPassed, savePassed } from "./progress";
 import { DIFFICULTY } from "./difficulty";
 import { safeCheck } from "./checks";
+import { capture } from "@/lib/posthog-client";
 
 
 /** A first look that fits any broken cluster. */
@@ -157,10 +158,10 @@ export function ChallengePlayer({ slug }: { slug: string }) {
                                 <Prose text={g.body} />
                               </div>
                               <div className="mt-3 flex gap-1.5">
-                                <Btn tone="ghost" onClick={() => setHints((h) => (h.includes(i) ? h : [...h, i]))}>
+                                <Btn tone="ghost" onClick={() => { capture("challenge_hint_requested", { challenge_slug: slug, goal_number: i + 1 }); setHints((h) => (h.includes(i) ? h : [...h, i])); }}>
                                   Hint
                                 </Btn>
-                                <Btn onClick={() => setRevealed((r) => (r.includes(i) ? r : [...r, i]))}>
+                                <Btn onClick={() => { capture("challenge_solution_revealed", { challenge_slug: slug, goal_number: i + 1 }); setRevealed((r) => (r.includes(i) ? r : [...r, i])); }}>
                                   Show the fix
                                 </Btn>
                               </div>

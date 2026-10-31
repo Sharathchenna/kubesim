@@ -9,6 +9,8 @@ import { yaml } from "@codemirror/lang-yaml";
 import { tags as t } from "@lezer/highlight";
 import type { SimStore } from "@/lib/sim/useSimulation";
 import { Btn } from "../ui";
+import { capture } from "@/lib/posthog-client";
+import { posthogLogger } from "@/lib/posthog-logger";
 
 const highlight = HighlightStyle.define([
   // Ink on paper: keys in full ink, values a step softer, punctuation and comments faint.
@@ -49,7 +51,7 @@ export function Editor({ sim }: { sim: SimStore }) {
           indentOnInput(),
           yaml(),
           syntaxHighlighting(highlight),
-          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, { key: "Mod-Enter", run: (ev) => (sim.apply(ev.state.doc.toString()), true) }]),
+          keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab, { key: "Mod-Enter", run: (ev) => { capture("manifest_applied"); posthogLogger.info("manifest apply requested", { trigger: "keyboard_shortcut" }); sim.apply(ev.state.doc.toString()); return true; } }]),
           EditorView.updateListener.of((u) => {
             if (u.docChanged) sim.files[sim.editorFile] = u.state.doc.toString();
           }),
@@ -83,7 +85,7 @@ export function Editor({ sim }: { sim: SimStore }) {
             <option key={n}>{n}</option>
           ))}
         </select>
-        <Btn tone="primary" onClick={() => view.current && sim.apply(view.current.state.doc.toString())}>
+        <Btn tone="primary" onClick={() => { if (!view.current) return; capture("manifest_applied"); posthogLogger.info("manifest apply requested", { trigger: "button" }); sim.apply(view.current.state.doc.toString()); }}>
           kubectl apply -f {file}
         </Btn>
         <div className="hidden text-[11px] text-ink-soft md:block">⌘/Ctrl + Enter also applies. Files are shared with the terminal: try ls, cat, and kubectl get … -o yaml &gt; file.yaml</div>
