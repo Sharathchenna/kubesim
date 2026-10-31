@@ -3,7 +3,7 @@
 // the shop has served cleanly, with everything healthy, for RESOLVE_MS of cluster time.
 // A Daily Incident picks one per day, the same for everyone.
 
-import type { Cluster, Deployment, NetworkPolicy, Pod, Service, StatefulSet } from "@/lib/engine";
+import type { Cluster, Deployment, NetworkPolicy, Node, Pod, ResourceQuota, Secret, Service, StatefulSet } from "@/lib/engine";
 import { BLUEPRINTS } from "./blueprints";
 
 export const SHOP = "shop";
@@ -164,6 +164,229 @@ export const INCIDENTS: Incident[] = [
     fix: "Drag **Chaos** from **+ Add → Tools** onto the dead Node to power it back on. The kubelet reports in and shop-db-0 starts again, with its data.",
     debrief:
       "A StatefulSet guarantees at most one shop-db-0, so it doesn't replace a Pod on a Node that stopped answering. It can't know the old one is gone. And the database's volume was local-path storage, which lives on one Node's disk, so the Pod could only ever run there. Production databases use network storage (or replication) so they can move.",
+  },
+  {
+    slug: "scaled-to-zero",
+    title: "The wrong Deployment was scaled to zero",
+    difficulty: "easy",
+    page: "shop-web is returning 503s",
+    brief:
+      "Someone wanted to pause the fake customers (shop-users) while they read some logs, so they ran a scale command from their shell history. The customers kept coming. The shop stopped answering them.",
+    break: (c) => {
+      const d = c.get<Deployment>("Deployment", "default", `${SHOP}-api`);
+      c.replace({ ...d, spec: { ...d.spec!, replicas: 0 } });
+    },
+    hints: [
+      "`kubectl get deployments`: compare READY for each one. Which has none?",
+      "shop-api says 0/0: it isn't failing, it was asked for zero Pods. `kubectl get endpoints shop-api` agrees.",
+      "Scaling isn't a rollout, so `rollout undo` won't bring it back. Scale it back up to 2.",
+    ],
+    fix: "```bash\nkubectl scale deployment shop-api --replicas=2\n```",
+    debrief:
+      "The scale command hit shop-api instead of shop-users, so the Deployment did exactly what it was told and removed every API Pod. Nothing crashed and no Event says anything is wrong; the only clue is READY 0/0. Scaling doesn't create a new revision, so the fix is to scale back, not roll back. Check the name before you press Enter, and keep replica counts in the manifest you apply.",
+  },
+  {
+    slug: "wrong-target-port",
+    title: "The API Service sends traffic to the wrong port",
+    difficulty: "easy",
+    page: "shop-web is returning 503s",
+    brief:
+      "A teammate tidied up the Services so that \"everything uses port 80\". The API Pods are Running and Ready, and its Service still lists them as endpoints. Every request fails anyway.",
+    break: (c) => {
+      const s = c.get<Service>("Service", "default", `${SHOP}-api`);
+      c.replace({ ...s, spec: { ...s.spec, ports: (s.spec?.ports ?? []).map((p) => ({ ...p, targetPort: 80 })) } });
+    },
+    hints: [
+      "`kubectl get endpoints shop-api`: the Pods are there. Look at the port after each address.",
+      "Which port does the API container listen on? `kubectl describe pod -l app=shop-api` shows Port.",
+      "A Service's targetPort must be the port the container listens on: 8080.",
+    ],
+    fix: "```bash\nkubectl patch service shop-api -p '{\"spec\":{\"ports\":[{\"port\":80,\"targetPort\":8080}]}}'\n```",
+    debrief:
+      "A Service has two ports: `port` is what clients call (80), and `targetPort` is where it sends the traffic on the Pod. The API listens on 8080, so with targetPort 80 every connection was refused. Endpoints only list Ready Pods; they don't check that anything listens on the target port. The readiness probe calls 8080 directly, so the Pods stayed Ready the whole time.",
+  },
+  {
+    slug: "bad-image-tag",
+    title: "The cache's new image doesn't exist",
+    difficulty: "easy",
+    page: "shop-web is returning 503s",
+    brief:
+      "Someone switched the Redis cache to the smaller alpine image. The cache Deployment uses the Recreate strategy, so the old Pod stopped first. The new one never started.",
+    break: (c) =>
+      rollout(c, `${SHOP}-cache`, "switch to the alpine image", (spec) => {
+        spec.strategy = { type: "Recreate" };
+        spec.template.spec.containers[0].image = "redis:alpnie";
+      }),
+    hints: [
+      "`kubectl get pods`: what's the STATUS of the cache Pod?",
+      "`kubectl describe pod -l app=shop-cache`: the Events say why the image can't be pulled. Read the tag carefully.",
+      "Set the image back to one that exists: redis:7 (or spell alpine correctly).",
+    ],
+    fix: "```bash\nkubectl set image deployment/shop-cache redis=redis:7\n```",
+    debrief:
+      "The tag `alpnie` doesn't exist, so the kubelet couldn't pull the image (ErrImagePull) and kept retrying, waiting longer each time (ImagePullBackOff). The Recreate strategy stops every old Pod before it starts a new one, so there was no Redis at all. With RollingUpdate, the old Pod would have kept serving until the new one was Ready, and a bad tag would have cost nothing.",
+  },
+  {
+    slug: "deleted-db-service",
+    title: "Someone deleted the database's Service",
+    difficulty: "medium",
+    page: "shop-web is returning 503s",
+    brief:
+      "During a cleanup, a teammate deleted a Service with no cluster IP: \"it said None, it looked broken\". The database Pod is Running and Ready, but the API can't find it.",
+    break: (c) => c.delete("Service", "default", `${SHOP}-db`),
+    hints: [
+      "What does the API say? `kubectl logs deploy/shop-api` shows the address it can't reach.",
+      "The API finds the database by the name shop-db, and names come from Services. `kubectl get services`: is there one called shop-db?",
+      "Create it again, headless (no cluster IP), on port 5432. `kubectl create service clusterip` selects Pods labelled app=<name>, which is the database Pod's label.",
+    ],
+    fix: "```bash\nkubectl create service clusterip shop-db --clusterip=None --tcp=5432:5432\n```",
+    debrief:
+      "shop-db was a headless Service (clusterIP: None). It has no virtual IP; cluster DNS answers its name with the Pod's own IP, which is how a StatefulSet's Pods get stable names. CLUSTER-IP None is on purpose, not broken. Without the Service the name shop-db didn't exist, so the API couldn't find Postgres even though it was running fine.",
+  },
+  {
+    slug: "renamed-secret-key",
+    title: "A Secret key was renamed",
+    difficulty: "medium",
+    page: "shop-web is returning 503s",
+    brief:
+      "Someone made the Secret keys match the team's style: in Secret shop-db, POSTGRES_PASSWORD is now just `password`. The database Pod was restarted soon after, and it keeps crashing.",
+    break: (c) => {
+      const s = c.get<Secret>("Secret", "default", `${SHOP}-db`);
+      c.replace({ ...s, data: { password: s.data?.POSTGRES_PASSWORD ?? "" } });
+      c.delete("Pod", "default", `${SHOP}-db-0`, { force: true });
+    },
+    hints: [
+      "`kubectl get pods`: which Pod keeps restarting?",
+      "Kubernetes started it fine; Postgres itself exits. `kubectl logs shop-db-0` says what it's missing.",
+      "The Pod loads every key of Secret shop-db as an environment variable (envFrom), named after the key. Add the key POSTGRES_PASSWORD back.",
+    ],
+    fix: "```bash\nkubectl patch secret shop-db -p '{\"stringData\":{\"POSTGRES_PASSWORD\":\"change-me\"}}'\n```",
+    debrief:
+      "envFrom turns each key of a Secret into an environment variable with the same name, so renaming the key renamed the variable. Kubernetes saw nothing wrong and started the container. Postgres found no POSTGRES_PASSWORD and exited, again and again (CrashLoopBackOff), and only its logs said why. The kubelet reads the Secret each time it restarts the container, so it picked up the fix on the next try. The API reads the same key by name (secretKeyRef), so its next Pod would have failed too, with CreateContainerConfigError.",
+  },
+  {
+    slug: "drained-nodes",
+    title: "Both workers were left drained",
+    difficulty: "medium",
+    page: "shop-web has stopped getting traffic",
+    brief:
+      "Ops patched the kernel on both worker Nodes: drain, patch, reboot. The Nodes are back and Ready. Every Pod of the shop is Pending.",
+    break: (c) => {
+      for (const n of c.list<Node>("Node")) {
+        if (n.metadata.labels?.["node-role.kubernetes.io/control-plane"] !== undefined) continue;
+        c.replace({ ...n, spec: { ...n.spec, unschedulable: true } });
+        // Evict what drain --ignore-daemonsets would: everything but DaemonSet and static Pods.
+        for (const p of c.list<Pod>("Pod")) {
+          const daemon = p.metadata.ownerReferences?.some((o) => o.kind === "DaemonSet") || p.metadata.annotations?.["kubernetes.io/config.source"];
+          if (p.spec?.nodeName === n.metadata.name && !daemon) c.deleteObject(p);
+        }
+      }
+    },
+    hints: [
+      "`kubectl describe pod` on any Pending Pod: what do the scheduler's Events say about the Nodes?",
+      "`kubectl get nodes`: Ready, but SchedulingDisabled. Draining a Node cordons it first, and rebooting doesn't undo that.",
+      "Mark both workers schedulable again with `kubectl uncordon`.",
+    ],
+    fix: "```bash\nkubectl uncordon worker-1 worker-2\n```",
+    debrief:
+      "`kubectl drain` does two things: it cordons the Node (no new Pods may be scheduled there) and evicts the Pods already on it. The cordon stays until someone runs `kubectl uncordon`, even across a reboot. With both workers cordoned and the control plane tainted, the scheduler had nowhere to put anything, including CoreDNS and the customers. Drain one Node at a time, and uncordon it before you move on to the next.",
+  },
+  {
+    slug: "dns-scaled-down",
+    title: "Nobody can find anything",
+    difficulty: "medium",
+    page: "shop-web has stopped getting traffic",
+    brief:
+      "Someone was trimming kube-system to save memory and scaled down a Deployment they didn't recognise. Every shop Pod is Running and Ready, yet no customer gets through.",
+    break: (c) => {
+      const d = c.get<Deployment>("Deployment", "kube-system", "coredns");
+      c.replace({ ...d, spec: { ...d.spec!, replicas: 0 } });
+    },
+    hints: [
+      "The customers are Pods too. What does `kubectl logs deploy/shop-users` say?",
+      "`bad address` means the name didn't resolve. Who answers names in a cluster? `kubectl get pods -n kube-system`",
+      "Cluster DNS is the coredns Deployment in kube-system, behind the kube-dns Service. Scale it back up to 2.",
+    ],
+    fix: "```bash\nkubectl scale deployment coredns -n kube-system --replicas=2\n```",
+    debrief:
+      "Every Service name (shop-web, shop-api, shop-db) is answered by CoreDNS, an ordinary Deployment in kube-system. With no CoreDNS Pods, every lookup failed, so the customers couldn't even find shop-web, and nothing in the shop showed an error. Everything in kube-system keeps the cluster running; leave it alone unless you know what each piece does.",
+  },
+  {
+    slug: "db-too-big",
+    title: "The database asked for too much memory",
+    difficulty: "hard",
+    page: "shop-web is returning 503s",
+    brief:
+      "The database felt slow, and the DBA asked for 8Gi of memory for Postgres. Someone set it as the memory request on the StatefulSet. shop-db-0 went away and never came back.",
+    break: (c) => {
+      const s = c.get<StatefulSet>("StatefulSet", "default", `${SHOP}-db`);
+      const spec = structuredClone(s.spec!);
+      spec.template.spec.containers[0].resources = { ...spec.template.spec.containers[0].resources, requests: { cpu: "100m", memory: "8Gi" } };
+      c.replace({ ...s, spec });
+    },
+    hints: [
+      "`kubectl get pods`: shop-db-0 is Pending. `kubectl describe pod shop-db-0`: what do the scheduler's Events say?",
+      "No Node has 8Gi to give: `kubectl describe node worker-1` shows Allocatable memory. Lower the request with `kubectl set resources`.",
+      "The StatefulSet waits for shop-db-0 to become Ready before it changes it, so it won't replace the stuck Pod. Delete it after fixing the template.",
+    ],
+    fix: "```bash\nkubectl set resources statefulset shop-db --requests=memory=1Gi\nkubectl delete pod shop-db-0\n```",
+    debrief:
+      "A memory request is what the scheduler sets aside on a Node for the Pod. Each Node here has about 7.8Gi in total, so a Pod asking for 8Gi fits nowhere and stays Pending. The StatefulSet replaced its only Pod (old one first, so there was no database), and then waited for the new one to become Ready, which it never would. Fixing the template isn't enough in this state: a StatefulSet won't replace a Pod that never became Ready, so you delete it yourself and it comes back from the fixed template.",
+  },
+  {
+    slug: "dns-egress",
+    title: "A NetworkPolicy forgot about DNS",
+    difficulty: "hard",
+    page: "shop-web is returning 503s",
+    brief:
+      "Security asked to restrict what the API can talk to. The new policy allows exactly the database and the cache, each on its own port. Since it went in, the API can't reach either of them.",
+    break: (c) =>
+      c.create<NetworkPolicy>({
+        apiVersion: "networking.k8s.io/v1",
+        kind: "NetworkPolicy",
+        metadata: { name: "api-egress", namespace: "default" },
+        spec: {
+          podSelector: { matchLabels: { app: `${SHOP}-api` } },
+          policyTypes: ["Egress"],
+          egress: [
+            { to: [{ podSelector: { matchLabels: { app: `${SHOP}-db` } } }], ports: [{ port: 5432 }] },
+            { to: [{ podSelector: { matchLabels: { app: `${SHOP}-cache` } } }], ports: [{ port: 6379 }] },
+          ],
+        },
+      }),
+    hints: [
+      "`kubectl describe networkpolicy api-egress`: the database and cache rules look right. What else does the API need before it can connect to shop-db?",
+      "It has to look the name up first. Cluster DNS runs in kube-system and listens on port 53, and this policy doesn't allow that.",
+      "Add an egress rule for port 53, over UDP and TCP.",
+    ],
+    fix: "```bash\nkubectl patch networkpolicy api-egress --type=json -p '[{\"op\":\"add\",\"path\":\"/spec/egress/-\",\"value\":{\"ports\":[{\"port\":53,\"protocol\":\"UDP\"},{\"port\":53,\"protocol\":\"TCP\"}]}}]'\n```\n\nOr, tighter, allow DNS only to CoreDNS:\n\n```yaml\napiVersion: networking.k8s.io/v1\nkind: NetworkPolicy\nmetadata:\n  name: api-egress\nspec:\n  podSelector:\n    matchLabels:\n      app: shop-api\n  policyTypes: [\"Egress\"]\n  egress:\n  - to:\n    - podSelector:\n        matchLabels:\n          app: shop-db\n    ports:\n    - port: 5432\n  - to:\n    - podSelector:\n        matchLabels:\n          app: shop-cache\n    ports:\n    - port: 6379\n  - to:\n    - namespaceSelector:\n        matchLabels:\n          kubernetes.io/metadata.name: kube-system\n      podSelector:\n        matchLabels:\n          k8s-app: kube-dns\n    ports:\n    - port: 53\n      protocol: UDP\n    - port: 53\n      protocol: TCP\n```",
+    debrief:
+      "Once a NetworkPolicy selects a Pod for Egress, everything it doesn't allow is dropped, and that includes DNS lookups to CoreDNS on port 53. The rules for the database and the cache were fine, but the API never got as far as using them: it couldn't turn the name shop-db into an address. Every egress policy needs a rule for DNS. It's one of the most common NetworkPolicy mistakes.",
+  },
+  {
+    slug: "quota-limits",
+    title: "A quota the database couldn't meet",
+    difficulty: "hard",
+    page: "shop-web is returning 503s",
+    brief:
+      "The platform team added a ResourceQuota to every namespace at lunch, and nothing happened. An hour later the database Pod was restarted during Node maintenance. It never came back, and there isn't even a Pending Pod.",
+    break: (c) => {
+      c.create<ResourceQuota>({
+        apiVersion: "v1",
+        kind: "ResourceQuota",
+        metadata: { name: "compute", namespace: "default" },
+        spec: { hard: { "requests.memory": "4Gi", "limits.memory": "8Gi" } },
+      });
+      c.delete("Pod", "default", `${SHOP}-db-0`, { force: true });
+    },
+    hints: [
+      "There's no shop-db-0 Pod at all. Who should create it? `kubectl describe statefulset shop-db` and read its Events.",
+      "The API server refuses the Pod: the quota `compute` caps limits.memory, so every new Pod must say what its memory limit is. `kubectl describe quota compute`",
+      "Give the database container a memory limit with `kubectl set resources`.",
+    ],
+    fix: "```bash\nkubectl set resources statefulset shop-db --limits=memory=512Mi\n```",
+    debrief:
+      "A ResourceQuota that caps limits.memory makes every new Pod in the namespace declare a memory limit, or the API server rejects it. Pods that were already running aren't checked, so nothing broke until one was recreated. A rejected Pod is never created, so the error shows up on its controller (the StatefulSet's FailedCreate Events), not on a Pod. The web and API Pods have no limits either and would fail the same way on their next rollout; a LimitRange can give every container a default limit.",
   },
 ];
 

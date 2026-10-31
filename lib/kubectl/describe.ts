@@ -28,6 +28,7 @@ import {
   type PodTemplateSpec,
   type Probe,
   type ReplicaSet,
+  type ResourceQuota,
   type Role,
   type RoleBinding,
   type Secret,
@@ -621,6 +622,13 @@ export function describeObject(c: Cluster, kind: string, o: AnyObject): string {
         ]),
       );
       break;
+    }
+    case "ResourceQuota": {
+      // describeQuota: one tabwriter block for Name, Namespace and the Resource/Used/Hard table, and no Events.
+      const q = o as unknown as ResourceQuota;
+      const rows = [["Name:", q.metadata.name], ["Namespace:", ns ?? ""], ["Resource", "Used", "Hard"], ["--------", "----", "----"], ...Object.keys(q.spec?.hard ?? {}).sort().map((r) => [r, q.status?.used?.[r] ?? "0", q.spec!.hard![r]])];
+      const w = [0, 1].map((i) => Math.max(...rows.filter((r) => r.length > i + 1).map((r) => r[i].length)) + 2);
+      return rows.map((r) => r.map((cell, i) => (i < r.length - 1 ? cell.padEnd(w[i]) : cell)).join("")).join("\n");
     }
     case "Namespace":
       lines.push(L("Labels", labelsStr(o.metadata.labels, 14), 14), L("Annotations", annotationsStr(o.metadata.annotations, 14), 14), L("Status", (o.status as { phase: string }).phase, 14), "", "No resource quota.", "", "No LimitRange resource.");

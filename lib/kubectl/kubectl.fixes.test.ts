@@ -380,6 +380,16 @@ describe("output and wording", () => {
       "Flag --cpu-percent has been deprecated, Use --cpu with percentage or resource quantity format (e.g., '70%' for utilization or '500m' for milli-cores).\nhorizontalpodautoscaler.autoscaling/web autoscaled",
     );
   });
+
+  test("describe quota prints what's used against each hard limit, and no Events", () => {
+    const { c, ctx, k } = session();
+    applyYaml(ctx, "apiVersion: v1\nkind: ResourceQuota\nmetadata:\n  name: compute\nspec:\n  hard:\n    requests.memory: 4Gi\n    limits.memory: 8Gi\n");
+    applyYaml(ctx, "apiVersion: v1\nkind: Pod\nmetadata:\n  name: db\nspec:\n  containers:\n  - name: db\n    image: postgres:16\n    resources:\n      requests:\n        memory: 64Mi\n      limits:\n        memory: 128Mi\n");
+    c.advance(5_000);
+    expect(k("kubectl describe quota compute").out).toBe(
+      ["Name:            compute", "Namespace:       default", "Resource         Used   Hard", "--------         ----   ----", "limits.memory    128Mi  8Gi", "requests.memory  64Mi   4Gi"].join("\n"),
+    );
+  });
 });
 
 describe("delete", () => {
