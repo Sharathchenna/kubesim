@@ -9,7 +9,6 @@
 import { useEffect, useState } from "react";
 import { CalendarClock, Database, FileText, Globe, HardDrive, Hexagon, KeyRound, Layers, Network, Play, Server, ShieldCheck, UserCheck, type LucideIcon } from "lucide-react";
 import { fit, onFontsReady, textWidth } from "./textFit";
-import { heptagon } from "@/lib/heptagon";
 import { isIsolated, podRequests, nodeAllocatable, type Cluster, type ConfigMap, type CronJob, type DaemonSet, type Deployment, type Endpoints, type HorizontalPodAutoscaler, type Ingress, type Job, type NetworkPolicy, type Node, type PersistentVolume, type PersistentVolumeClaim, type Pod, type ReplicaSet, type RoleBinding, type Secret, type Service, type StatefulSet } from "@/lib/engine";
 import { fnv32a } from "@/lib/engine/util";
 import { SYSTEM_NAMESPACES } from "@/lib/engine/bootstrap";
@@ -22,14 +21,14 @@ import type { DragItem } from "@/lib/sim/drag";
 export type SelKind = "pod" | "node" | "service" | "deployment" | "replicaset" | "statefulset" | "daemonset" | "job" | "cronjob" | "ingress" | "configmap" | "secret" | "pvc" | "networkpolicy" | "hpa" | "rolebinding";
 export type Selection = { kind: SelKind; ns?: string; name: string } | null;
 
-const NODE_W = 336;
+const NODE_W = 338;
 const NODE_GAP = 36;
-const HEAD = 62;
+const HEAD = 64;
 const PAD = 14;
-const CHIP_W = 96;
-const CHIP_H = 48;
-const CHIP_GAP = 8;
-const COLS = 3;
+const CHIP_W = 150;
+const CHIP_H = 50;
+const CHIP_GAP = 10;
+const COLS = 2;
 const DEP_H = 58;
 const RS_H = 50;
 const RS_W = 176;
@@ -40,19 +39,19 @@ const Y_NODES = 212;
 const Y_NODES_FOLDED = 124;
 /** Gap above the Services row and above the Ingress row. */
 const ROW_GAP = 72;
-const SVC_W = 218;
+const SVC_W = 240;
 const SVC_H = 64;
 const ING_W = 250;
 const ING_H = 64;
-const QUEUE_W = 128;
+const QUEUE_W = 174;
 /** The control plane collapses to this when its system Pods are hidden and nothing else runs there. */
 const CP_W = 236;
 const CP_BODY = 44;
-const SIDE_W = 190;
-const SIDE_H = 40;
+const SIDE_W = 200;
+const SIDE_H = 44;
 
-/** Corner radius shared by every card. */
-const R = 10;
+/** Corner radius shared by every card (Pods use a little less). */
+const R = 12;
 const ARROW = 6;
 
 const HUES = [221, 162, 262, 24, 330, 190, 142, 45];
@@ -84,15 +83,17 @@ const rateOf = (series: number[]) => series.slice(-RATE_SECONDS).reduce((a, b) =
 const fmtRate = (r: number) => `${r < 10 ? r.toFixed(1) : Math.round(r)}/s`;
 /** Requests per second, and the share of them failing once it's worth mentioning. */
 const fmtTraffic = (r: number, err: number) => (err >= 0.01 ? `${fmtRate(r)} · ${Math.round(err * 100)}% err` : fmtRate(r));
-const ERR = "#dc2626";
+const ERR = "var(--cv-danger)";
+/** Text colour for a status, by tone. */
+const TONE_TEXT: Record<"ok" | "warn" | "bad" | "muted", string> = { ok: "var(--cv-text)", warn: "var(--cv-warn-text)", bad: "var(--cv-danger-text)", muted: "var(--cv-faint)" };
 
 const CAT: Record<PodCategory, { dot: string; text: string; label?: string }> = {
-  ok: { dot: "#16a34a", text: "#15803d" },
-  starting: { dot: "#f59e0b", text: "#b45309" },
-  bad: { dot: "#dc2626", text: "#b91c1c" },
-  done: { dot: "#64748b", text: "#475569" },
-  gone: { dot: "#94a3b8", text: "#64748b" },
-  stale: { dot: "#94a3b8", text: "#64748b", label: "Unknown" },
+  ok: { dot: "var(--cv-ok)", text: "var(--cv-ok-text)" },
+  starting: { dot: "var(--cv-warn)", text: "var(--cv-warn-text)" },
+  bad: { dot: "var(--cv-danger)", text: "var(--cv-danger-text)" },
+  done: { dot: "var(--cv-faint)", text: "var(--cv-dim)" },
+  gone: { dot: "var(--cv-muted)", text: "var(--cv-faint)" },
+  stale: { dot: "var(--cv-muted)", text: "var(--cv-faint)", label: "Unknown" },
 };
 
 type Pt = { x: number; y: number };
@@ -603,7 +604,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   const metrics = c.state.metrics;
 
   // Level of detail: zoomed out, objects simplify instead of shrinking their text.
-  const detail = k >= 0.7 ? 2 : k >= 0.5 ? 1 : 0;
+  const detail = k >= 0.6 ? 2 : k >= 0.42 ? 1 : 0;
   // Zoomed out to fit, text grows a little (up to 25%) instead of shrinking with the boxes, so it stays readable.
   const T = Math.min(1.25, Math.max(1, 0.85 / k));
   const fz = (n: number) => n * T;
@@ -725,7 +726,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
           const span = spanOf.get(own.uid) ?? len;
           return (
             <g key={`r${p.metadata.uid}`} className="cv-edge">
-              <path d={d} fill="none" stroke={`hsl(${hue} 55% ${h ? 45 : 72}%)`} strokeOpacity={h ? 0.95 : 0.55} strokeWidth={h ? 1.6 : 1.1} />
+              <path d={d} fill="none" style={{ stroke: `hsl(${hue} 55% var(${h ? "--cv-owner-hot-l" : "--cv-owner-l"}))` }} strokeOpacity={h ? 0.95 : 0.7} strokeWidth={h ? 1.6 : 1.2} />
               {detail > 0 && cat !== "gone" && (
                 <>
                   <Comet d={d} span={span} hop={child ? "toPod" : "direct"} root={root} color="var(--cv-flow)" />
@@ -760,8 +761,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         ))}
       </g>
 
-      {/* ------------ controllers */}
-      {topCards.map(({ kind, obj, x, y: ty, w }) => {
+      {/* ------------ controllers: a kind label over the name, the image on the right of the label, readiness beside the name */}
+      {topCards.map(({ kind, obj, x, y: ty, w, children }) => {
         const ns = obj.metadata.namespace;
         const name = obj.metadata.name;
         const sel = isSel(kind, name, ns);
@@ -769,7 +770,12 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const hpa = kind === "deployment" ? hpaFor("Deployment", name, ns) : kind === "statefulset" ? hpaFor("StatefulSet", name, ns) : undefined;
         const dropKey = kind === "deployment" ? `deployment:${ns}/${name}` : undefined;
         const dragItem: DragItem | undefined = kind === "deployment" ? { kind: "object", type: "deployment", ns: ns ?? "default", name, label: `Deployment ${name}` } : undefined;
-        const tagW = tagWidth(card.status, T);
+        // The colour bar matches the Pods' revision colour: the newest ReplicaSet's, folded or not.
+        const newest = kind === "deployment" ? [...children.map((ch) => ch.obj), ...rsAll.filter((r) => folded.get(r.metadata.uid) === obj.metadata.uid)].sort((p, q) => q.metadata.creationTimestamp - p.metadata.creationTimestamp)[0] : undefined;
+        const hue = hueFor(newest?.metadata.name ?? name);
+        const state = card.status.replace(/ ready$/, "");
+        const stateW = textWidth(state, fz(12.5), { mono: true, weight: 600 }) + fz(14);
+        const kindW = textWidth(card.kindLabel.toUpperCase(), fz(10), { weight: 600 }) * 1.1 + 10;
         return (
           <g
             key={obj.metadata.uid}
@@ -780,20 +786,32 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             onClick={click({ kind, ns, name })}
             {...act({ kind, ns, name }, `${card.kindLabel} ${name}, ${card.status}`)}
           >
+            <title>{`${card.kindLabel} ${nsPrefix(ns) + name} · ${card.sub}`}</title>
             <rect className="cv-body" x={x} y={ty} width={w} height={DEP_H} rx={R} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={ty - 3.5} width={w + 7} height={DEP_H + 7} rx={R} />}
-            {dropKey && hl(dropKey) && <rect x={x - 3} y={ty - 3} width={w + 6} height={DEP_H + 6} rx={R} fill="#326ce5" fillOpacity={0.05} stroke="#326ce5" strokeWidth={2} strokeDasharray="6 4" />}
-            <KindIcon kind={kind} x={x + 12} y={ty + 16} />
-            <text x={x + 48} y={detail ? ty + 26 : ty + 34} className="cv-title" style={{ fontSize: fz(13.5) }}>
-              {fit(nsPrefix(ns) + name, w - 48 - (detail ? tagW + 20 : 14), fz(13.5), { weight: 600 })}
-              {<title>{nsPrefix(ns) + name}</title>}
+            {sel && <rect className="cv-ring" x={x - 3.5} y={ty - 3.5} width={w + 7} height={DEP_H + 7} rx={R + 3} />}
+            {dropKey && hl(dropKey) && <rect x={x - 3} y={ty - 3} width={w + 6} height={DEP_H + 6} rx={R} fill="var(--cv-accent)" fillOpacity={0.06} stroke="var(--cv-accent)" strokeWidth={2} strokeDasharray="6 4" />}
+            <rect x={x} y={ty + 14} width={3} height={DEP_H - 28} rx={1.5} fill={`hsl(${hue} 65% 55%)`} />
+            {detail > 0 && (
+              <>
+                <text x={x + 16} y={ty + 22} className="cv-kind" style={{ fontSize: fz(10) }}>
+                  {card.kindLabel.toUpperCase()}
+                </text>
+                <text x={x + w - 14} y={ty + 22} textAnchor="end" className="cv-sub cv-mono" style={{ fontSize: fz(10.5) }}>
+                  {fit(card.sub, w - 30 - kindW, fz(10.5), { mono: true })}
+                </text>
+              </>
+            )}
+            <text x={x + 16} y={detail ? ty + 43 : ty + 35} className="cv-title" style={{ fontSize: fz(15) }}>
+              {fit(nsPrefix(ns) + name, w - 30 - (detail ? stateW : 0), fz(15), { weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={x + 48} y={ty + 43} className="cv-sub" style={{ fontSize: fz(11) }}>
-                {fit(`${card.kindLabel} · ${card.sub}`, w - 60, fz(11))}
-              </text>
+              <>
+                <Mark cat={card.tone} x={x + w - 14 - stateW + fz(4)} y={ty + 38.5} r={3.5} />
+                <text x={x + w - 14} y={ty + 43} textAnchor="end" className="cv-mono" fill={TONE_TEXT[card.tone]} style={{ fontSize: fz(12.5), fontWeight: 600 }}>
+                  {state}
+                </text>
+              </>
             )}
-            {detail > 0 && <Tag s={T} x={x + w - 12} y={ty + 11} anchor="end" cat={card.tone} text={card.status} />}
             {hpa && detail > 1 && <Tag s={T} x={x + w / 2} y={ty + DEP_H + 7} anchor="middle" cat="hpa" text={`HPA ${hpa.spec?.minReplicas ?? 1}–${hpa.spec?.maxReplicas} · ${hpaTarget(hpa)}`} />}
           </g>
         );
@@ -814,18 +832,18 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         return (
           <g key={obj.metadata.uid} data-kind={kind} className={cls("cv-obj cv-fade cursor-pointer", failed && "is-bad", hotChild(obj.metadata.uid) && !sel && "is-hot")} opacity={retired ? 0.55 : 1} style={{ transform: `translate(${x}px, ${y}px)`, transition: "transform .6s cubic-bezier(.22,1,.36,1)" }} onClick={click({ kind, ns: obj.metadata.namespace, name: obj.metadata.name })} {...act({ kind, ns: obj.metadata.namespace, name: obj.metadata.name }, label)}>
             <rect className="cv-body" width={RS_W} height={RS_H} rx={R} />
-            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={RS_W + 7} height={RS_H + 7} rx={R} />}
-            <rect x={0} y={10} width={3} height={RS_H - 20} fill={`hsl(${hue} 65% 55%)`} />
-            <text x={14} y={detail ? 21 : 29} className="cv-title cv-mono" style={{ fontSize: fz(11.5) }}>
-              {fit(obj.metadata.name, RS_W - 14 - rightW - 20, fz(11.5), { mono: true, weight: 600, keepEnd: true })}
-              <title>{obj.metadata.name}</title>
-            </text>
+            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={RS_W + 7} height={RS_H + 7} rx={R + 3} />}
+            <rect x={0} y={12} width={3} height={RS_H - 24} rx={1.5} fill={`hsl(${hue} 65% 55%)`} />
             {detail > 0 && (
-              <text x={14} y={37} className="cv-sub" style={{ fontSize: fz(10.5) }}>
-                {isRs ? `ReplicaSet${rev ? ` · rev ${rev}` : ""}` : `Job · ${jobDone(job) ? "complete" : failed ? "failed" : "running"}`}
+              <text x={14} y={19} className="cv-kind" style={{ fontSize: fz(9.5) }}>
+                {isRs ? `REPLICASET${rev ? ` · REV ${rev}` : ""}` : `JOB · ${jobDone(job) ? "COMPLETE" : failed ? "FAILED" : "RUNNING"}`}
               </text>
             )}
-            <text x={RS_W - 12} y={30} textAnchor="end" className={cls("cv-mono", failed ? "fill-red-600" : "cv-dim")} style={{ fontSize: fz(12), fontWeight: 600 }}>
+            <text x={14} y={detail ? 37 : 30} className="cv-title cv-mono" style={{ fontSize: fz(12) }}>
+              {fit(obj.metadata.name, RS_W - 14 - rightW - 20, fz(12), { mono: true, weight: 600, keepEnd: true })}
+              <title>{obj.metadata.name}</title>
+            </text>
+            <text x={RS_W - 12} y={37} textAnchor="end" className="cv-mono" fill={failed ? "var(--cv-danger-text)" : "var(--cv-text)"} style={{ fontSize: fz(12.5), fontWeight: 600 }}>
               {right}
             </text>
           </g>
@@ -835,7 +853,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
       {/* ------------ scheduler queue (only while Pods wait for a Node) */}
       {pending.length > 0 && (
         <g className="cv-fade">
-          <rect x={qx} y={yNodes} width={QUEUE_W} height={queueH} rx={R} fill="#fffbeb" stroke="#f6d38a" strokeDasharray="5 4" />
+          <rect x={qx} y={yNodes} width={QUEUE_W} height={queueH} rx={R} fill="var(--cv-warn-soft)" stroke="var(--cv-warn-line)" strokeDasharray="5 4" />
           <text x={qx + QUEUE_W / 2} y={yNodes + 24} textAnchor="middle" className="cv-title" style={{ fontSize: fz(12) }}>
             Scheduler
           </text>
@@ -865,32 +883,35 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const req = allOnNode.reduce((a, p) => { const r = podRequests(p.spec); return { cpu: a.cpu + r.cpu, memory: a.memory + r.memory }; }, { cpu: 0, memory: 0 });
         const use = metrics.nodes[name];
         const showBars = req.cpu > 0 || !!use;
-        const barX = x + 48;
-        const barW = NW - 48 - 14;
-        const tagW = tagWidth(status, T);
+        // Requested CPU and memory: two thin bars on the right half of the header.
+        const barX = x + NW / 2;
+        const barW = NW / 2 - 16;
+        const statusW = textWidth(status, fz(12.5), { weight: 500 }) + fz(14);
         return (
           <g key={node.metadata.uid} data-kind={isCp ? "cp" : "node"} className={cls("cv-obj cv-fade cursor-pointer", down && "is-down", !down && tone === "warn" && "is-warn")} {...dnd(`node:${name}`)} onClick={click({ kind: "node", name })} {...act({ kind: "node", name }, `Node ${name}, ${status}, ${used} pods${showBars ? `, CPU requested ${Math.round((req.cpu / alloc.cpu) * 100)}%` : ""}`)}>
             <title>{`${name} · ${node.status?.addresses[0].address}`}</title>
             <rect className="cv-body" x={x} y={y} width={NW} height={h} rx={R} />
             {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={NW + 7} height={h + 7} rx={R} />}
             {cordoned && <rect x={x} y={y} width={NW} height={h} rx={R} fill="url(#cv-hatch)" pointerEvents="none" />}
-            {hl(`node:${name}`) && <rect x={x - 4} y={y - 4} width={NW + 8} height={h + 8} rx={R} fill="#326ce5" fillOpacity={0.05} stroke="#326ce5" strokeWidth={2} strokeDasharray="7 5" pointerEvents="none" />}
+            {hl(`node:${name}`) && <rect x={x - 4} y={y - 4} width={NW + 8} height={h + 8} rx={R} fill="var(--cv-accent)" fillOpacity={0.06} stroke="var(--cv-accent)" strokeWidth={2} strokeDasharray="7 5" pointerEvents="none" />}
             <line className="cv-hair" x1={x + 1} x2={x + NW - 1} y1={y + HEAD} y2={y + HEAD} />
-            <KindIcon kind={isCp ? "cp" : "node"} x={x + 12} y={y + 16} />
-            <text x={x + 48} y={y + 29} className="cv-title" style={{ fontSize: fz(14) }}>
-              {fit(name, NW - 48 - tagW - 22, fz(14), { weight: 600 })}
+            <text x={x + 18} y={y + 29} className="cv-title" style={{ fontSize: fz(15.5) }}>
+              {fit(name, NW - 36 - statusW, fz(15.5), { weight: 600 })}
+            </text>
+            <Mark cat={tone} x={x + NW - 16 - statusW + fz(4)} y={y + 24.5} r={3.5} />
+            <text x={x + NW - 16} y={y + 29} textAnchor="end" fill={tone === "ok" ? "var(--cv-ok-text)" : TONE_TEXT[tone]} style={{ fontSize: fz(12.5), fontWeight: 500 }}>
+              {status}
             </text>
             {detail > 0 && (
-              <text x={x + 48} y={y + 45} className="cv-sub" style={{ fontSize: fz(11) }}>
-                {fit(`${isCp ? "control plane" : "worker"}${collapsed ? "" : ` · ${used} pod${used === 1 ? "" : "s"}`}${userTaints.length ? ` · tainted ${userTaints.map((t) => t.key).join(",")}` : ""}`, NW - 60 - (showBars && detail > 1 && !collapsed ? 0 : 0), fz(11))}
+              <text x={x + 18} y={y + 47} className="cv-sub" style={{ fontSize: fz(12) }}>
+                {fit(`${isCp ? "control plane" : "worker"}${collapsed ? "" : ` · ${used} pod${used === 1 ? "" : "s"}`}${userTaints.length ? ` · tainted ${userTaints.map((t) => t.key).join(",")}` : ""}`, showBars && detail > 1 && !collapsed ? NW / 2 - 24 : NW - 36, fz(12))}
               </text>
             )}
-            <Tag s={T} x={x + NW - 12} y={y + 18} anchor="end" cat={tone} text={status} />
             {showBars && detail > 1 && !collapsed && (
               <g pointerEvents="none">
                 <title>{`Requested: CPU ${req.cpu}m of ${alloc.cpu}m, memory ${Math.round(req.memory / 2 ** 20)}Mi of ${Math.round(alloc.memory / 2 ** 20)}Mi${use ? `\nUsing now: CPU ${use.cpu}m, memory ${Math.round(use.memory / 2 ** 20)}Mi` : ""}`}</title>
-                <Bar x={barX} y={y + 52} w={barW / 2 - 6} frac={req.cpu / alloc.cpu} usage={use ? use.cpu / alloc.cpu : undefined} label="cpu" />
-                <Bar x={barX + barW / 2 + 6} y={y + 52} w={barW / 2 - 6} frac={req.memory / alloc.memory} usage={use ? use.memory / alloc.memory : undefined} label="mem" />
+                <Bar x={barX} y={y + 40} w={barW} frac={req.cpu / alloc.cpu} usage={use ? use.cpu / alloc.cpu : undefined} label="cpu" />
+                <Bar x={barX} y={y + 50} w={barW} frac={req.memory / alloc.memory} usage={use ? use.memory / alloc.memory : undefined} label="mem" />
               </g>
             )}
             {!collapsed && used === 0 && !isCp && detail > 0 && (
@@ -960,6 +981,9 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const hasVol = (pod.spec?.volumes ?? []).some((v) => v.persistentVolumeClaim);
         const m = metrics.pods[pod.metadata.uid];
         const icons = (isolated ? 13 : 0) + (hasVol ? 13 : 0);
+        const healthy = cat === "ok" && status === "Running";
+        // The workload a Pod belongs to: its ReplicaSet's Deployment (the ReplicaSet name minus its hash), or its owner.
+        const workload = own?.kind === "ReplicaSet" ? own.name.replace(/-[a-z0-9]{6,10}$/, "") : (own?.name ?? "standalone Pod");
         const rps = cat === "gone" ? 0 : podRate(pod.metadata.uid);
         return (
           <g
@@ -973,49 +997,45 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             {...act({ kind: "pod", ns: pod.metadata.namespace, name: pod.metadata.name }, `Pod ${pod.metadata.name}, ${status}${nodeName ? `, on ${nodeName}` : ", not scheduled"}${r ? `, ${r} restarts` : ""}${isolated ? ", isolated by a NetworkPolicy" : ""}`)}
           >
             <title>{`${pod.metadata.name}\n${st}${pod.status?.podIP ? ` · ${pod.status.podIP}` : ""}${m ? `\nCPU ${m.cpu}m · memory ${Math.round(m.memory / 2 ** 20)}Mi` : ""}${isolated ? "\nIsolated by a NetworkPolicy" : ""}`}</title>
-            {hl(`pod:${pod.metadata.namespace}/${pod.metadata.name}`) && <rect x={-3} y={-3} width={CHIP_W + 6} height={CHIP_H + 6} rx={R} fill="#dc2626" fillOpacity={0.08} stroke="#dc2626" strokeWidth={2} strokeDasharray="5 3" />}
+            {hl(`pod:${pod.metadata.namespace}/${pod.metadata.name}`) && <rect x={-3} y={-3} width={CHIP_W + 6} height={CHIP_H + 6} rx={R} fill="var(--cv-danger)" fillOpacity={0.08} stroke="var(--cv-danger)" strokeWidth={2} strokeDasharray="5 3" />}
             {/* A new Pod lands with a ripple and a little pop. */}
-            {cat !== "gone" && <rect className="cv-ripple" width={CHIP_W} height={CHIP_H} rx={R} />}
+            {cat !== "gone" && <rect className="cv-ripple" width={CHIP_W} height={CHIP_H} rx={R - 2} />}
             <g className="cv-pop">
-            <rect className="cv-body cv-shadow" width={CHIP_W} height={CHIP_H} rx={R} />
-            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={CHIP_W + 7} height={CHIP_H + 7} rx={R + 3} />}
+            <rect className="cv-body cv-shadow" width={CHIP_W} height={CHIP_H} rx={R - 2} />
+            {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={CHIP_W + 7} height={CHIP_H + 7} rx={R + 1} />}
             {/* Revision colour: Pods from the same ReplicaSet share it, so a rolling update shows old and new side by side. */}
-            <rect x={0} y={12} width={3} height={CHIP_H - 24} rx={1.5} fill={cat === "stale" || cat === "gone" ? "#cbd5e1" : `hsl(${hue} 65% 55%)`} />
-            <PodIcon cat={cat} x={18} y={CHIP_H / 2} r={detail < 2 ? 12 : 11} />
+            <rect x={0} y={12} width={3} height={CHIP_H - 24} rx={1.5} fill={cat === "stale" || cat === "gone" ? "var(--cv-muted)" : `hsl(${hue} 65% 55%)`} />
             {detail < 2 ? (
               detail > 0 && (
-                <text x={34} y={CHIP_H / 2 + 4} className="cv-title cv-mono" style={{ fontSize: fz(11) }}>
-                  {fit(short, CHIP_W - 38, fz(11), { mono: true, weight: 600 })}
+                <text x={14} y={CHIP_H / 2 + 5} className="cv-title cv-mono" style={{ fontSize: fz(13) }}>
+                  {fit(short, CHIP_W - 24, fz(13), { mono: true, weight: 600 })}
                 </text>
               )
             ) : (
               <>
-                <text x={33} y={20} className="cv-title cv-mono" style={{ fontSize: fz(11) }}>
-                  {fit(short, CHIP_W - 33 - (r > 0 ? 24 : 6), fz(11), { mono: true, weight: 600 })}
+                {/* Line 1: the Pod's own name and, while it serves, its request rate. */}
+                <text x={14} y={21} className="cv-title cv-mono" style={{ fontSize: fz(13) }}>
+                  {fit(short, CHIP_W - 24 - (rps ? textWidth(fmtRate(rps), fz(11.5), { mono: true, weight: 600 }) + 6 : 0), fz(13), { mono: true, weight: 600 })}
                 </text>
-                {/* A Pod serving traffic shows its rate instead of "Running": its green icon already says it runs. */}
-                {!(rps > 0 && status === "Running") && (
-                  <text x={33} y={35} fill={CAT[cat].text} style={{ fontSize: fz(9.5), fontWeight: 500 }}>
-                    {fit(status, CHIP_W - 36 - icons - (rps ? textWidth(fmtRate(rps), fz(9.5), { mono: true, weight: 600 }) + 4 : 0), fz(9.5), { weight: 500 })}
-                  </text>
-                )}
                 {rps > 0 && (
-                  <text x={status === "Running" ? 33 : CHIP_W - 7 - icons} y={35} textAnchor={status === "Running" ? "start" : "end"} className="cv-mono" fill="var(--cv-flow)" style={{ fontSize: fz(9.5), fontWeight: 600 }}>
+                  <text x={CHIP_W - 10} y={21} textAnchor="end" className="cv-mono" fill={podErr(pod.metadata.uid) >= 0.01 ? ERR : "var(--cv-flow)"} style={{ fontSize: fz(11.5), fontWeight: 600 }}>
                     {fmtRate(rps)}
                   </text>
                 )}
-                {m && m.cpu > 0 && <rect x={10} y={CHIP_H - 5} width={Math.max(2, Math.min(1, m.cpu / Math.max(1, podRequests(pod.spec).cpu || 1000)) * (CHIP_W - 20))} height={2} rx={1} fill="var(--cv-k8s)" opacity={0.45} />}
-                {isolated && <Shield x={CHIP_W - 14} y={CHIP_H - 16} />}
-                {hasVol && <Cylinder x={CHIP_W - (isolated ? 27 : 14)} y={CHIP_H - 16} />}
-              </>
-            )}
-            {r > 0 && detail > 0 && (
-              <g>
-                <rect x={CHIP_W - 22} y={6} width={17} height={14} rx={7} fill="#fee2e2" />
-                <text x={CHIP_W - 13.5} y={16} textAnchor="middle" fill="#b91c1c" style={{ fontSize: fz(9), fontWeight: 700 }}>
-                  {r}
+                {/* Line 2: who owns it while all is well; what's wrong when it isn't. */}
+                <Mark cat={cat} x={17.5} y={35} r={3} />
+                <text x={26} y={39} fill={healthy ? "var(--cv-faint)" : CAT[cat].text} style={{ fontSize: fz(11.5), fontWeight: healthy ? 400 : 500 }}>
+                  {fit(healthy ? workload : status, CHIP_W - 34 - icons - (r > 0 ? 30 : 0), fz(11.5), { weight: healthy ? 400 : 500 })}
                 </text>
-              </g>
+                {r > 0 && (
+                  <text x={CHIP_W - 10 - icons} y={39} textAnchor="end" className="cv-mono" fill="var(--cv-danger-text)" style={{ fontSize: fz(11), fontWeight: 600 }}>
+                    <title>{`${r} restart${r === 1 ? "" : "s"}`}</title>↻{r}
+                  </text>
+                )}
+                {m && m.cpu > 0 && <rect x={10} y={CHIP_H - 4} width={Math.max(2, Math.min(1, m.cpu / Math.max(1, podRequests(pod.spec).cpu || 1000)) * (CHIP_W - 20))} height={2} rx={1} fill="var(--cv-k8s)" opacity={0.4} />}
+                {isolated && <Shield x={CHIP_W - 20} y={30} />}
+                {hasVol && <Cylinder x={CHIP_W - (isolated ? 33 : 20)} y={30} />}
+              </>
             )}
             </g>
           </g>
@@ -1032,32 +1052,37 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const headless = s.spec?.clusterIP === "None";
         const lbIp = s.status?.loadBalancer?.ingress?.[0]?.ip;
         const sub = headless ? `headless · DNS → Pod IPs` : `${s.spec?.clusterIP}:${port?.port}${port?.nodePort ? ` · node :${port.nodePort}` : ""}${s.spec?.type === "LoadBalancer" ? ` · ${lbIp ?? "<pending>"}` : ""}`;
-        const tag = `${ready} ep`;
+        const kindLine = headless ? "HEADLESS" : s.spec?.type === "NodePort" ? `NODEPORT${port?.nodePort ? ` :${port.nodePort}` : ""}` : s.spec?.type === "LoadBalancer" ? "LOADBALANCER" : "SERVICE";
         const rate = svcRate.get(s.metadata.uid) ?? 0;
         const err = svcErr.get(s.metadata.uid) ?? 0;
-        const traffic = fmtTraffic(rate, err);
+        // On the card, a failing Service shows just its error share (the rate rides on its wires).
+        const traffic = err >= 0.01 ? `${Math.round(err * 100)}% err` : fmtRate(rate);
         return (
           <g key={s.metadata.uid} data-kind="service" className={cls("cv-obj cv-fade cursor-pointer", !ready && "is-warn", hot && "is-hot")} opacity={dragged("service", s.metadata.namespace, s.metadata.name) ? 0.45 : 1} {...dnd(`service:${s.metadata.namespace}/${s.metadata.name}`, { kind: "object", type: "service", ns: s.metadata.namespace ?? "default", name: s.metadata.name, label: `Service ${s.metadata.name}` })} onClick={click({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name })} {...act({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name }, `Service ${s.metadata.name}, ${headless ? "headless, " : ""}${ready} endpoints`)}>
+            <title>{`Service ${s.metadata.name} · ${sub}`}</title>
             <rect className="cv-body" x={x} y={y} width={SVC_W} height={SVC_H} rx={R} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={SVC_W + 7} height={SVC_H + 7} rx={R} />}
-            <KindIcon kind="service" x={x + 12} y={y + 19} />
-            <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: fz(13.5) }}>
-              {fit(nsPrefix(s.metadata.namespace) + s.metadata.name, SVC_W - 48 - tagWidth(tag, T) - 20, fz(13.5), { weight: 600 })}
-            </text>
+            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={SVC_W + 7} height={SVC_H + 7} rx={R + 3} />}
             {detail > 0 && (
-              <text x={x + 48} y={y + 46} className="cv-sub cv-mono" style={{ fontSize: fz(10.5) }}>
-                {fit(sub, SVC_W - 60 - (rate ? textWidth(traffic, fz(10.5), { mono: true, weight: 600 }) + 10 : 0), fz(10.5), { mono: true })}
-              </text>
-            )}
-            {detail > 0 && rate > 0 && (
               <>
-                <text x={x + SVC_W - 12} y={y + 46} textAnchor="end" className="cv-mono" fill={err >= 0.01 ? ERR : "var(--cv-flow)"} style={{ fontSize: fz(10.5), fontWeight: 600 }}>
-                  {traffic}
+                <text x={x + 16} y={y + 22} className="cv-kind" style={{ fontSize: fz(10) }}>
+                  {kindLine}
                 </text>
-                <Spark x={x + R} y={y + SVC_H - 12} w={SVC_W - 2 * R} h={11} data={svcSeries(s.metadata.uid)} errs={svcSeries(s.metadata.uid, "errs")} />
+                <text x={x + SVC_W - 14} y={y + 22} textAnchor="end" fill={ready ? "var(--cv-faint)" : "var(--cv-danger-text)"} style={{ fontSize: fz(11.5), fontWeight: 500 }}>
+                  {ready} endpoint{ready === 1 ? "" : "s"}
+                </text>
               </>
             )}
-            <Tag s={T} x={x + SVC_W - 12} y={y + 14} anchor="end" cat={ready ? "info" : "bad"} text={tag} />
+            <text x={x + 16} y={detail ? y + 43 : y + 37} className="cv-title" style={{ fontSize: fz(15) }}>
+              {fit(nsPrefix(s.metadata.namespace) + s.metadata.name, SVC_W - 30 - (detail && rate ? textWidth(traffic, fz(12), { mono: true, weight: 600 }) + 10 : 0), fz(15), { weight: 600 })}
+            </text>
+            {detail > 0 && rate > 0 && (
+              <>
+                <text x={x + SVC_W - 14} y={y + 43} textAnchor="end" className="cv-mono" fill={err >= 0.01 ? ERR : "var(--cv-flow)"} style={{ fontSize: fz(12), fontWeight: 600 }}>
+                  {traffic}
+                </text>
+                <Spark x={x + R} y={y + SVC_H - 12} w={SVC_W - 2 * R} h={10} data={svcSeries(s.metadata.uid)} errs={svcSeries(s.metadata.uid, "errs")} />
+              </>
+            )}
           </g>
         );
       })}
@@ -1071,17 +1096,25 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         return (
           <g key={ing.metadata.uid} data-kind="ingress" className={cls("cv-obj cv-fade cursor-pointer", !addr && "is-warn")} onClick={click({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name })} {...act({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name }, `Ingress ${ing.metadata.name}, ${rules.length} rules${addr ? `, address ${addr}` : ", no address yet"}`)}>
             <rect className="cv-body" x={x} y={y} width={ING_W} height={ING_H} rx={R} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={ING_W + 7} height={ING_H + 7} rx={R} />}
-            <KindIcon kind="ingress" x={x + 12} y={y + 19} />
-            <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: fz(13.5) }}>
-              {fit(nsPrefix(ing.metadata.namespace) + ing.metadata.name, ING_W - 48 - tagWidth(tag, T) - 20, fz(13.5), { weight: 600 })}
+            {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={ING_W + 7} height={ING_H + 7} rx={R + 3} />}
+            {detail > 0 && (
+              <>
+                <text x={x + 16} y={y + 22} className="cv-kind" style={{ fontSize: fz(10) }}>
+                  INGRESS
+                </text>
+                <text x={x + ING_W - 14} y={y + 22} textAnchor="end" className="cv-mono" fill={addr ? "var(--cv-faint)" : "var(--cv-warn-text)"} style={{ fontSize: fz(11) }}>
+                  {fit(tag, ING_W - 110, fz(11), { mono: true })}
+                </text>
+              </>
+            )}
+            <text x={x + 16} y={detail ? y + 43 : y + 37} className="cv-title" style={{ fontSize: fz(15) }}>
+              {fit(nsPrefix(ing.metadata.namespace) + ing.metadata.name, 90, fz(15), { weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={x + 48} y={y + 46} className="cv-sub cv-mono" style={{ fontSize: fz(10.5) }}>
-                {fit(rules[0] ? `${rules[0]}${rules.length > 1 ? ` +${rules.length - 1}` : ""}` : "default backend", ING_W - 60, fz(10.5), { mono: true })}
+              <text x={x + ING_W - 14} y={y + 43} textAnchor="end" className="cv-sub cv-mono" style={{ fontSize: fz(11) }}>
+                {fit(rules[0] ? `${rules[0]}${rules.length > 1 ? ` +${rules.length - 1}` : ""}` : "default backend", ING_W - 130, fz(11), { mono: true })}
               </text>
             )}
-            <Tag s={T} x={x + ING_W - 12} y={y + 14} anchor="end" cat={addr ? "ingress" : "warn"} text={tag} />
           </g>
         );
       })}
@@ -1093,13 +1126,13 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
           <g key={it.uid} data-kind={it.kind} className={cls("cv-obj cv-fade cursor-pointer", it.warn && "is-warn")} onClick={click({ kind: it.kind, ns: it.ns, name: it.name })} {...act({ kind: it.kind, ns: it.ns, name: it.name }, `${it.sub.split(" · ")[0]} ${it.name}, ${it.sub}`)}>
             <rect className="cv-body" x={sideX} y={it.y} width={SIDE_W} height={SIDE_H} rx={R} />
             {sel && <rect className="cv-ring" x={sideX - 3.5} y={it.y - 3.5} width={SIDE_W + 7} height={SIDE_H + 7} rx={R} />}
-            <KindGlyph kind={it.kind} x={sideX + 10} y={it.y + 12} size={16} />
-            <text x={sideX + 34} y={detail ? it.y + 17 : it.y + 24} className="cv-title cv-mono" style={{ fontSize: fz(11.5) }}>
-              {fit(it.title, SIDE_W - 42, fz(11.5), { mono: true, weight: 600 })}
+            <KindGlyph kind={it.kind} x={sideX + 12} y={it.y + 14} size={16} />
+            <text x={sideX + 38} y={detail ? it.y + 19 : it.y + 27} className="cv-title" style={{ fontSize: fz(13) }}>
+              {fit(it.title, SIDE_W - 48, fz(13), { weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={sideX + 34} y={it.y + 31} className="cv-sub" style={{ fontSize: fz(10) }}>
-                {fit(it.sub, SIDE_W - 42, fz(10))}
+              <text x={sideX + 38} y={it.y + 35} className="cv-sub" style={{ fontSize: fz(11) }}>
+                {fit(it.sub, SIDE_W - 48, fz(11))}
               </text>
             )}
           </g>
@@ -1324,60 +1357,5 @@ function KindGlyph({ kind, x, y, size = 16 }: { kind: string; x: number; y: numb
   );
 }
 
-/** The header mark of cards, drawn like the official Kubernetes icons: a blue heptagon with a white glyph. */
-function KindIcon({ kind, x, y }: { kind: string; x: number; y: number }) {
-  const cx = x + 13;
-  const cy = y + 13;
-  if (kind === "cp") return <Wheel cx={cx} cy={cy} r={13} />;
-  const G = GLYPH[kind] ?? Layers;
-  return (
-    <g pointerEvents="none">
-      <polygon points={heptagon(cx, cy, 12.5)} fill="var(--cv-k8s)" stroke="var(--cv-k8s)" strokeWidth={3} strokeLinejoin="round" />
-      <g color="#ffffff">
-        <G x={cx - 7} y={cy - 7.5} width={14} height={14} strokeWidth={2.1} aria-hidden />
-      </g>
-    </g>
-  );
-}
 
-/** The Kubernetes helm: the control plane's mark. */
-function Wheel({ cx, cy, r }: { cx: number; cy: number; r: number }) {
-  return (
-    <g pointerEvents="none">
-      <polygon points={heptagon(cx, cy, r * 0.96)} fill="var(--cv-k8s)" stroke="var(--cv-k8s)" strokeWidth={r * 0.22} strokeLinejoin="round" />
-      <circle cx={cx} cy={cy} r={r * 0.42} fill="none" stroke="#fff" strokeWidth={r * 0.12} />
-      {Array.from({ length: 7 }, (_, i) => {
-        const t = -Math.PI / 2 + (i * 2 * Math.PI) / 7;
-        return <line key={i} x1={cx + r * 0.14 * Math.cos(t)} y1={cy + r * 0.14 * Math.sin(t)} x2={cx + r * 0.7 * Math.cos(t)} y2={cy + r * 0.7 * Math.sin(t)} stroke="#fff" strokeWidth={r * 0.1} strokeLinecap="round" />;
-      })}
-      <circle cx={cx} cy={cy} r={r * 0.14} fill="#fff" />
-    </g>
-  );
-}
 
-/**
- * A Pod in the official Kubernetes icon style: a heptagon with a cube. Its health reads by colour AND shape:
- * filled blue running, dashed outline starting, red with "!" failing, grey with a tick finished, faint dashed gone.
- */
-function PodIcon({ cat, x, y, r }: { cat: PodCategory; x: number; y: number; r: number }) {
-  const filled = cat === "ok" || cat === "bad" || cat === "done";
-  const fill = cat === "bad" ? "var(--cv-danger)" : cat === "done" ? "var(--cv-muted)" : "var(--cv-k8s)";
-  const line = cat === "starting" ? "var(--cv-k8s)" : "var(--cv-muted)";
-  const s = r * 0.42;
-  const cube = `M${x - s},${y - s * 0.55} l${s},${-s * 0.5} l${s},${s * 0.5} v${s * 1.15} l${-s},${s * 0.5} l${-s},${-s * 0.5} z M${x - s},${y - s * 0.55} l${s},${s * 0.5} l${s},${-s * 0.5} M${x},${y - s * 0.05} v${s * 1.15}`;
-  return (
-    <g pointerEvents="none" className={cat === "starting" ? "cv-pulse" : cat === "bad" ? "cv-blink" : undefined}>
-      <polygon points={heptagon(x, y, r)} fill={filled ? fill : "var(--cv-surface)"} stroke={filled ? fill : line} strokeWidth={filled ? r * 0.2 : 1.4} strokeLinejoin="round" strokeDasharray={filled ? undefined : "3 2.5"} />
-      {cat === "bad" ? (
-        <g fill="#fff">
-          <rect x={x - r * 0.1} y={y - r * 0.5} width={r * 0.2} height={r * 0.62} rx={r * 0.1} />
-          <circle cx={x} cy={y + r * 0.38} r={r * 0.12} />
-        </g>
-      ) : cat === "done" ? (
-        <path d={`M${x - r * 0.38},${y + r * 0.02} l${r * 0.26},${r * 0.26} l${r * 0.5},${-r * 0.52}`} fill="none" stroke="#fff" strokeWidth={r * 0.16} strokeLinecap="round" strokeLinejoin="round" />
-      ) : (
-        <path d={cube} fill="none" stroke={filled ? "#fff" : line} strokeWidth={Math.max(1.1, r * 0.11)} strokeLinejoin="round" />
-      )}
-    </g>
-  );
-}

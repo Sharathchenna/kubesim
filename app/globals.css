@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Dark mode is a class on <html> (set before first paint from the saved choice or the system setting). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --font-sans: var(--font-display);
   --font-mono: var(--font-geist-mono);
@@ -17,6 +20,59 @@
   --color-signal-soft: #eaf1ff;
 }
 
+/* Ink as an RGB triple for translucent tints, and the Concept Illustrations' line weights. */
+:root {
+  --ink-rgb: 23 35 64;
+  --ill-line: rgb(23 35 64 / 0.32);
+  --ill-wash: rgb(23 35 64 / 0.025);
+  --ill-fill-4: rgb(23 35 64 / 0.04);
+  --ill-fill-6: rgb(23 35 64 / 0.06);
+  --ill-off: rgb(23 35 64 / 0.4);
+  --ill-dots: rgb(23 35 64 / 0.13);
+  --ill-green-line: rgb(21 128 61 / 0.55);
+  --ill-amber-line: rgb(180 83 9 / 0.55);
+  --ill-red-line: rgb(185 28 28 / 0.55);
+}
+.dark {
+  --ink-rgb: 237 237 237;
+  --ill-line: rgb(237 237 237 / 0.28);
+  --ill-wash: rgb(237 237 237 / 0.025);
+  --ill-fill-4: rgb(237 237 237 / 0.045);
+  --ill-fill-6: rgb(237 237 237 / 0.07);
+  --ill-off: rgb(237 237 237 / 0.38);
+  --ill-dots: rgb(237 237 237 / 0.1);
+  --ill-green-line: rgb(74 222 128 / 0.5);
+  --ill-amber-line: rgb(251 191 36 / 0.5);
+  --ill-red-line: rgb(248 113 113 / 0.5);
+}
+
+/* Dark: the same tokens, re-pointed. Status shades flip too, so "bg-red-50 text-red-700" stays a quiet tint with readable text. */
+.dark {
+  color-scheme: dark;
+  --color-paper: #111111;
+  --color-canvas: #0a0a0a;
+  --color-ink: #ededed;
+  --color-ink-soft: #a1a1a1;
+  --color-signal: #4a7ff0;
+  --color-signal-soft: #16203a;
+  --color-red-50: #241011;
+  --color-red-200: #5b2228;
+  --color-red-300: #84303a;
+  --color-red-700: #f87171;
+  --color-red-800: #fca5a5;
+  --color-red-900: #fecaca;
+  --color-red-950: #fee2e2;
+  --color-amber-50: #211a0b;
+  --color-amber-200: #5c4512;
+  --color-amber-700: #fbbf24;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+  --color-amber-950: #fef3c7;
+  --color-green-50: #0d1f13;
+  --color-green-200: #1d4d2f;
+  --color-green-700: #4ade80;
+}
+
 .font-display {
   font-family: var(--font-display), system-ui, sans-serif;
   font-weight: 600;
@@ -30,23 +86,23 @@
 /* A floating card over the Cluster View (Spotlight layout, inspector, popovers). */
 .float-card {
   background: var(--color-paper);
-  border: 1px solid rgb(17 24 39 / 0.1);
+  border: 1px solid color-mix(in srgb, var(--color-ink) 10%, transparent);
   border-radius: 16px;
   box-shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 12px 32px rgb(15 23 42 / 0.08);
 }
 
 html,
 body {
-  background: #ffffff;
-  color: #111827;
+  background: var(--color-paper);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   font-family: var(--font-display), system-ui, sans-serif;
 }
 
 /* Canvas: soft dotted grid that follows pan/zoom (position/size set inline). */
 .canvas-dots {
-  background-color: #f6f7f9;
-  background-image: radial-gradient(circle, rgb(17 24 39 / 0.12) 1px, transparent 1.2px);
+  background-color: var(--color-canvas);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--color-ink) 12%, transparent) 1px, transparent 1.2px);
 }
 /* Cluster View grid: dots, following pan/zoom (size/position set inline). */
 .canvas-grid {
@@ -80,46 +136,93 @@ body {
   font-family: var(--font-display), system-ui, sans-serif;
   --cv-bg: #f6f7f9;
   --cv-surface: #ffffff;
-  --cv-grid: rgb(17 24 39 / 0.05);
+  --cv-tint: #f3f5f8;
+  --cv-cp: #f8f9fb;
   --cv-grid-major: #d5dbe5;
+  --cv-card-stroke: #e2e8f0;
+  --cv-card-hover: #b8c2d3;
   --cv-line: #c3cad6;
   --cv-line-2: #8a94a6;
   --cv-line-3: #326ce5;
   --cv-hair: #e5e7eb;
-  --cv-text: #111827;
-  --cv-dim: #374151;
-  --cv-faint: #6b7280;
+  --cv-text: #0f172a;
+  --cv-dim: #334155;
+  --cv-faint: #64748b;
+  --cv-label: #94a3b8;
   --cv-accent: #326ce5;
   --cv-flow: #326ce5;
+  --cv-live: #93b4f0;
   --cv-ok: #16a34a;
+  --cv-ok-text: #15803d;
   --cv-warn: #d97706;
+  --cv-warn-text: #b45309;
+  --cv-warn-soft: #fffbeb;
+  --cv-warn-line: #f2c27a;
   --cv-danger: #dc2626;
+  --cv-danger-text: #b91c1c;
+  --cv-danger-soft: #fef2f2;
+  --cv-danger-line: #f3a5a5;
+  --cv-failing: #f19a9a;
   --cv-muted: #9ca3af;
   --cv-k8s: #326ce5;
+  /* Owner → Pod wires: the workload's hue at this lightness (and this when highlighted). */
+  --cv-owner-l: 74%;
+  --cv-owner-hot-l: 45%;
+  --cv-shadow: rgb(15 23 42 / 0.06);
   --cv-ease-out: cubic-bezier(0.16, 0.84, 0.44, 1);
   --cv-fast: 120ms;
   --cv-base: 160ms;
 }
-/* Every card is white with a hairline; the kind is told by its Kubernetes icon and label, not by colour. */
-[data-kind] { --k-fill: #ffffff; --k-stroke: #e3e7ee; --k-tint: #f3f5f8; --k-ink: #111827; }
-[data-kind="node"], [data-kind="cp"] { --k-stroke: #d9dee7; }
-[data-kind="cp"] { --k-fill: #fbfcfd; }
-[data-kind="pod"] { --k-stroke: #e3e7ee; }
-[data-kind="configmap"], [data-kind="secret"], [data-kind="pvc"], [data-kind="networkpolicy"], [data-kind="rolebinding"] { --k-ink: #374151; }
-
-.cv-body { stroke-width: 1.5px; }
-[data-kind="cp"] { --k-fill: #f6f5f0; }
-[data-kind="pod"] { --k-stroke: #a4abba; }
-[data-kind="configmap"], [data-kind="secret"], [data-kind="pvc"], [data-kind="networkpolicy"], [data-kind="rolebinding"] { --k-stroke: #a4abba; --k-ink: #3d4a66; }
+/* Dark: true black ground, neutral grey cards and lines, the same hues brightened just enough to read. */
+.dark .cv-root {
+  --cv-bg: #0a0a0a;
+  --cv-surface: #141414;
+  --cv-tint: #1c1c1c;
+  --cv-cp: #111111;
+  --cv-grid-major: #1f1f1f;
+  --cv-card-stroke: #272727;
+  --cv-card-hover: #3d3d3d;
+  --cv-line: #353535;
+  --cv-line-2: #5c5c5c;
+  --cv-line-3: #6b9bff;
+  --cv-hair: #232323;
+  --cv-text: #ededed;
+  --cv-dim: #c7c7c7;
+  --cv-faint: #8f8f8f;
+  --cv-label: #6b6b6b;
+  --cv-accent: #6b9bff;
+  --cv-flow: #6b9bff;
+  --cv-live: #2e4a80;
+  --cv-ok: #22c55e;
+  --cv-ok-text: #4ade80;
+  --cv-warn: #f59e0b;
+  --cv-warn-text: #fbbf24;
+  --cv-warn-soft: #1f190b;
+  --cv-warn-line: #7a5a18;
+  --cv-danger: #f05252;
+  --cv-danger-text: #f87171;
+  --cv-danger-soft: #241011;
+  --cv-danger-line: #7a2b33;
+  --cv-failing: #8a3540;
+  --cv-muted: #5c5c5c;
+  --cv-k8s: #5b8def;
+  --cv-owner-l: 36%;
+  --cv-owner-hot-l: 64%;
+  --cv-shadow: rgb(0 0 0 / 0.5);
+}
+/* Every card is a plain surface with a hairline; the kind is told by its small-caps label, not by colour. */
+[data-kind] { --k-fill: var(--cv-surface); --k-stroke: var(--cv-card-stroke); --k-tint: var(--cv-tint); --k-ink: var(--cv-text); }
+[data-kind="cp"] { --k-fill: var(--cv-cp); }
+[data-kind="configmap"], [data-kind="secret"], [data-kind="pvc"], [data-kind="networkpolicy"], [data-kind="rolebinding"] { --k-ink: var(--cv-dim); }
 
 .cv-body { fill: var(--k-fill); stroke: var(--k-stroke); stroke-width: 1.25px; transition: stroke var(--cv-fast) ease, stroke-width var(--cv-fast) ease; }
-.cv-shadow { filter: drop-shadow(0 1px 1.5px rgb(15 23 42 / 0.06)); }
+.cv-shadow { filter: drop-shadow(0 1px 1.5px var(--cv-shadow)); }
 .cv-obj { outline: none; }
-.cv-obj:hover > .cv-body { stroke: #b8c2d3; }
+.cv-obj:hover > .cv-body { stroke: var(--cv-card-hover); }
 .cv-obj:focus-visible > .cv-body { stroke: var(--cv-accent); stroke-width: 2px; }
-.cv-obj.is-bad > .cv-body { fill: #fef2f2; stroke: #f3a5a5; }
-.cv-obj.is-down > .cv-body { fill: #fef2f2; stroke: #f3a5a5; stroke-dasharray: 5 4; }
-.cv-obj.is-warn > .cv-body { stroke: #f2c27a; }
+.cv-obj.is-bad > .cv-body, .cv-obj.is-bad > .cv-pop > .cv-body { fill: var(--cv-danger-soft); stroke: var(--cv-danger-line); }
+.cv-obj.is-down > .cv-body { fill: var(--cv-danger-soft); stroke: var(--cv-danger-line); stroke-dasharray: 5 4; }
+.cv-obj.is-warn > .cv-body, .cv-obj.is-warn > .cv-pop > .cv-body { stroke: var(--cv-warn-line); }
 .cv-obj.is-hot > .cv-body { stroke: var(--cv-line-3); }
 .cv-tint { fill: var(--k-tint); }
 .cv-ink { color: var(--k-ink); fill: var(--k-ink); }
@@ -128,7 +231,9 @@ body {
 .cv-sub { fill: var(--cv-faint); }
 .cv-dim { fill: var(--cv-dim); }
 .cv-mono { font-family: var(--font-geist-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
-.cv-label { fill: var(--cv-faint); font-size: 11px; font-weight: 500; letter-spacing: 0.1em; }
+/* A card's kind, in small caps above its name. */
+.cv-kind { fill: var(--cv-label); font-weight: 600; letter-spacing: 0.08em; }
+.cv-label { fill: var(--cv-label); font-size: 11px; font-weight: 600; letter-spacing: 0.12em; }
 
 /* Selection: a separate accent ring with a gap, popping in. */
 @keyframes cv-ring-in { from { opacity: 0; transform: scale(1.03); } to { opacity: 1; transform: none; } }
@@ -140,10 +245,10 @@ body {
 .cv-arrow { fill: var(--cv-line); }
 .cv-arrow.is-hot { fill: var(--cv-line-3); }
 .cv-svc-wire { fill: none; stroke: var(--cv-line); stroke-width: 1.25px; }
-.cv-svc-wire.is-live { stroke: #93b4f0; }
-.cv-svc-wire.is-failing { stroke: #f19a9a; }
+.cv-svc-wire.is-live { stroke: var(--cv-live); }
+.cv-svc-wire.is-failing { stroke: var(--cv-failing); }
 .cv-svc-wire.is-hot { stroke: var(--cv-line-3); stroke-width: 1.8px; }
-.cv-svc-wire.is-notready { stroke: #f3a5a5; stroke-dasharray: 4 4; }
+.cv-svc-wire.is-notready { stroke: var(--cv-danger-line); stroke-dasharray: 4 4; }
 
 /* Health marks */
 .cv-mark-ok { fill: var(--cv-ok); }

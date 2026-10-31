@@ -54,17 +54,17 @@ export interface Scene {
 
 // Drawn like a blueprint: ink lines on paper. Kinds are told apart by a faint
 // ink fill; colour is kept for health only (green running, amber starting, red failing).
-const INK = "#111827";
-const PAPER = "#ffffff";
-const SOFT = "#5a6680";
-const LINE = "rgba(23,35,64,.32)";
+const INK = "var(--color-ink)";
+const PAPER = "var(--color-paper)";
+const SOFT = "var(--color-ink-soft)";
+const LINE = "var(--ill-line)";
 const TONES: Record<Tone, { fill: string; stroke: string; text: string; sub: string; on: string }> = {
   slate: { fill: PAPER, stroke: LINE, text: INK, sub: SOFT, on: INK },
-  violet: { fill: "rgba(23,35,64,.06)", stroke: LINE, text: INK, sub: SOFT, on: INK },
-  blue: { fill: "rgba(23,35,64,.04)", stroke: LINE, text: INK, sub: SOFT, on: INK },
-  green: { fill: PAPER, stroke: "rgba(21,128,61,.55)", text: INK, sub: "#15803d", on: "#15803d" },
-  amber: { fill: PAPER, stroke: "rgba(180,83,9,.55)", text: INK, sub: "#b45309", on: "#b45309" },
-  red: { fill: PAPER, stroke: "rgba(185,28,28,.55)", text: INK, sub: "#b91c1c", on: "#b91c1c" },
+  violet: { fill: "var(--ill-fill-6)", stroke: LINE, text: INK, sub: SOFT, on: INK },
+  blue: { fill: "var(--ill-fill-4)", stroke: LINE, text: INK, sub: SOFT, on: INK },
+  green: { fill: PAPER, stroke: "var(--ill-green-line)", text: INK, sub: "var(--color-green-700)", on: "var(--color-green-700)" },
+  amber: { fill: PAPER, stroke: "var(--ill-amber-line)", text: INK, sub: "var(--color-amber-700)", on: "var(--color-amber-700)" },
+  red: { fill: PAPER, stroke: "var(--ill-red-line)", text: INK, sub: "var(--color-red-700)", on: "var(--color-red-700)" },
 };
 
 type Pt = { x: number; y: number };
@@ -120,7 +120,7 @@ function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?
               const t = TONES[b.tone ?? "slate"];
               return (
                 <g key={b.id} className="ill-t" opacity={lit(b.id) ? 1 : 0.4}>
-                  <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={b.tone && b.tone !== "slate" ? t.fill : "rgba(23,35,64,.025)"} stroke={on.has(b.id) ? t.on : t.stroke} strokeDasharray="5 4" />
+                  <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={b.tone && b.tone !== "slate" ? t.fill : "var(--ill-wash)"} stroke={on.has(b.id) ? t.on : t.stroke} strokeDasharray="5 4" />
                   <text x={b.x + 12} y={b.y + 18} fill={t.sub} style={{ fontSize: 10.5, fontWeight: 600, letterSpacing: "0.06em" }}>
                     {b.label.toUpperCase()}
                   </text>
@@ -164,15 +164,15 @@ function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?
               return (
                 <g key={b.id} className="ill-t" opacity={lit(b.id) ? 1 : 0.35}>
                   <rect x={b.x} y={b.y} width={b.w} height={b.h} fill={isOff ? PAPER : t.fill} stroke={active ? t.on : t.stroke} strokeWidth={active ? 1.8 : 1} />
-                  <text x={b.x + b.w / 2} y={b.y + (b.sub ? b.h / 2 - 2 : b.h / 2 + 4)} textAnchor="middle" fill={isOff ? "rgba(23,35,64,.4)" : t.text} style={{ fontSize: 12, fontWeight: 600 }}>
+                  <text x={b.x + b.w / 2} y={b.y + (b.sub ? b.h / 2 - 2 : b.h / 2 + 4)} textAnchor="middle" fill={isOff ? "var(--ill-off)" : t.text} style={{ fontSize: 12, fontWeight: 600 }}>
                     {b.label}
                   </text>
                   {b.sub && (
-                    <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 13} textAnchor="middle" fill={isOff ? "rgba(23,35,64,.4)" : t.sub} style={{ fontSize: 10 }}>
+                    <text x={b.x + b.w / 2} y={b.y + b.h / 2 + 13} textAnchor="middle" fill={isOff ? "var(--ill-off)" : t.sub} style={{ fontSize: 10 }}>
                       {b.sub}
                     </text>
                   )}
-                  {isOff && <path d={`M${b.x + b.w - 16},${b.y + 8} l8,8 M${b.x + b.w - 8},${b.y + 8} l-8,8`} stroke="#b91c1c" strokeWidth={1.6} strokeLinecap="round" />}
+                  {isOff && <path d={`M${b.x + b.w - 16},${b.y + 8} l8,8 M${b.x + b.w - 8},${b.y + 8} l-8,8`} stroke="var(--color-red-700)" strokeWidth={1.6} strokeLinecap="round" />}
                 </g>
               );
             })}
@@ -181,7 +181,7 @@ function SceneSvg({ scene, i, className }: { scene: Scene; i: number; className?
 }
 
 /** Faint ink dot grid on paper behind the drawing. */
-const DOTS: React.CSSProperties = { backgroundImage: "radial-gradient(circle, rgba(23,35,64,.13) 1px, transparent 1.2px)", backgroundSize: "18px 18px" };
+const DOTS: React.CSSProperties = { backgroundImage: "radial-gradient(circle, var(--ill-dots) 1px, transparent 1.2px)", backgroundSize: "18px 18px" };
 
 /** A Concept Illustration inside a lesson step: collapsed to one ruled row until the learner asks for it. */
 export function Illustration({ scene, defaultOpen = false }: { scene: Scene; /** Start expanded (e.g. on a page that is all diagrams). */ defaultOpen?: boolean }) {

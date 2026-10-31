@@ -64,15 +64,15 @@ export function StepMark({ n, state, size = 24 }: { n: number; state: "done" | "
     <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="shrink-0" aria-hidden>
       <polygon
         points={heptagon(c, c, c - 2)}
-        fill={state === "done" ? "#326ce5" : state === "current" ? "#eaf1ff" : "#ffffff"}
-        stroke={state === "todo" ? "rgb(17 24 39 / 0.2)" : "#326ce5"}
+        fill={state === "done" ? "var(--color-signal)" : state === "current" ? "var(--color-signal-soft)" : "var(--color-paper)"}
+        stroke={state === "todo" ? "var(--ill-line)" : "var(--color-signal)"}
         strokeWidth={state === "done" ? 2.5 : 1.4}
         strokeLinejoin="round"
       />
       {state === "done" ? (
         <path d={`M${c - 4.2},${c + 0.2} l2.8,2.8 l5.4,-5.6`} fill="none" stroke="#fff" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
       ) : (
-        <text x={c} y={c + 3.8} textAnchor="middle" fontSize={size * 0.44} fontWeight={600} fill={state === "current" ? "#326ce5" : "#6b7280"} fontFamily="var(--font-geist-mono), monospace">
+        <text x={c} y={c + 3.8} textAnchor="middle" fontSize={size * 0.44} fontWeight={600} fill={state === "current" ? "var(--color-signal)" : "var(--color-ink-soft)"} fontFamily="var(--font-geist-mono), monospace">
           {n}
         </text>
       )}

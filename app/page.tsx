@@ -61,7 +61,7 @@ export default function Home() {
       <AppHeader sheet />
       <main id="main">
         {/* ---------------------------------------------------------------- hero: the wordmark is a live cluster */}
-        <section aria-labelledby="title" className="bg-signal text-white">
+        <section aria-labelledby="title" className="bg-[#326ce5] text-white">
           <div className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 sm:pb-14 sm:pt-10">
             <PodWordmark>
               <span className="font-mono text-[11.5px] uppercase tracking-[0.06em] text-white/80">A Kubernetes cluster in your browser</span>
@@ -132,7 +132,7 @@ export default function Home() {
 
         {/* ---------------------------------------------------------------- on call: the Daily Incident */}
         <section aria-labelledby="oncall" className="mx-auto max-w-6xl px-4 pt-20 sm:px-6">
-          <div className="grid grid-cols-1 items-center gap-8 rounded-[20px] bg-ink p-6 text-white sm:p-10 lg:grid-cols-[1.2fr_1fr]">
+          <div className="grid grid-cols-1 items-center gap-8 rounded-[20px] bg-[#111827] p-6 text-white ring-1 ring-white/10 sm:p-10 dark:bg-[#161616] lg:grid-cols-[1.2fr_1fr]">
             <div>
               <p className="font-mono text-[12px] uppercase tracking-[0.08em] text-white/60">Daily Incident</p>
               <h2 id="oncall" className="mt-2 text-balance font-sans text-[32px] font-extrabold leading-[1.05] tracking-[-0.03em] sm:text-[40px]">

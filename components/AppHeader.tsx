@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { heptagon } from "@/lib/heptagon";
+import { ThemeToggle } from "./ThemeToggle";
 
 const NAV = [
   { href: "/learn", label: "Lessons" },
@@ -69,7 +70,7 @@ export function AppHeader({ center, right, sheet, trail }: {
           if (!main.hasAttribute("tabindex")) main.setAttribute("tabindex", "-1");
           main.focus();
         }}
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:bg-ink focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-white"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:bg-signal focus:px-3 focus:py-1.5 focus:text-[12px] focus:text-white"
       >
         Skip to content
       </a>
@@ -111,7 +112,10 @@ export function AppHeader({ center, right, sheet, trail }: {
         </nav>
       )}
       <div className="mx-auto flex min-w-0 items-center gap-2 sm:gap-3">{center}</div>
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">{right}</div>
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        <ThemeToggle className="hidden h-8 w-8 place-items-center rounded-md md:grid" />
+        {right}
+      </div>
       {menu && (
         <nav className={`float-card absolute top-[60px] z-50 flex flex-col p-2 ${trail ? "left-2 w-[calc(100%-1rem)] sm:w-64" : "inset-x-2 lg:hidden"}`} aria-label="Main">
           <Link href="/" onClick={() => setMenu(false)} className={`rounded-lg px-3 py-2.5 text-[15px] ${path === "/" ? "bg-signal-soft text-signal" : "text-ink-soft hover:bg-ink/[0.04] hover:text-ink"}`}>
@@ -122,6 +126,7 @@ export function AppHeader({ center, right, sheet, trail }: {
               {n.label}
             </Link>
           ))}
+          <ThemeToggle withLabel className="flex rounded-lg px-3 py-2.5 md:hidden" />
         </nav>
       )}
     </header>

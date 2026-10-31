@@ -324,7 +324,7 @@ export function PanZoom({
       </svg>
 
       {hint && (
-        <div role="status" className="cv-hint pointer-events-none absolute left-1/2 top-16 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink/85 px-3.5 py-1.5 text-[12.5px] text-white shadow-lg">
+        <div role="status" className="cv-hint pointer-events-none absolute left-1/2 top-16 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-[#171717]/95 px-3.5 py-1.5 text-[12.5px] text-white shadow-lg ring-1 ring-white/10">
           {hint === "touch" ? "Drag to move · pinch to zoom · tap anything for details" : "Drag to move · scroll to zoom · click anything for details"}
         </div>
       )}

@@ -29,12 +29,19 @@ export const viewport: Viewport = {
   themeColor: THEME_COLOR,
 };
 
+const THEME_SCRIPT = `try{var t=localStorage.getItem("kubesim.theme");if(t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches)document.documentElement.classList.add("dark")}catch(e){}`;
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
+      <head>
+        {/* Dark mode before first paint: the saved choice, else the system setting (see ThemeToggle). */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

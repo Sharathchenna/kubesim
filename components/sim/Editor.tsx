@@ -14,22 +14,22 @@ import { posthogLogger } from "@/lib/posthog-logger";
 
 const highlight = HighlightStyle.define([
   // Ink on paper: keys in full ink, values a step softer, punctuation and comments faint.
-  { tag: t.propertyName, color: "#111827", fontWeight: "500" },
-  { tag: [t.string, t.content], color: "#5a6680" },
-  { tag: [t.number, t.bool, t.null], color: "#5a6680" },
-  { tag: t.comment, color: "rgba(23,35,64,.45)", fontStyle: "italic" },
-  { tag: [t.punctuation, t.separator], color: "rgba(23,35,64,.4)" },
+  { tag: t.propertyName, color: "var(--color-ink)", fontWeight: "500" },
+  { tag: [t.string, t.content], color: "var(--color-ink-soft)" },
+  { tag: [t.number, t.bool, t.null], color: "var(--color-ink-soft)" },
+  { tag: t.comment, color: "rgb(var(--ink-rgb) / 0.45)", fontStyle: "italic" },
+  { tag: [t.punctuation, t.separator], color: "rgb(var(--ink-rgb) / 0.4)" },
 ]);
 
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "12.5px", backgroundColor: "#ffffff", color: "#111827" },
+  "&": { height: "100%", fontSize: "12.5px", backgroundColor: "var(--color-paper)", color: "var(--color-ink)" },
   ".cm-scroller": { fontFamily: "var(--font-geist-mono), ui-monospace, monospace", lineHeight: "1.65" },
-  ".cm-gutters": { backgroundColor: "#ffffff", border: "none", color: "rgba(17,24,39,.3)" },
-  ".cm-activeLine": { backgroundColor: "rgba(23,35,64,.03)" },
-  ".cm-activeLineGutter": { backgroundColor: "rgba(23,35,64,.03)", color: "#5a6680" },
+  ".cm-gutters": { backgroundColor: "var(--color-paper)", border: "none", color: "rgb(var(--ink-rgb) / 0.3)" },
+  ".cm-activeLine": { backgroundColor: "rgb(var(--ink-rgb) / 0.03)" },
+  ".cm-activeLineGutter": { backgroundColor: "rgb(var(--ink-rgb) / 0.03)", color: "var(--color-ink-soft)" },
   "&.cm-focused": { outline: "2px solid rgba(217,72,15,.5)", outlineOffset: "-2px" },
-  ".cm-cursor": { borderLeftColor: "#111827" },
-  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgba(23,35,64,.12)" },
+  ".cm-cursor": { borderLeftColor: "var(--color-ink)" },
+  "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection": { backgroundColor: "rgb(var(--ink-rgb) / 0.14)" },
 });
 
 /** A YAML editor over the Learner's virtual files, with Apply. */
