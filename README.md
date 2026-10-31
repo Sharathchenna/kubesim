@@ -1,19 +1,28 @@
 # kubesim
 
+**[kubesim-six.vercel.app](https://kubesim-six.vercel.app)** · Learn Kubernetes by breaking it.
+
+![The kubesim logo is made of live Pods: a Node fails and they come back](docs/media/hero.gif)
+
 Learn Kubernetes on a cluster you can see. kubesim runs a simulated Kubernetes cluster in your browser tab. You type real `kubectl` commands and watch Pods get scheduled, crash, heal and roll out, with every step explained in plain English.
 
 It's free, open source (MIT), and has no backend: no sign-up, no cloud account, nothing to install.
+
+![A shop running on the simulated cluster: the database Pod is deleted, errors travel up the request chain in red, and it heals](docs/media/break-and-heal.gif)
+
+It's a simulation built for learning, not a real cluster: there's no Helm, no CRDs and no interactive shell, and some corners are simpler than the real thing. What it does simulate is pinned by tests against real Kubernetes behaviour.
 
 ## What's inside
 
 | | |
 |---|---|
 | **Lessons** (`/learn`) | Hands-on lessons in seven tracks, from your first Pod through health checks, Jobs, config, Ingress, NetworkPolicy, storage, StatefulSets, scheduling, autoscaling and RBAC. Each gives you a fresh cluster, a terminal and a YAML editor. Steps tick off by themselves once you've done them; most Checks look at the cluster's state, not at what you typed. |
+| **Incidents** (`/incidents`, `/daily`) | You're on call: a shop with live traffic is down, the pager shows the error rate, and the clock runs until you find the cause with kubectl and fix it. The Daily Incident is the same outage for everyone each day, with a streak and a result to share. |
 | **Challenges** (`/challenges`) | A broken cluster and a goal, with no instructions: find the cause with kubectl and fix it. Hints and the fix stay hidden until you ask. |
 | **Practice exams** (`/exams`) | Unofficial, timed task lists in the style of the CKAD™ and CKA™ exams, graded from the cluster's state, with solutions afterwards. |
 | **Explainers** (`/explainers`) | Narrated scenarios (self-healing, scaling, rolling updates, Services, Node failure, CrashLoopBackOff, probes, autoscaling, StatefulSets, Ingress, NetworkPolicy) that play step by step on the live cluster. |
 | **Concepts** (`/concepts`) | Step-through illustrations: how a cluster is built, what happens on `kubectl apply`, how a Service routes traffic, how probes, Ingress, NetworkPolicy, volumes, the HPA and RBAC work. They also appear inside the Lessons. |
-| **Sandbox** (`/sandbox`) | Free play: deploy, scale, roll out, power Nodes off and on, cordon and drain. Guided scenarios run with one click. **Share** copies a link that opens a copy of your cluster. |
+| **Sandbox** (`/sandbox`) | Free play: deploy, scale, roll out, power Nodes off and on, cordon and drain. **+ Add** drops in building blocks (a web app, an API, PostgreSQL, MySQL, Redis, a load generator, a whole full-stack app) as real manifests you can open and edit. Guided scenarios run with one click. **Share** copies a link that opens a copy of your cluster. |
 | **Progress** (`/progress`) | What you've finished, on this device only (there are no accounts). |
 
 ## Run it
