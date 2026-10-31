@@ -570,7 +570,7 @@ export function Sandbox() {
         trail={[{ label: "Sandbox" }]}
         center={
           <>
-            <SimControls sim={sim} />
+            <SimControls sim={sim} roomyHeader={false} />
             {!note && sim.restoredFromSave && !sim.scenarioRunning && <span className="hidden text-[13px] text-ink-soft xl:inline">Restored your saved cluster</span>}
             {sim.scenarioRunning && <span className="hidden text-[13px] text-ink xl:inline">Scenario running…</span>}
             {sim.saveTooBig && <span className="hidden text-[13px] text-amber-700 xl:inline" title="This cluster is too big to save in the browser. Scale something down to keep autosaving.">Too big to autosave</span>}

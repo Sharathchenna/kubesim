@@ -74,7 +74,8 @@ export type DockTab = "terminal" | "editor" | "resources" | "events" | "commands
 /** On small screens only one of these is shown at a time. */
 export type MobileView = "canvas" | "dock" | "side";
 
-export function SimControls({ sim }: { sim: SimStore }) {
+/** `roomyHeader` false: a crowded header (the Sandbox's) drops the clock on phones so its buttons fit. */
+export function SimControls({ sim, roomyHeader = true }: { sim: SimStore; roomyHeader?: boolean }) {
   const c = sim.cluster;
   if (!c) return null;
   return (
@@ -89,7 +90,7 @@ export function SimControls({ sim }: { sim: SimStore }) {
       <div className="hidden sm:block">
         <SpeedMenu sim={sim} />
       </div>
-      <div className="flex items-center gap-2 font-mono text-[13px] tabular-nums text-ink" title="Simulated time">
+      <div className={`items-center gap-2 font-mono text-[13px] tabular-nums text-ink ${roomyHeader ? "flex" : "hidden sm:flex"}`} title="Simulated time">
         <span className={`h-1.5 w-1.5 rounded-full ${sim.paused ? "bg-ink/25" : "bg-green-700"}`} />
         {clock(c.now)}
       </div>
@@ -242,7 +243,8 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
   const [textView, setTextView] = useState(false);
   const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
   const [stackEl, setStackEl] = useState<HTMLDivElement | null>(null);
-  const canvasW = useSize(canvasEl).w;
+  const canvasSize = useSize(canvasEl);
+  const canvasW = canvasSize.w;
   const stackH = useSize(stackEl).h;
   const desktop = useDesktop();
   const spotlight = desktop && layout === "spotlight";
@@ -290,6 +292,8 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
   };
   // Phones stack the Nodes so fit-to-screen can show all of them at a readable size.
   const perRow = canvasW > 0 && canvasW < 560 ? 1 : 4;
+  // A tall canvas (Split, a tablet held upright) grows the diagram downwards: the workloads wrap over the Nodes.
+  const wrap = !spotlight && canvasSize.h > canvasSize.w * 0.7;
   const labels: Record<DockTab, React.ReactNode> = {
     terminal: "Terminal",
     editor: "YAML editor",
@@ -304,7 +308,7 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
   const tabOptions = [...tabs.map((t) => ({ value: t as string, label: labels[t] })), ...extraTabs.map((t) => ({ value: t.id, label: t.label }))];
   const extra = extraTabs.find((t) => t.id === tab);
 
-  const view = <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={selection} onSelect={onSelect} showSystem={showSystem} namespace={ns} inset={inset} perRow={perRow} />;
+  const view = <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={selection} onSelect={onSelect} showSystem={showSystem} namespace={ns} inset={inset} perRow={perRow} wrap={wrap} />;
   const canvas = (
     <div ref={setCanvasEl} className="relative h-full min-h-0 w-full overflow-hidden">
       {interactive ? (
@@ -341,6 +345,8 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
             </label>
           )}
         </div>
+        {/* Spotlight's bottom edge belongs to the floating card, so the Text view switch sits up here, clear of the diagram. */}
+        {spotlight && <TextViewButton on={textView} onClick={() => setTextView(!textView)} />}
         {showStory && (
           <div data-overlay="narration" className="ml-auto flex min-w-0 max-w-[460px] flex-1 items-center gap-2.5 rounded-lg border border-signal/25 bg-paper/95 px-3 py-1.5 text-[13px] shadow-[0_1px_2px_rgb(15_23_42/0.05)]" title={explainEvent(story[0])}>
             <span className={`h-2 w-2 shrink-0 rounded-full ${story[0].type === "Warning" ? "bg-amber-500" : "bg-signal"}`} />
@@ -449,7 +455,7 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
         {(sidePanel || allTabs.length > 0) && (
           <div
             ref={setStackEl}
-            className={`float-card absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 overflow-hidden transition-[height] duration-300 ${sidePanel ? "w-[min(1120px,calc(100%-23rem))]" : "w-[min(820px,calc(100%-23rem))]"} ${open ? "h-[clamp(14rem,34vh,20rem)]" : "h-11"}`}
+            className={`float-card absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 overflow-hidden transition-[height] duration-300 ${sidePanel ? "w-[min(1120px,calc(100%-23rem))]" : "w-[min(820px,calc(100%-23rem))]"} ${open ? "h-[clamp(13rem,31vh,19rem)]" : "h-11"}`}
           >
             {sidePanel && open && <div className="flex w-[46%] min-w-0 shrink-0 flex-col border-r border-ink/10">{sidePanel}</div>}
             {allTabs.length > 0 && (
@@ -460,9 +466,6 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
             )}
           </div>
         )}
-        <div className="absolute left-4 top-14 z-10">
-          <TextViewButton on={textView} onClick={() => setTextView(!textView)} />
-        </div>
       </main>
     );
   }

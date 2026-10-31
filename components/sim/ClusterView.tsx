@@ -22,11 +22,11 @@ import type { DragItem } from "@/lib/sim/drag";
 export type SelKind = "pod" | "node" | "service" | "deployment" | "replicaset" | "statefulset" | "daemonset" | "job" | "cronjob" | "ingress" | "configmap" | "secret" | "pvc" | "networkpolicy" | "hpa" | "rolebinding";
 export type Selection = { kind: SelKind; ns?: string; name: string } | null;
 
-const NODE_W = 312;
+const NODE_W = 336;
 const NODE_GAP = 36;
 const HEAD = 62;
 const PAD = 14;
-const CHIP_W = 88;
+const CHIP_W = 96;
 const CHIP_H = 48;
 const CHIP_GAP = 8;
 const COLS = 3;
@@ -36,6 +36,10 @@ const RS_W = 176;
 const Y_DEP = 0;
 const Y_RS = 96;
 const Y_NODES = 212;
+/** Where the Nodes start when no ReplicaSet or Job row sits between them and the workloads. */
+const Y_NODES_FOLDED = 124;
+/** Gap above the Services row and above the Ingress row. */
+const ROW_GAP = 72;
 const SVC_W = 218;
 const SVC_H = 64;
 const ING_W = 250;
@@ -178,6 +182,8 @@ interface Props {
   perRow?: number;
   /** See PanZoom: off when the canvas sits inside a scrolling page. */
   captureWheel?: boolean;
+  /** A tall canvas: wrap the workloads into rows no wider than the Nodes and put config and storage underneath, so the diagram grows down instead of across. */
+  wrap?: boolean;
 }
 
 type TopKind = "deployment" | "statefulset" | "daemonset" | "cronjob" | "job";
@@ -185,6 +191,7 @@ interface TopCard {
   kind: TopKind;
   obj: Deployment | StatefulSet | DaemonSet | CronJob | Job;
   x: number;
+  y: number;
   w: number;
   children: { kind: "replicaset" | "job"; obj: ReplicaSet | Job; x: number; y: number }[];
 }
@@ -210,7 +217,7 @@ function podRefs(p: Pod): { configmap: Set<string>; secret: Set<string>; pvc: Se
   return out;
 }
 
-export function ClusterView({ cluster: c, packets, selection, onSelect, showSystem, slots, now, namespace, inset, perRow = 4, captureWheel }: Props) {
+export function ClusterView({ cluster: c, packets, selection, onSelect, showSystem, slots, now, namespace, inset, perRow = 4, captureWheel, wrap = false }: Props) {
   const [k, setK] = useState(1);
   const drag = useDrag();
   /** Drag + drop wiring for an object: its drop key, optional drag source, and highlight. */
@@ -259,6 +266,41 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   const netpols = c.list<NetworkPolicy>("NetworkPolicy").filter((m) => nsOk(m.metadata.namespace));
   const bindings = c.list<RoleBinding>("RoleBinding").filter((m) => nsOk(m.metadata.namespace) && !SYSTEM_NAMESPACES.has(m.metadata.namespace ?? ""));
 
+  // ---- workloads: controllers, and the ReplicaSets / Jobs under them
+  const groups: Omit<TopCard, "x" | "y" | "w">[] = [
+    ...deps.map((d) => ({
+      kind: "deployment" as const,
+      obj: d,
+      children: rsAll
+        .filter((r) => r.metadata.ownerReferences?.some((o) => o.uid === d.metadata.uid))
+        .filter((r) => (r.spec?.replicas ?? 0) > 0 || (r.status?.replicas ?? 0) > 0 || r.metadata.annotations?.["deployment.kubernetes.io/revision"] === d.metadata.annotations?.["deployment.kubernetes.io/revision"])
+        .sort((a, b) => a.metadata.creationTimestamp - b.metadata.creationTimestamp)
+        .map((r) => ({ kind: "replicaset" as const, obj: r, x: 0, y: Y_RS })),
+    })),
+    ...stss.map((s) => ({ kind: "statefulset" as const, obj: s, children: [] })),
+    ...dss.map((s) => ({ kind: "daemonset" as const, obj: s, children: [] })),
+    ...cjs.map((cj) => ({
+      kind: "cronjob" as const,
+      obj: cj,
+      children: jobs
+        .filter((j) => ownerOf(j)?.uid === cj.metadata.uid)
+        .sort((a, b) => a.metadata.creationTimestamp - b.metadata.creationTimestamp)
+        .slice(-3)
+        .map((j) => ({ kind: "job" as const, obj: j, x: 0, y: Y_RS })),
+    })),
+    ...jobs.filter((j) => !ownerOf(j)).map((j) => ({ kind: "job" as const, obj: j, children: [] })),
+  ];
+  // A busy cluster (four or more workloads) folds a Deployment's only ReplicaSet into the Deployment's card: that row
+  // costs height on every screen and says nothing new until a rollout puts two ReplicaSets side by side.
+  const folded = new Map<string, string>();
+  if (groups.length >= 4)
+    for (const g of groups)
+      if (g.kind === "deployment" && g.children.length === 1) {
+        folded.set(g.children[0].obj.metadata.uid, g.obj.metadata.uid);
+        g.children = [];
+      }
+  const bareRs = rsAll.filter((r) => !r.metadata.ownerReferences?.length);
+
   // ---- node + pod layout
   const podPos = new Map<string, Pt & { pod: Pod }>();
   const nodeBoxes: { node: Node; x: number; y: number; h: number; w: number; collapsed: boolean }[] = [];
@@ -271,7 +313,34 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     if (n && nodes.some((x) => x.metadata.name === n)) (nodePods.get(n) ?? nodePods.set(n, []).get(n)!).push(p);
     else pending.push(p);
   }
-  let rowY = Y_NODES;
+  // A narrow canvas (phones: one Node per row) wraps the workloads, Services and Ingresses into rows this wide;
+  // a tall one (`wrap`) wraps them at the width of the Nodes.
+  const narrow = perRow === 1;
+  let nodesWide = 0;
+  for (let r = 0; r < ordered.length; r += perRow) {
+    const row = ordered.slice(r, r + perRow);
+    nodesWide = Math.max(nodesWide, row.reduce((a, n) => a + (n === cp && !showSystem && !nodePods.get(n.metadata.name)?.length ? CP_W : NODE_W) + NODE_GAP, -NODE_GAP));
+  }
+  const stacked = narrow || wrap;
+  const WRAP = narrow ? 560 : wrap ? Math.max(nodesWide, 560) : Infinity;
+  const widths = groups.map((g) => Math.max(g.kind === "deployment" || g.kind === "cronjob" ? (folded.size ? 240 : 280) : 250, g.children.length * (RS_W + 12) - 12));
+  const bandRows: number[][] = [];
+  groups.forEach((_, i) => {
+    const row = bandRows[bandRows.length - 1];
+    const used = row ? row.reduce((a, j) => a + widths[j] + 28, 0) : 0;
+    if (row && used + widths[i] <= WRAP) row.push(i);
+    else bandRows.push([i]);
+  });
+  const bandY: number[] = [];
+  let bandBottom = Y_DEP;
+  bandRows.forEach((row, r) => {
+    const kids = row.some((i) => groups[i].children.length) || (r === bandRows.length - 1 && bareRs.length > 0);
+    bandY.push(r ? bandBottom + 28 : Y_DEP);
+    bandBottom = bandY[r] + (kids ? Y_RS + RS_H : DEP_H);
+  });
+  if (!bandRows.length && bareRs.length) bandBottom = Y_RS + RS_H;
+  const yNodes = groups.length || bareRs.length ? Math.max(Y_NODES_FOLDED, bandBottom + 66) : Y_NODES;
+  let rowY = yNodes;
   let nodesW = 0;
   for (let r = 0; r < Math.ceil(ordered.length / perRow); r++) {
     const row = ordered.slice(r * perRow, r * perRow + perRow);
@@ -321,65 +390,55 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     for (const [name, m] of nextSlots) slots.set(name, m);
   });
   const qx = -QUEUE_W - NODE_GAP;
-  pending.forEach((p, i) => podPos.set(p.metadata.uid, { x: qx + (QUEUE_W - CHIP_W) / 2, y: Y_NODES + 52 + i * (CHIP_H + CHIP_GAP), pod: p }));
+  pending.forEach((p, i) => podPos.set(p.metadata.uid, { x: qx + (QUEUE_W - CHIP_W) / 2, y: yNodes + 52 + i * (CHIP_H + CHIP_GAP), pod: p }));
   const queueH = Math.max(160, 52 + pending.length * (CHIP_H + CHIP_GAP) + 8);
 
-  // ---- workloads band: controllers on top, their ReplicaSets / Jobs below
+  // ---- workloads band: controllers on top, their ReplicaSets / Jobs below, centred over the Nodes
   const topCards: TopCard[] = [];
   const childBox = new Map<string, { x: number; y: number; kind: "replicaset" | "job"; obj: ReplicaSet | Job }>();
   const cardByUid = new Map<string, TopCard>();
   {
-    const groups: Omit<TopCard, "x" | "w">[] = [
-      ...deps.map((d) => ({
-        kind: "deployment" as const,
-        obj: d,
-        children: rsAll
-          .filter((r) => r.metadata.ownerReferences?.some((o) => o.uid === d.metadata.uid))
-          .filter((r) => (r.spec?.replicas ?? 0) > 0 || (r.status?.replicas ?? 0) > 0 || r.metadata.annotations?.["deployment.kubernetes.io/revision"] === d.metadata.annotations?.["deployment.kubernetes.io/revision"])
-          .sort((a, b) => a.metadata.creationTimestamp - b.metadata.creationTimestamp)
-          .map((r) => ({ kind: "replicaset" as const, obj: r, x: 0, y: Y_RS })),
-      })),
-      ...stss.map((s) => ({ kind: "statefulset" as const, obj: s, children: [] })),
-      ...dss.map((s) => ({ kind: "daemonset" as const, obj: s, children: [] })),
-      ...cjs.map((cj) => ({
-        kind: "cronjob" as const,
-        obj: cj,
-        children: jobs
-          .filter((j) => ownerOf(j)?.uid === cj.metadata.uid)
-          .sort((a, b) => a.metadata.creationTimestamp - b.metadata.creationTimestamp)
-          .slice(-3)
-          .map((j) => ({ kind: "job" as const, obj: j, x: 0, y: Y_RS })),
-      })),
-      ...jobs.filter((j) => !ownerOf(j)).map((j) => ({ kind: "job" as const, obj: j, children: [] })),
-    ];
-    const widths = groups.map((g) => Math.max(g.kind === "deployment" || g.kind === "cronjob" ? 280 : 250, g.children.length * (RS_W + 12) - 12));
-    const total = widths.reduce((a, b) => a + b, 0) + Math.max(0, widths.length - 1) * 28;
-    let x = Math.max(0, (nodesW - total) / 2);
-    groups.forEach((g, i) => {
-      const w = widths[i];
-      const start = x + (w - (g.children.length * (RS_W + 12) - 12)) / 2;
-      const card: TopCard = { ...g, x, w, children: g.children.map((ch, j) => ({ ...ch, x: start + j * (RS_W + 12) })) };
-      for (const ch of card.children) childBox.set(ch.obj.metadata.uid, ch);
-      cardByUid.set(g.obj.metadata.uid, card);
-      topCards.push(card);
-      x += w + 28;
+    let x = 0;
+    let y = Y_DEP;
+    bandRows.forEach((row, r) => {
+      const total = row.reduce((a, i) => a + widths[i], 0) + (row.length - 1) * 28;
+      x = narrow ? 0 : Math.max(0, (nodesW - total) / 2);
+      y = bandY[r];
+      for (const i of row) {
+        const g = groups[i];
+        const w = widths[i];
+        const start = x + (w - (g.children.length * (RS_W + 12) - 12)) / 2;
+        const card: TopCard = { ...g, x, y, w, children: g.children.map((ch, j) => ({ ...ch, x: start + j * (RS_W + 12), y: y + Y_RS })) };
+        for (const ch of card.children) childBox.set(ch.obj.metadata.uid, ch);
+        cardByUid.set(g.obj.metadata.uid, card);
+        topCards.push(card);
+        x += w + 28;
+      }
     });
-    // Bare ReplicaSets get their own boxes.
-    rsAll.filter((r) => !r.metadata.ownerReferences?.length).forEach((rs, j) => childBox.set(rs.metadata.uid, { kind: "replicaset", obj: rs, x: x + j * (RS_W + 12), y: Y_RS }));
+    // Bare ReplicaSets get their own boxes, after the last workload.
+    bareRs.forEach((rs, j) => childBox.set(rs.metadata.uid, { kind: "replicaset", obj: rs, x: x + j * (RS_W + 12), y: y + Y_RS }));
   }
   const workloadsRight = Math.max(0, ...topCards.map((t) => t.x + t.w), ...[...childBox.values()].map((b) => b.x + RS_W));
 
   // ---- services, then ingresses under them
-  const svcY = nodesBottom + 84;
-  const svcTotal = services.length * (SVC_W + 24) - 24;
-  const svcBoxes = services.map((s, i) => ({ s, x: Math.max(0, (nodesW - svcTotal) / 2) + i * (SVC_W + 24), y: svcY }));
+  const svcY = nodesBottom + ROW_GAP;
+  /** Lays a row of equal boxes out under the Nodes, centred over them, wrapping on a narrow canvas. */
+  const rowOf = <T,>(items: T[], w: number, h: number, y0: number) => {
+    const per = Math.max(1, Math.min(items.length, Math.floor((Math.min(WRAP, 1e5) + 24) / (w + 24))));
+    const total = per * (w + 24) - 24;
+    const x0 = narrow ? 0 : Math.max(0, (nodesW - total) / 2);
+    return items.map((it, i) => ({ it, x: x0 + (i % per) * (w + 24), y: y0 + Math.floor(i / per) * (h + 24) }));
+  };
+  const svcBoxes = rowOf(services, SVC_W, SVC_H, svcY).map(({ it, x, y }) => ({ s: it, x, y }));
   const svcBox = new Map(svcBoxes.map((b) => [`${b.s.metadata.namespace}/${b.s.metadata.name}`, b]));
-  const ingY = (services.length ? svcY + SVC_H : nodesBottom) + 84;
-  const ingTotal = ingresses.length * (ING_W + 24) - 24;
-  const ingBoxes = ingresses.map((ing, i) => ({ ing, x: Math.max(0, (nodesW - ingTotal) / 2) + i * (ING_W + 24), y: ingY }));
+  const ingY = (services.length ? Math.max(...svcBoxes.map((b) => b.y)) + SVC_H : nodesBottom) + ROW_GAP;
+  const ingBoxes = rowOf(ingresses, ING_W, ING_H, ingY).map(({ it, x, y }) => ({ ing: it, x, y }));
 
   // ---- config, storage, policy and access column
-  const sideX = Math.max(nodesW, workloadsRight) + 44;
+  // It starts level with the Nodes, below the workloads band, so it only has to clear the Nodes, Services and Ingresses.
+  // A narrow canvas puts it under everything instead.
+  const lowest = Math.max(nodesBottom, ...svcBoxes.map((b) => b.y + SVC_H), ...ingBoxes.map((b) => b.y + ING_H));
+  const sideX = stacked ? 0 : Math.max(nodesW, ...svcBoxes.map((b) => b.x + SVC_W), ...ingBoxes.map((b) => b.x + ING_W)) + 44;
   type Side = { kind: SelKind; ns?: string; name: string; title: string; sub: string; tone: string; y: number; uid: string; warn?: boolean };
   const sections: { label: string; items: Omit<Side, "y">[] }[] = [
     {
@@ -413,7 +472,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   const sideItems: Side[] = [];
   const sideLabels: { label: string; y: number }[] = [];
   {
-    let y = Y_NODES;
+    let y = stacked ? lowest + ROW_GAP : yNodes;
     for (const s of sections) {
       sideLabels.push({ label: s.label, y: y - 14 });
       for (const it of s.items) {
@@ -438,7 +497,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     selection && ["deployment", "statefulset", "daemonset", "cronjob", "job"].includes(selection.kind)
       ? findTop(selection.kind as TopKind, selection.name, selection.ns)
       : undefined;
-  const topOfChild = (uid?: string) => (uid ? topCards.find((t) => t.children.some((ch) => ch.obj.metadata.uid === uid) || t.obj.metadata.uid === uid) : undefined);
+  const topOfChild = (uid?: string) => (uid ? topCards.find((t) => t.children.some((ch) => ch.obj.metadata.uid === uid) || t.obj.metadata.uid === uid || folded.get(uid) === t.obj.metadata.uid) : undefined);
   const hotTop = selTop ?? topOfChild(selChildUid);
   const selSvc = selection?.kind === "service" ? services.find((s) => s.metadata.name === selection.name && s.metadata.namespace === (selection.ns ?? "default")) : undefined;
   const selIng = selection?.kind === "ingress" ? ingresses.find((s) => s.metadata.name === selection.name && s.metadata.namespace === (selection.ns ?? "default")) : undefined;
@@ -533,18 +592,21 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   const sideBottom = sideItems.length ? sideItems[sideItems.length - 1].y + SIDE_H : 0;
   const minX = (pending.length ? qx : 0) - 40;
   const maxX = Math.max(nodesW, workloadsRight, ...svcBoxes.map((s) => s.x + SVC_W), ...ingBoxes.map((s) => s.x + ING_W), sideItems.length ? sideX + SIDE_W : 0) + 40;
-  const maxY = Math.max(ingresses.length ? ingY + ING_H : services.length ? svcY + SVC_H : nodesBottom, sideBottom) + 40;
-  const top = (topCards.length || childBox.size ? Y_DEP : Y_NODES) - 40;
+  const maxY = Math.max(lowest, sideBottom) + 40;
+  const top = (topCards.length || childBox.size ? Y_DEP : yNodes) - 40;
   const bounds: Bounds = { x: minX, y: top, w: maxX - minX, h: maxY - top };
   // Fit-to-screen always shows every Node (and the scheduler queue beside them).
   const nodesLeft = pending.length ? qx : 0;
-  const nodesArea: Bounds = { x: nodesLeft, y: Y_NODES - 24, w: nodesW - nodesLeft, h: Math.max(nodesBottom, pending.length ? Y_NODES + queueH : 0) - Y_NODES + 24 };
+  const nodesArea: Bounds = { x: nodesLeft, y: yNodes - 24, w: nodesW - nodesLeft, h: Math.max(nodesBottom, pending.length ? yNodes + queueH : 0) - yNodes + 24 };
 
   const hpaFor = (kind: string, name: string, ns?: string) => hpas.find((h) => h.spec?.scaleTargetRef.kind === kind && h.spec.scaleTargetRef.name === name && h.metadata.namespace === ns);
   const metrics = c.state.metrics;
 
   // Level of detail: zoomed out, objects simplify instead of shrinking their text.
   const detail = k >= 0.7 ? 2 : k >= 0.5 ? 1 : 0;
+  // Zoomed out to fit, text grows a little (up to 25%) instead of shrinking with the boxes, so it stays readable.
+  const T = Math.min(1.25, Math.max(1, 0.85 / k));
+  const fz = (n: number) => n * T;
   // Live request rates, from the Pods' own request logs (what metrics-server and the HPA read too).
   const beat = Math.floor(c.now / RATE_BEAT) * RATE_BEAT;
   const series = new Map(pods.map((p) => [p.metadata.uid, servedSeries(c, p.metadata.uid, beat)]));
@@ -574,9 +636,9 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     for (const { key, e, r, err } of wires) {
       if (!r) continue;
       const text = fmtTraffic(r, err);
-      const w = rateWidth(text);
+      const w = rateWidth(text, T);
       const spots = [0.5, 0.62, 0.38, 0.72, 0.28].map((t) => onCubic(e.a, e.c1, e.c2, e.b, t));
-      const at = spots.find((q) => placed.every((o) => Math.abs(o.x - q.x) > (o.w + w) / 2 + 18 || Math.abs(o.y - q.y) > 21)) ?? spots[0];
+      const at = spots.find((q) => placed.every((o) => Math.abs(o.x - q.x) > (o.w + w) / 2 + 18 || Math.abs(o.y - q.y) > 21 * T)) ?? spots[0];
       placed.push({ ...at, w });
       rateLabels.push({ ...at, key, text, bad: err >= 0.01 });
     }
@@ -593,18 +655,19 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     const t = own && podTop(p.metadata.uid);
     if (!own || !t) return [];
     const child = childBox.get(own.uid);
-    const card = child ? undefined : cardByUid.get(own.uid);
+    // A folded ReplicaSet's Pods hang straight off their Deployment's card.
+    const card = child ? undefined : cardByUid.get(folded.get(own.uid) ?? own.uid);
     if (!child && !card) return [];
-    const from = child ? { x: child.x + RS_W / 2, y: child.y + RS_H } : { x: card!.x + card!.w / 2, y: Y_DEP + DEP_H };
-    const h = (child ? hotChild(own.uid) : hotCard(own.uid)) || selPod?.metadata.uid === p.metadata.uid;
-    const hue = hueFor(child ? child.obj.metadata.name : card!.obj.metadata.name);
+    const from = child ? { x: child.x + RS_W / 2, y: child.y + RS_H } : { x: card!.x + card!.w / 2, y: card!.y + DEP_H };
+    const h = (child ? hotChild(own.uid) : hotCard(card!.obj.metadata.uid)) || selPod?.metadata.uid === p.metadata.uid;
+    const hue = hueFor(child ? child.obj.metadata.name : own.kind === "ReplicaSet" ? own.name : card!.obj.metadata.name);
     // Pending Pods sit in the scheduler queue on the left: a curve reads better than a right-angle route there.
     // Each owner turns on its own lane so different workloads' wires don't merge into one line.
-    const turnY = Y_NODES - 14 - (lane.get(own.uid) ?? 0) * 7;
+    const turnY = yNodes - 14 - (lane.get(folded.get(own.uid) ?? own.uid) ?? 0) * 7;
     const sched = !!p.spec?.nodeName;
     const d = sched ? ortho(from, t, turnY) : curve(from, t).d;
     const len = sched ? orthoLen(from, t, turnY) : Math.hypot(t.x - from.x, t.y - from.y) * 1.25;
-    const root = child ? (parentOf.get(own.uid) ?? own.uid) : own.uid;
+    const root = child ? (parentOf.get(own.uid) ?? own.uid) : card!.obj.metadata.uid;
     return [{ p, own, child, d, len, hue, h, cat: podCategory(p), sched, root }];
   });
   // An owner's comets all travel its longest wire's distance, so they move at one speed and stay
@@ -613,12 +676,12 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   for (const w of podWires) spanOf.set(w.own.uid, Math.max(spanOf.get(w.own.uid) ?? 0, w.len));
 
   return (
-    <PanZoom bounds={bounds} mustFit={nodesArea} captureWheel={captureWheel} fitKey={`${perRow}:${ordered.length}:${topCards.length}:${services.length}:${ingresses.length}:${sideItems.length > 0}`} onBackgroundClick={() => onSelect(null)} inset={inset} onZoom={setK}>
+    <PanZoom bounds={bounds} mustFit={nodesArea} captureWheel={captureWheel} fitKey={`${perRow}:${wrap}:${yNodes}:${ordered.length}:${topCards.length}:${services.length}:${ingresses.length}:${sideItems.length > 0}`} onBackgroundClick={() => onSelect(null)} inset={inset} onZoom={setK}>
       {/* section labels */}
       {detail > 0 && (
         <g className="cv-label">
           {topCards.length > 0 && <text x={minX + 40} y={Y_DEP - 14}>WORKLOADS</text>}
-          <text x={minX + 40} y={Y_NODES - 14}>NODES</text>
+          <text x={minX + 40} y={yNodes - 14}>NODES</text>
           {services.length > 0 && <text x={minX + 40} y={svcY - 14}>SERVICES</text>}
           {ingresses.length > 0 && <text x={minX + 40} y={ingY - 14}>INGRESS</text>}
           {sideLabels.map((l) => (
@@ -631,12 +694,12 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
 
       {/* ------------ edges (behind cards) */}
       <g pointerEvents="none">
-        {topCards.flatMap(({ obj, x, w, children }) =>
+        {topCards.flatMap(({ obj, x, y, w, children }) =>
           children.map((b) => {
             const h = hotCard(obj.metadata.uid);
             const tip = { x: b.x + RS_W / 2, y: b.y };
-            const from = { x: x + w / 2, y: Y_DEP + DEP_H };
-            const turn = (Y_DEP + DEP_H + b.y) / 2;
+            const from = { x: x + w / 2, y: y + DEP_H };
+            const turn = (y + DEP_H + b.y) / 2;
             const end = { x: tip.x, y: tip.y - ARROW };
             const d = ortho(from, end, turn);
             const len = orthoLen(from, end, turn);
@@ -698,7 +761,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
       </g>
 
       {/* ------------ controllers */}
-      {topCards.map(({ kind, obj, x, w }) => {
+      {topCards.map(({ kind, obj, x, y: ty, w }) => {
         const ns = obj.metadata.namespace;
         const name = obj.metadata.name;
         const sel = isSel(kind, name, ns);
@@ -706,7 +769,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const hpa = kind === "deployment" ? hpaFor("Deployment", name, ns) : kind === "statefulset" ? hpaFor("StatefulSet", name, ns) : undefined;
         const dropKey = kind === "deployment" ? `deployment:${ns}/${name}` : undefined;
         const dragItem: DragItem | undefined = kind === "deployment" ? { kind: "object", type: "deployment", ns: ns ?? "default", name, label: `Deployment ${name}` } : undefined;
-        const tagW = tagWidth(card.status);
+        const tagW = tagWidth(card.status, T);
         return (
           <g
             key={obj.metadata.uid}
@@ -717,21 +780,21 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             onClick={click({ kind, ns, name })}
             {...act({ kind, ns, name }, `${card.kindLabel} ${name}, ${card.status}`)}
           >
-            <rect className="cv-body" x={x} y={Y_DEP} width={w} height={DEP_H} rx={R} />
-            {sel && <rect className="cv-ring" x={x - 3.5} y={Y_DEP - 3.5} width={w + 7} height={DEP_H + 7} rx={R} />}
-            {dropKey && hl(dropKey) && <rect x={x - 3} y={Y_DEP - 3} width={w + 6} height={DEP_H + 6} rx={R} fill="#326ce5" fillOpacity={0.05} stroke="#326ce5" strokeWidth={2} strokeDasharray="6 4" />}
-            <KindIcon kind={kind} x={x + 12} y={Y_DEP + 16} />
-            <text x={x + 48} y={detail ? Y_DEP + 26 : Y_DEP + 34} className="cv-title" style={{ fontSize: 13.5 }}>
-              {fit(nsPrefix(ns) + name, w - 48 - (detail ? tagW + 20 : 14), 13.5, { weight: 600 })}
+            <rect className="cv-body" x={x} y={ty} width={w} height={DEP_H} rx={R} />
+            {sel && <rect className="cv-ring" x={x - 3.5} y={ty - 3.5} width={w + 7} height={DEP_H + 7} rx={R} />}
+            {dropKey && hl(dropKey) && <rect x={x - 3} y={ty - 3} width={w + 6} height={DEP_H + 6} rx={R} fill="#326ce5" fillOpacity={0.05} stroke="#326ce5" strokeWidth={2} strokeDasharray="6 4" />}
+            <KindIcon kind={kind} x={x + 12} y={ty + 16} />
+            <text x={x + 48} y={detail ? ty + 26 : ty + 34} className="cv-title" style={{ fontSize: fz(13.5) }}>
+              {fit(nsPrefix(ns) + name, w - 48 - (detail ? tagW + 20 : 14), fz(13.5), { weight: 600 })}
               {<title>{nsPrefix(ns) + name}</title>}
             </text>
             {detail > 0 && (
-              <text x={x + 48} y={Y_DEP + 43} className="cv-sub" style={{ fontSize: 11 }}>
-                {fit(`${card.kindLabel} · ${card.sub}`, w - 60, 11)}
+              <text x={x + 48} y={ty + 43} className="cv-sub" style={{ fontSize: fz(11) }}>
+                {fit(`${card.kindLabel} · ${card.sub}`, w - 60, fz(11))}
               </text>
             )}
-            {detail > 0 && <Tag x={x + w - 12} y={Y_DEP + 11} anchor="end" cat={card.tone} text={card.status} />}
-            {hpa && detail > 1 && <Tag x={x + w / 2} y={Y_DEP + DEP_H + 7} anchor="middle" cat="hpa" text={`HPA ${hpa.spec?.minReplicas ?? 1}–${hpa.spec?.maxReplicas} · ${hpaTarget(hpa)}`} />}
+            {detail > 0 && <Tag s={T} x={x + w - 12} y={ty + 11} anchor="end" cat={card.tone} text={card.status} />}
+            {hpa && detail > 1 && <Tag s={T} x={x + w / 2} y={ty + DEP_H + 7} anchor="middle" cat="hpa" text={`HPA ${hpa.spec?.minReplicas ?? 1}–${hpa.spec?.maxReplicas} · ${hpaTarget(hpa)}`} />}
           </g>
         );
       })}
@@ -747,22 +810,22 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const failed = !isRs && jobFailedFlag(job);
         const right = isRs ? `${rs.status?.readyReplicas ?? 0}/${want}` : failed ? "failed" : `${job.status?.succeeded ?? 0}/${want}`;
         const label = isRs ? `ReplicaSet ${obj.metadata.name}, ${rs.status?.readyReplicas ?? 0} of ${want} ready` : `Job ${obj.metadata.name}, ${job.status?.succeeded ?? 0} of ${want} succeeded`;
-        const rightW = textWidth(right, 12, { mono: true, weight: 600 });
+        const rightW = textWidth(right, fz(12), { mono: true, weight: 600 });
         return (
           <g key={obj.metadata.uid} data-kind={kind} className={cls("cv-obj cv-fade cursor-pointer", failed && "is-bad", hotChild(obj.metadata.uid) && !sel && "is-hot")} opacity={retired ? 0.55 : 1} style={{ transform: `translate(${x}px, ${y}px)`, transition: "transform .6s cubic-bezier(.22,1,.36,1)" }} onClick={click({ kind, ns: obj.metadata.namespace, name: obj.metadata.name })} {...act({ kind, ns: obj.metadata.namespace, name: obj.metadata.name }, label)}>
             <rect className="cv-body" width={RS_W} height={RS_H} rx={R} />
             {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={RS_W + 7} height={RS_H + 7} rx={R} />}
             <rect x={0} y={10} width={3} height={RS_H - 20} fill={`hsl(${hue} 65% 55%)`} />
-            <text x={14} y={detail ? 21 : 29} className="cv-title cv-mono" style={{ fontSize: 11.5 }}>
-              {fit(obj.metadata.name, RS_W - 14 - rightW - 20, 11.5, { mono: true, weight: 600, keepEnd: true })}
+            <text x={14} y={detail ? 21 : 29} className="cv-title cv-mono" style={{ fontSize: fz(11.5) }}>
+              {fit(obj.metadata.name, RS_W - 14 - rightW - 20, fz(11.5), { mono: true, weight: 600, keepEnd: true })}
               <title>{obj.metadata.name}</title>
             </text>
             {detail > 0 && (
-              <text x={14} y={37} className="cv-sub" style={{ fontSize: 10.5 }}>
+              <text x={14} y={37} className="cv-sub" style={{ fontSize: fz(10.5) }}>
                 {isRs ? `ReplicaSet${rev ? ` · rev ${rev}` : ""}` : `Job · ${jobDone(job) ? "complete" : failed ? "failed" : "running"}`}
               </text>
             )}
-            <text x={RS_W - 12} y={30} textAnchor="end" className={cls("cv-mono", failed ? "fill-red-600" : "cv-dim")} style={{ fontSize: 12, fontWeight: 600 }}>
+            <text x={RS_W - 12} y={30} textAnchor="end" className={cls("cv-mono", failed ? "fill-red-600" : "cv-dim")} style={{ fontSize: fz(12), fontWeight: 600 }}>
               {right}
             </text>
           </g>
@@ -772,11 +835,11 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
       {/* ------------ scheduler queue (only while Pods wait for a Node) */}
       {pending.length > 0 && (
         <g className="cv-fade">
-          <rect x={qx} y={Y_NODES} width={QUEUE_W} height={queueH} rx={R} fill="#fffbeb" stroke="#f6d38a" strokeDasharray="5 4" />
-          <text x={qx + QUEUE_W / 2} y={Y_NODES + 24} textAnchor="middle" className="cv-title" style={{ fontSize: 12 }}>
+          <rect x={qx} y={yNodes} width={QUEUE_W} height={queueH} rx={R} fill="#fffbeb" stroke="#f6d38a" strokeDasharray="5 4" />
+          <text x={qx + QUEUE_W / 2} y={yNodes + 24} textAnchor="middle" className="cv-title" style={{ fontSize: fz(12) }}>
             Scheduler
           </text>
-          <text x={qx + QUEUE_W / 2} y={Y_NODES + 40} textAnchor="middle" className="cv-sub" style={{ fontSize: 10.5 }}>
+          <text x={qx + QUEUE_W / 2} y={yNodes + 40} textAnchor="middle" className="cv-sub" style={{ fontSize: fz(10.5) }}>
             {pending.length} waiting for a node
           </text>
         </g>
@@ -804,7 +867,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const showBars = req.cpu > 0 || !!use;
         const barX = x + 48;
         const barW = NW - 48 - 14;
-        const tagW = tagWidth(status);
+        const tagW = tagWidth(status, T);
         return (
           <g key={node.metadata.uid} data-kind={isCp ? "cp" : "node"} className={cls("cv-obj cv-fade cursor-pointer", down && "is-down", !down && tone === "warn" && "is-warn")} {...dnd(`node:${name}`)} onClick={click({ kind: "node", name })} {...act({ kind: "node", name }, `Node ${name}, ${status}, ${used} pods${showBars ? `, CPU requested ${Math.round((req.cpu / alloc.cpu) * 100)}%` : ""}`)}>
             <title>{`${name} · ${node.status?.addresses[0].address}`}</title>
@@ -814,15 +877,15 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             {hl(`node:${name}`) && <rect x={x - 4} y={y - 4} width={NW + 8} height={h + 8} rx={R} fill="#326ce5" fillOpacity={0.05} stroke="#326ce5" strokeWidth={2} strokeDasharray="7 5" pointerEvents="none" />}
             <line className="cv-hair" x1={x + 1} x2={x + NW - 1} y1={y + HEAD} y2={y + HEAD} />
             <KindIcon kind={isCp ? "cp" : "node"} x={x + 12} y={y + 16} />
-            <text x={x + 48} y={y + 29} className="cv-title" style={{ fontSize: 14 }}>
-              {fit(name, NW - 48 - tagW - 22, 14, { weight: 600 })}
+            <text x={x + 48} y={y + 29} className="cv-title" style={{ fontSize: fz(14) }}>
+              {fit(name, NW - 48 - tagW - 22, fz(14), { weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={x + 48} y={y + 45} className="cv-sub" style={{ fontSize: 11 }}>
-                {fit(`${isCp ? "control plane" : "worker"}${collapsed ? "" : ` · ${used} pod${used === 1 ? "" : "s"}`}${userTaints.length ? ` · tainted ${userTaints.map((t) => t.key).join(",")}` : ""}`, NW - 60 - (showBars && detail > 1 && !collapsed ? 0 : 0), 11)}
+              <text x={x + 48} y={y + 45} className="cv-sub" style={{ fontSize: fz(11) }}>
+                {fit(`${isCp ? "control plane" : "worker"}${collapsed ? "" : ` · ${used} pod${used === 1 ? "" : "s"}`}${userTaints.length ? ` · tainted ${userTaints.map((t) => t.key).join(",")}` : ""}`, NW - 60 - (showBars && detail > 1 && !collapsed ? 0 : 0), fz(11))}
               </text>
             )}
-            <Tag x={x + NW - 12} y={y + 18} anchor="end" cat={tone} text={status} />
+            <Tag s={T} x={x + NW - 12} y={y + 18} anchor="end" cat={tone} text={status} />
             {showBars && detail > 1 && !collapsed && (
               <g pointerEvents="none">
                 <title>{`Requested: CPU ${req.cpu}m of ${alloc.cpu}m, memory ${Math.round(req.memory / 2 ** 20)}Mi of ${Math.round(alloc.memory / 2 ** 20)}Mi${use ? `\nUsing now: CPU ${use.cpu}m, memory ${Math.round(use.memory / 2 ** 20)}Mi` : ""}`}</title>
@@ -831,7 +894,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
               </g>
             )}
             {!collapsed && used === 0 && !isCp && detail > 0 && (
-              <text x={x + NW / 2} y={y + HEAD + PAD + CHIP_H / 2 + 4} textAnchor="middle" className="cv-sub" style={{ fontSize: 11, opacity: 0.7 }} pointerEvents="none">
+              <text x={x + NW / 2} y={y + HEAD + PAD + CHIP_H / 2 + 4} textAnchor="middle" className="cv-sub" style={{ fontSize: fz(11), opacity: 0.7 }} pointerEvents="none">
                 no pods
               </text>
             )}
@@ -840,7 +903,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
                 <title>kube-apiserver, etcd, kube-scheduler and kube-controller-manager run here. Turn on System pods to see them.</title>
                 <rect x={x + PAD} y={y + HEAD + 8} width={NW - PAD * 2} height={CP_BODY - 16} rx={R} className="cv-tint" />
                 <Mark cat={down ? "stale" : "ok"} x={x + PAD + 13} y={y + HEAD + CP_BODY / 2} />
-                <text x={x + PAD + 24} y={y + HEAD + CP_BODY / 2 + 4} className="cv-ink" style={{ fontSize: 11, fontWeight: 500 }}>
+                <text x={x + PAD + 24} y={y + HEAD + CP_BODY / 2 + 4} className="cv-ink" style={{ fontSize: fz(11), fontWeight: 500 }}>
                   4 system components
                 </text>
               </g>
@@ -855,8 +918,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
                     <g key={comp}>
                       <rect x={px} y={py} width={cw} height={CHIP_H} rx={R} className="cv-tint" />
                       <Mark cat={down ? "stale" : "ok"} x={px + 14} y={py + CHIP_H / 2} />
-                      <text x={px + 26} y={py + CHIP_H / 2 + 4} className="cv-ink cv-mono" style={{ fontSize: 11.5, fontWeight: 600 }}>
-                        {fit(comp, cw - 32, 11.5, { mono: true, weight: 600 })}
+                      <text x={px + 26} y={py + CHIP_H / 2 + 4} className="cv-ink cv-mono" style={{ fontSize: fz(11.5), fontWeight: 600 }}>
+                        {fit(comp, cw - 32, fz(11.5), { mono: true, weight: 600 })}
                       </text>
                     </g>
                   );
@@ -864,7 +927,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
               </g>
             )}
             {down && detail > 0 && (
-              <text x={x + NW / 2} y={y + h - 10} textAnchor="middle" className="fill-red-500" style={{ fontSize: 10.5, fontWeight: 500 }}>
+              <text x={x + NW / 2} y={y + h - 10} textAnchor="middle" className="fill-red-500" style={{ fontSize: fz(10.5), fontWeight: 500 }}>
                 powered off · kubelet not reporting
               </text>
             )}
@@ -921,20 +984,23 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             <PodIcon cat={cat} x={18} y={CHIP_H / 2} r={detail < 2 ? 12 : 11} />
             {detail < 2 ? (
               detail > 0 && (
-                <text x={34} y={CHIP_H / 2 + 4} className="cv-title cv-mono" style={{ fontSize: 11 }}>
-                  {fit(short, CHIP_W - 38, 11, { mono: true, weight: 600 })}
+                <text x={34} y={CHIP_H / 2 + 4} className="cv-title cv-mono" style={{ fontSize: fz(11) }}>
+                  {fit(short, CHIP_W - 38, fz(11), { mono: true, weight: 600 })}
                 </text>
               )
             ) : (
               <>
-                <text x={33} y={20} className="cv-title cv-mono" style={{ fontSize: 11 }}>
-                  {fit(short, CHIP_W - 33 - (r > 0 ? 24 : 6), 11, { mono: true, weight: 600 })}
+                <text x={33} y={20} className="cv-title cv-mono" style={{ fontSize: fz(11) }}>
+                  {fit(short, CHIP_W - 33 - (r > 0 ? 24 : 6), fz(11), { mono: true, weight: 600 })}
                 </text>
-                <text x={33} y={35} fill={CAT[cat].text} style={{ fontSize: 9.5, fontWeight: 500 }}>
-                  {fit(status, CHIP_W - 36 - icons - (rps ? textWidth(fmtRate(rps), 9.5, { mono: true, weight: 600 }) + 4 : 0), 9.5, { weight: 500 })}
-                </text>
+                {/* A Pod serving traffic shows its rate instead of "Running": its green icon already says it runs. */}
+                {!(rps > 0 && status === "Running") && (
+                  <text x={33} y={35} fill={CAT[cat].text} style={{ fontSize: fz(9.5), fontWeight: 500 }}>
+                    {fit(status, CHIP_W - 36 - icons - (rps ? textWidth(fmtRate(rps), fz(9.5), { mono: true, weight: 600 }) + 4 : 0), fz(9.5), { weight: 500 })}
+                  </text>
+                )}
                 {rps > 0 && (
-                  <text x={CHIP_W - 7 - icons} y={35} textAnchor="end" className="cv-mono" fill="var(--cv-flow)" style={{ fontSize: 9.5, fontWeight: 600 }}>
+                  <text x={status === "Running" ? 33 : CHIP_W - 7 - icons} y={35} textAnchor={status === "Running" ? "start" : "end"} className="cv-mono" fill="var(--cv-flow)" style={{ fontSize: fz(9.5), fontWeight: 600 }}>
                     {fmtRate(rps)}
                   </text>
                 )}
@@ -946,7 +1012,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             {r > 0 && detail > 0 && (
               <g>
                 <rect x={CHIP_W - 22} y={6} width={17} height={14} rx={7} fill="#fee2e2" />
-                <text x={CHIP_W - 13.5} y={16} textAnchor="middle" fill="#b91c1c" style={{ fontSize: 9, fontWeight: 700 }}>
+                <text x={CHIP_W - 13.5} y={16} textAnchor="middle" fill="#b91c1c" style={{ fontSize: fz(9), fontWeight: 700 }}>
                   {r}
                 </text>
               </g>
@@ -975,23 +1041,23 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             <rect className="cv-body" x={x} y={y} width={SVC_W} height={SVC_H} rx={R} />
             {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={SVC_W + 7} height={SVC_H + 7} rx={R} />}
             <KindIcon kind="service" x={x + 12} y={y + 19} />
-            <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: 13.5 }}>
-              {fit(nsPrefix(s.metadata.namespace) + s.metadata.name, SVC_W - 48 - tagWidth(tag) - 20, 13.5, { weight: 600 })}
+            <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: fz(13.5) }}>
+              {fit(nsPrefix(s.metadata.namespace) + s.metadata.name, SVC_W - 48 - tagWidth(tag, T) - 20, fz(13.5), { weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={x + 48} y={y + 46} className="cv-sub cv-mono" style={{ fontSize: 10.5 }}>
-                {fit(sub, SVC_W - 60 - (rate ? textWidth(traffic, 10.5, { mono: true, weight: 600 }) + 10 : 0), 10.5, { mono: true })}
+              <text x={x + 48} y={y + 46} className="cv-sub cv-mono" style={{ fontSize: fz(10.5) }}>
+                {fit(sub, SVC_W - 60 - (rate ? textWidth(traffic, fz(10.5), { mono: true, weight: 600 }) + 10 : 0), fz(10.5), { mono: true })}
               </text>
             )}
             {detail > 0 && rate > 0 && (
               <>
-                <text x={x + SVC_W - 12} y={y + 46} textAnchor="end" className="cv-mono" fill={err >= 0.01 ? ERR : "var(--cv-flow)"} style={{ fontSize: 10.5, fontWeight: 600 }}>
+                <text x={x + SVC_W - 12} y={y + 46} textAnchor="end" className="cv-mono" fill={err >= 0.01 ? ERR : "var(--cv-flow)"} style={{ fontSize: fz(10.5), fontWeight: 600 }}>
                   {traffic}
                 </text>
                 <Spark x={x + R} y={y + SVC_H - 12} w={SVC_W - 2 * R} h={11} data={svcSeries(s.metadata.uid)} errs={svcSeries(s.metadata.uid, "errs")} />
               </>
             )}
-            <Tag x={x + SVC_W - 12} y={y + 14} anchor="end" cat={ready ? "info" : "bad"} text={tag} />
+            <Tag s={T} x={x + SVC_W - 12} y={y + 14} anchor="end" cat={ready ? "info" : "bad"} text={tag} />
           </g>
         );
       })}
@@ -1007,15 +1073,15 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             <rect className="cv-body" x={x} y={y} width={ING_W} height={ING_H} rx={R} />
             {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={ING_W + 7} height={ING_H + 7} rx={R} />}
             <KindIcon kind="ingress" x={x + 12} y={y + 19} />
-            <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: 13.5 }}>
-              {fit(nsPrefix(ing.metadata.namespace) + ing.metadata.name, ING_W - 48 - tagWidth(tag) - 20, 13.5, { weight: 600 })}
+            <text x={x + 48} y={y + 28} className="cv-title" style={{ fontSize: fz(13.5) }}>
+              {fit(nsPrefix(ing.metadata.namespace) + ing.metadata.name, ING_W - 48 - tagWidth(tag, T) - 20, fz(13.5), { weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={x + 48} y={y + 46} className="cv-sub cv-mono" style={{ fontSize: 10.5 }}>
-                {fit(rules[0] ? `${rules[0]}${rules.length > 1 ? ` +${rules.length - 1}` : ""}` : "default backend", ING_W - 60, 10.5, { mono: true })}
+              <text x={x + 48} y={y + 46} className="cv-sub cv-mono" style={{ fontSize: fz(10.5) }}>
+                {fit(rules[0] ? `${rules[0]}${rules.length > 1 ? ` +${rules.length - 1}` : ""}` : "default backend", ING_W - 60, fz(10.5), { mono: true })}
               </text>
             )}
-            <Tag x={x + ING_W - 12} y={y + 14} anchor="end" cat={addr ? "ingress" : "warn"} text={tag} />
+            <Tag s={T} x={x + ING_W - 12} y={y + 14} anchor="end" cat={addr ? "ingress" : "warn"} text={tag} />
           </g>
         );
       })}
@@ -1028,12 +1094,12 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             <rect className="cv-body" x={sideX} y={it.y} width={SIDE_W} height={SIDE_H} rx={R} />
             {sel && <rect className="cv-ring" x={sideX - 3.5} y={it.y - 3.5} width={SIDE_W + 7} height={SIDE_H + 7} rx={R} />}
             <KindGlyph kind={it.kind} x={sideX + 10} y={it.y + 12} size={16} />
-            <text x={sideX + 34} y={detail ? it.y + 17 : it.y + 24} className="cv-title cv-mono" style={{ fontSize: 11.5 }}>
-              {fit(it.title, SIDE_W - 42, 11.5, { mono: true, weight: 600 })}
+            <text x={sideX + 34} y={detail ? it.y + 17 : it.y + 24} className="cv-title cv-mono" style={{ fontSize: fz(11.5) }}>
+              {fit(it.title, SIDE_W - 42, fz(11.5), { mono: true, weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={sideX + 34} y={it.y + 31} className="cv-sub" style={{ fontSize: 10 }}>
-                {fit(it.sub, SIDE_W - 42, 10)}
+              <text x={sideX + 34} y={it.y + 31} className="cv-sub" style={{ fontSize: fz(10) }}>
+                {fit(it.sub, SIDE_W - 42, fz(10))}
               </text>
             )}
           </g>
@@ -1076,7 +1142,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
 
       {/* ------------ live rates, above the packets so the numbers stay readable */}
       {rateLabels.map((l) => (
-        <Rate key={l.key} x={l.x} y={l.y} text={l.text} bad={l.bad} />
+        <Rate s={T} key={l.key} x={l.x} y={l.y} text={l.text} bad={l.bad} />
       ))}
 
       <defs>
@@ -1174,14 +1240,14 @@ function Cylinder({ x, y }: { x: number; y: number }) {
 type Tone = "ok" | "warn" | "bad" | "muted";
 type TagCat = Tone | "info" | "hpa" | "ingress";
 const TAG_FS = 10.5;
-const rateWidth = (text: string) => textWidth(text, 10, { mono: true, weight: 600 }) + 8;
+const rateWidth = (text: string, s = 1) => textWidth(text, 10 * s, { mono: true, weight: 600 }) + 8 * s;
 /** A live rate riding on a traffic wire. */
-function Rate({ x, y, text, bad }: { x: number; y: number; text: string; bad?: boolean }) {
-  const w = rateWidth(text);
+function Rate({ x, y, text, bad, s = 1 }: { x: number; y: number; text: string; bad?: boolean; s?: number }) {
+  const w = rateWidth(text, s);
   return (
     <g pointerEvents="none">
-      <rect x={x - w / 2} y={y - 8} width={w} height={16} rx={4} fill="var(--cv-bg)" />
-      <text x={x} y={y + 3.5} textAnchor="middle" className="cv-mono" fill={bad ? ERR : "var(--cv-flow)"} style={{ fontSize: 10, fontWeight: 600 }}>
+      <rect x={x - w / 2} y={y - 8 * s} width={w} height={16 * s} rx={4} fill="var(--cv-bg)" />
+      <text x={x} y={y + 3.5 * s} textAnchor="middle" className="cv-mono" fill={bad ? ERR : "var(--cv-flow)"} style={{ fontSize: 10 * s, fontWeight: 600 }}>
         {text}
       </text>
     </g>
@@ -1203,7 +1269,8 @@ function Spark({ x, y, w, h, data, errs }: { x: number; y: number; w: number; h:
   );
 }
 
-const tagWidth = (text: string) => textWidth(text, TAG_FS, { weight: 500 }) + 24;
+/** `s` scales a tag with the Cluster View's text (see `fz`). */
+const tagWidth = (text: string, s = 1) => textWidth(text, TAG_FS * s, { weight: 500 }) + 24 * s;
 
 /** Health mark: colour AND shape, so it reads without colour vision. Disc ok, ring starting, square failing. */
 function Mark({ cat, x, y, r = 3.5 }: { cat: PodCategory | TagCat; x: number; y: number; r?: number }) {
@@ -1215,15 +1282,15 @@ function Mark({ cat, x, y, r = 3.5 }: { cat: PodCategory | TagCat; x: number; y:
 }
 
 /** Status tag: a quiet pill with a health mark. Width is measured, so text never spills. */
-function Tag({ x, y, text, cat, anchor = "start" }: { x: number; y: number; text: string; cat: TagCat; anchor?: "start" | "end" | "middle" }) {
-  const w = tagWidth(text);
-  const h = 19;
+function Tag({ x, y, text, cat, anchor = "start", s = 1 }: { x: number; y: number; text: string; cat: TagCat; anchor?: "start" | "end" | "middle"; s?: number }) {
+  const w = tagWidth(text, s);
+  const h = 19 * s;
   const x0 = anchor === "end" ? x - w : anchor === "middle" ? x - w / 2 : x;
   return (
     <g pointerEvents="none">
       <rect x={x0} y={y} width={w} height={h} rx={h / 2} fill="var(--cv-surface)" stroke="var(--cv-hair)" />
-      <Mark cat={cat} x={x0 + 10} y={y + h / 2} r={3} />
-      <text x={x0 + 17} y={y + h / 2 + 3.6} className="cv-dim" style={{ fontSize: TAG_FS, fontWeight: 500 }}>
+      <Mark cat={cat} x={x0 + 10 * s} y={y + h / 2} r={3 * s} />
+      <text x={x0 + 17 * s} y={y + h / 2 + 3.6 * s} className="cv-dim" style={{ fontSize: TAG_FS * s, fontWeight: 500 }}>
         {text}
       </text>
     </g>

@@ -35,9 +35,12 @@ const MIN_FIT = 0.8;
 const MIN_FIT_WIDE = 0.6;
 /** On a wide screen, fitting goes this far to keep a wide row of workloads in view; the Cluster View still shows labels at this zoom. */
 const MIN_FIT_ACROSS = 0.5;
+/** Fitting the whole diagram, top to bottom, is worth zooming out this far: the Cluster View enlarges its text below 0.85. */
+const MIN_FIT_ALL = 0.64;
 
 
 const GRID = 24;
+const HINT_KEY = "kubesim.canvasHint.v1";
 const GRID_MAJOR = GRID * 4;
 
 export function PanZoom({
@@ -72,14 +75,41 @@ export function PanZoom({
   /** True once the Learner pans or zooms by hand; until then, resizes re-fit the view. */
   const touched = useRef(false);
   const [animating, setAnimating] = useState(false);
+  /** First visit only: how to move around, until the Learner does or a few seconds pass. */
+  const [hint, setHint] = useState<"mouse" | "touch" | null>(null);
+  useEffect(() => {
+    if (!captureWheel) return;
+    let seen = true;
+    try {
+      seen = localStorage.getItem(HINT_KEY) !== null;
+    } catch {
+      // Private mode: no hint rather than one on every visit.
+    }
+    if (seen) return;
+    const show = setTimeout(() => {
+      try {
+        localStorage.setItem(HINT_KEY, "1");
+      } catch {
+        // Private mode: shown this once.
+      }
+      setHint(window.matchMedia("(pointer: coarse)").matches ? "touch" : "mouse");
+    }, 900);
+    const hide = setTimeout(() => setHint(null), 9000);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
+  }, [captureWheel]);
   const [grabbing, setGrabbing] = useState(false);
   const boundsRef = useRef(bounds);
   const mustRef = useRef(mustFit);
   const insetRef = useRef(inset);
+  const embeddedRef = useRef(!captureWheel);
   useEffect(() => {
     boundsRef.current = bounds;
     mustRef.current = mustFit;
     insetRef.current = inset;
+    embeddedRef.current = !captureWheel;
   });
 
   const fit = useCallback((animate = true) => {
@@ -96,10 +126,11 @@ export function PanZoom({
     // visible width; a tall diagram then shows its top and the Learner scrolls down. Phones always get the
     // overview floor; the canvas simplifies objects instead of shrinking their text.
     const floor = width < 640 ? MIN_FIT_WIDE : Math.max(MIN_FIT_ACROSS, Math.min(MIN_FIT, kW));
-    let k = Math.min(Math.max(kFit, floor), 1.3);
+    // Embedded in a page, the canvas is a window onto the whole cluster: it always shows all of it.
+    let k = Math.min(kFit >= MIN_FIT_ALL || embeddedRef.current ? kFit : Math.max(kFit, floor), 1.3);
     // Never leave a Node off-screen: zoom out further (the canvas simplifies objects) until they all fit.
     const m = mustRef.current;
-    if (m && m.w > 0 && m.h > 0) k = Math.max(MIN_K, Math.min(k, (w - 32) / m.w, (h - 32) / m.h));
+    if (m && m.w > 0 && m.h > 0) k = Math.max(embeddedRef.current ? 0.1 : MIN_K, Math.min(k, (w - 32) / m.w, (h - 32) / m.h));
     touched.current = false;
     setAnimating(animate);
     // Too big to fit: show the top-left of the diagram (workloads + nodes), so none of the visible width is wasted.
@@ -137,6 +168,7 @@ export function PanZoom({
 
   const zoomAt = useCallback((cx: number, cy: number, factor: number) => {
     touched.current = true;
+    setHint(null);
     setAnimating(false);
     setView((v) => {
       if (!v) return v;
@@ -158,6 +190,7 @@ export function PanZoom({
         zoomAt(e.clientX - r.left, e.clientY - r.top, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0022)));
       } else {
         touched.current = true;
+        setHint(null);
         setAnimating(false);
         setView((v) => (v ? { ...v, x: v.x - e.deltaX, y: v.y - e.deltaY } : v));
       }
@@ -169,6 +202,7 @@ export function PanZoom({
   const zoomCenter = (f: number) => {
     const r = wrap.current!.getBoundingClientRect();
     touched.current = true;
+    setHint(null);
     setAnimating(true);
     setView((v) => {
       if (!v) return v;
@@ -187,7 +221,7 @@ export function PanZoom({
     <div
       ref={wrap}
       data-drop="canvas"
-      className={`cv-root canvas-grid relative h-full w-full touch-none overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal/50 ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
+      className={`cv-root canvas-grid relative h-full w-full ${captureWheel ? "touch-none" : "touch-pan-y"} overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal/50 ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
       tabIndex={0}
       role="region"
       aria-label="Cluster View. Arrow keys pan, plus and minus zoom, 0 fits everything; Tab moves between objects."
@@ -198,6 +232,7 @@ export function PanZoom({
         if (pan) {
           e.preventDefault();
           touched.current = true;
+          setHint(null);
           setAnimating(true);
           setView((cur) => (cur ? { ...cur, x: cur.x + pan[0], y: cur.y + pan[1] } : cur));
         } else if (e.key === "+" || e.key === "=") zoomCenter(1.25);
@@ -217,9 +252,12 @@ export function PanZoom({
           drag.current = null;
           suppressClick.current = true;
           touched.current = true;
+          setHint(null);
           return;
         }
         if (e.button !== 0) return;
+        // Embedded in a scrolling page, a finger scrolls the page; only a mouse drags the diagram.
+        if (!captureWheel && e.pointerType !== "mouse") return;
         drag.current = { px: e.clientX, py: e.clientY, vx: v.x, vy: v.y, moved: false, id: e.pointerId };
         suppressClick.current = false;
       }}
@@ -242,6 +280,7 @@ export function PanZoom({
         if (!d.moved && Math.hypot(dx, dy) > 4) {
           d.moved = true;
           touched.current = true;
+          setHint(null);
           setGrabbing(true);
           wrap.current?.setPointerCapture(d.id);
         }
@@ -269,7 +308,10 @@ export function PanZoom({
           suppressClick.current = false;
         }
       }}
-      onClick={() => onBackgroundClick?.()}
+      onClick={() => {
+        setHint(null);
+        onBackgroundClick?.();
+      }}
       onDoubleClick={(e) => {
         const r = wrap.current!.getBoundingClientRect();
         zoomAt(e.clientX - r.left, e.clientY - r.top, 1.6);
@@ -281,6 +323,11 @@ export function PanZoom({
         </g>
       </svg>
 
+      {hint && (
+        <div role="status" className="cv-hint pointer-events-none absolute left-1/2 top-16 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink/85 px-3.5 py-1.5 text-[12.5px] text-white shadow-lg">
+          {hint === "touch" ? "Drag to move · pinch to zoom · tap anything for details" : "Drag to move · scroll to zoom · click anything for details"}
+        </div>
+      )}
       <div data-overlay="zoom" className="font-sheet absolute bottom-4 right-4 flex items-center rounded-md border border-ink/15 bg-paper" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
         <IconBtn label="Zoom out" onClick={() => zoomCenter(1 / 1.25)}>
           <path d="M5 10h10" />

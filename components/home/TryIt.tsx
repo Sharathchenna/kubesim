@@ -28,15 +28,16 @@ export default function TryIt({ active = true }: { active?: boolean }) {
     ["kubectl get pods -o wide", "List the Pods"],
   ];
   // The shop is wide: the diagram gets the whole width, with the commands and terminal in a strip below it.
+  // Phones keep the same picture, smaller, with the commands in one scrolling row.
   return (
-    <div className="grid h-full min-h-0 md:grid-rows-[minmax(0,1fr)_230px]">
-      <div className="relative hidden min-h-[300px] border-b border-ink/10 md:block">
+    <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_212px] md:grid-rows-[minmax(0,1fr)_230px]">
+      <div className="relative min-h-0 border-b border-ink/10">
         <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} captureWheel={false} />
       </div>
       <div className="flex min-h-0 flex-col bg-paper md:grid md:grid-cols-[230px_minmax(0,1fr)]">
-        <div className="flex flex-wrap content-start gap-1.5 border-b border-ink/10 p-3 md:flex-col md:border-b-0 md:border-r">
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-ink/10 p-3 md:flex-col md:flex-wrap md:content-start md:overflow-visible md:border-b-0 md:border-r">
           {chips.map(([cmd, label]) => (
-            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="rounded-lg border border-ink/15 bg-paper px-2.5 py-1 text-left text-[12.5px] font-medium text-ink transition-colors hover:border-signal/50 hover:text-signal">
+            <button key={label} onClick={() => sim.exec(cmd)} title={cmd} className="shrink-0 whitespace-nowrap rounded-lg border border-ink/15 bg-paper px-2.5 py-1 text-left text-[12.5px] font-medium text-ink transition-colors hover:border-signal/50 hover:text-signal">
               {label}
             </button>
           ))}
