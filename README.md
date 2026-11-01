@@ -2,7 +2,7 @@
 
 <a href="https://kubesim.app"><img src="docs/media/banner.png" alt="kubesim: learn Kubernetes by breaking it. A Pod crashes on one Node while a new one is dragged in to replace it." width="100%"></a>
 
-A whole Kubernetes cluster runs in your browser tab. Break it on purpose, watch it heal, and see the `kubectl` behind every click.
+A simulated Kubernetes cluster runs in your browser tab. Break it on purpose, watch it heal, and see the `kubectl` behind every click.
 
 [![Try it at kubesim.app](https://img.shields.io/badge/try_it-kubesim.app-326ce5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubesim.app)
 
