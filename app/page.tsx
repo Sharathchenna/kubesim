@@ -1,13 +1,16 @@
 import Link from "next/link";
 import { AppHeader, Logo } from "@/components/AppHeader";
+import { ExplainerStill } from "@/components/home/ExplainerStill";
+import { IncidentDemo } from "@/components/home/IncidentDemo";
 import { PodWordmark } from "@/components/home/PodWordmark";
+import { WaysBento } from "@/components/home/WaysBento";
 import { TryItSection } from "@/components/home/TryItSection";
 import { CHALLENGES, EXAMS, EXAM_TRADEMARK_NOTICE, EXPLAINERS, LESSONS, TRACKS, trackOf } from "@/lib/lessons/meta";
-import { heptagon } from "@/lib/heptagon";
 import { INCIDENTS } from "@/lib/sim/incidents";
 import { version } from "@/package.json";
 
 const GITHUB = "https://github.com/Sharathchenna/kubesim";
+const FIRST_LESSON_MINUTES = LESSONS.find((l) => l.slug === "first-pod")?.minutes ?? 6;
 
 /** What the simulator covers: API kinds you can create, plus the behaviours and commands around them. */
 const SIMULATED: { group: string; kinds: string[]; also?: string[] }[] = [
@@ -17,42 +20,6 @@ const SIMULATED: { group: string; kinds: string[]; also?: string[] }[] = [
   { group: "Storage", kinds: ["PersistentVolume", "PersistentVolumeClaim", "StorageClass"] },
   { group: "Operations", kinds: ["Node", "Namespace", "HorizontalPodAutoscaler", "Event"], also: ["metrics-server", "kubectl top"] },
   { group: "Security", kinds: ["Role", "ClusterRole", "RoleBinding", "ClusterRoleBinding"], also: ["kubectl auth can-i"] },
-];
-
-/** A small Kubernetes-style icon: blue heptagon, white glyph. */
-function Badge({ children }: { children: React.ReactNode }) {
-  return (
-    <svg viewBox="0 0 40 40" className="h-11 w-11 shrink-0 transition-transform duration-300 group-hover:rotate-[-8deg] group-hover:scale-110" aria-hidden>
-      <polygon points={heptagon(20, 20, 17)} fill="#326ce5" stroke="#326ce5" strokeWidth={4} strokeLinejoin="round" />
-      <g fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-        {children}
-      </g>
-    </svg>
-  );
-}
-
-const WAYS: { href: string; title: string; text: string; note: string; icon: React.ReactNode }[] = [
-  {
-    href: "/learn",
-    title: "Lessons",
-    text: "One step at a time, with the cluster in the spotlight. Each step checks itself as you type.",
-    note: `${LESSONS.length} lessons in ${TRACKS.length} tracks`,
-    icon: <path d="M13 13.5h6.5a2 2 0 0 1 2 2V27a1.6 1.6 0 0 0-1.6-1.6H13zM27 13.5h-3.5a2 2 0 0 0-2 2" />,
-  },
-  {
-    href: "/challenges",
-    title: "Challenges and exams",
-    text: "A broken cluster and a goal, no instructions. Or a timed exam in the style of the CKAD and CKA.",
-    note: `${CHALLENGES.length} challenges · ${EXAMS.length} practice exams`,
-    icon: <path d="M20 12.5l7 3v4.6c0 4-3 6.6-7 7.9-4-1.3-7-3.9-7-7.9v-4.6zM16.8 20l2.2 2.2 4.2-4.4" />,
-  },
-  {
-    href: "/sandbox",
-    title: "Sandbox",
-    text: "Free play. An empty cluster that's all yours: any kubectl, any YAML, switch Nodes off. Nothing to pass.",
-    note: "No rules · share a copy with a link",
-    icon: <path d="M20 12.5l7 3.8v7.4l-7 3.8-7-3.8v-7.4zM13 16.3l7 3.8 7-3.8M20 20.1v7.4" />,
-  },
 ];
 
 export default function Home() {
@@ -150,28 +117,9 @@ export default function Home() {
                 </Link>
               </div>
             </div>
-            {/* A still of the pager, as the Learner will see it. */}
-            <div aria-hidden className="rounded-2xl border border-red-300/30 bg-red-50 p-5 text-ink shadow-[0_20px_60px_-20px_rgb(220_38_38/0.5)]">
-              <div className="flex items-center justify-between">
-                <span className="flex items-center gap-2 font-mono text-[12px] font-semibold uppercase tracking-[0.08em]">
-                  <span className="cv-blink h-2 w-2 rounded-full bg-red-600" />
-                  Paged
-                </span>
-                <span className="font-mono text-[22px] font-semibold tabular-nums">0:42</span>
-              </div>
-              <div className="mt-1 text-[16px] font-medium">shop-web is returning 503s</div>
-              <div className="mt-3 flex items-baseline gap-6 font-mono tabular-nums">
-                <span>
-                  <span className="text-[28px] font-semibold text-red-700">100%</span>
-                  <span className="ml-1 text-[11px] uppercase tracking-[0.06em] text-ink-soft">errors</span>
-                </span>
-                <span>
-                  <span className="text-[28px] font-semibold">10</span>
-                  <span className="ml-1 text-[11px] uppercase tracking-[0.06em] text-ink-soft">req/s</span>
-                </span>
-              </div>
-              <div className="mt-2 font-mono text-[12.5px] text-ink-soft">$ kubectl get pods</div>
-              <div className="font-mono text-[12.5px] text-red-700">shop-db-0   0/1   CreateContainerConfigError</div>
+            {/* The incident, played: paged, found and fixed with kubectl, resolved. */}
+            <div aria-hidden className="w-full min-w-0">
+              <IncidentDemo />
             </div>
           </div>
         </section>
@@ -179,18 +127,9 @@ export default function Home() {
         {/* ---------------------------------------------------------------- three ways in */}
         <section aria-labelledby="ways" className="mx-auto max-w-6xl px-4 pt-20 sm:px-6">
           <h2 id="ways" className="font-display text-[32px] leading-tight tracking-[-0.02em]">
-            Three ways to learn
+            Ways to learn
           </h2>
-          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
-            {WAYS.map((w) => (
-              <Link key={w.href} href={w.href} className="group flex flex-col rounded-2xl border border-ink/10 bg-paper p-5 transition-all duration-300 hover:-translate-y-1 hover:border-ink/20 hover:shadow-[0_12px_32px_-12px_rgb(15_23_42/0.18)]">
-                <Badge>{w.icon}</Badge>
-                <span className="mt-4 text-[17px] font-semibold group-hover:text-signal">{w.title}</span>
-                <span className="mt-1.5 flex-1 text-[14.5px] leading-relaxed text-ink-soft">{w.text}</span>
-                <span className="mt-4 text-[13px] text-ink-soft">{w.note}</span>
-              </Link>
-            ))}
-          </div>
+          <WaysBento lessons={LESSONS.length} tracks={TRACKS.length} challenges={CHALLENGES.length} exams={EXAMS.length} />
         </section>
 
         {/* ---------------------------------------------------------------- the path */}
@@ -210,8 +149,12 @@ export default function Home() {
                 {EXPLAINERS.length} narrated explainers →
               </Link>
             </div>
+            {/* A narrated Explainer, mid-play: the left column's room goes to the other way in. */}
+            <Link href="/explainers/self-healing" aria-label="Play the self-healing explainer" className="mt-8 hidden max-w-[440px] lg:block">
+              <ExplainerStill />
+            </Link>
           </div>
-          <ol className="divide-y divide-ink/10 border-y border-ink/10">
+          <ol className="divide-y divide-ink/10 self-start border-y border-ink/10">
             {TRACKS.map((t, i) => {
               const n = LESSONS.filter((l) => trackOf(l) === t.id).length;
               return (
@@ -256,6 +199,26 @@ export default function Home() {
           <p className="text-pretty mt-5 max-w-3xl text-[14px] leading-relaxed text-ink-soft">
             Back-off timings, events, scheduler reasons and kubectl output follow real Kubernetes defaults, and each behaviour is written up from the Kubernetes source and pinned by tests. It&apos;s still a simulation, so some corners are simpler than the real thing.
           </p>
+        </section>
+
+        {/* ---------------------------------------------------------------- one more nudge before the footer */}
+        <section aria-labelledby="go" className="mx-auto max-w-6xl px-4 pt-20 sm:px-6">
+          <div className="flex flex-col gap-6 rounded-[20px] bg-[#326ce5] px-6 py-10 text-white sm:px-10 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 id="go" className="text-balance font-sans text-[32px] font-extrabold leading-[1.05] tracking-[-0.03em] sm:text-[44px]">
+                Break your first cluster.
+              </h2>
+              <p className="mt-3 text-[16px] text-white/80">The first lesson takes about {FIRST_LESSON_MINUTES} minutes. Your progress stays in this browser.</p>
+            </div>
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Link href="/learn/first-pod" className="inline-flex h-12 items-center justify-center whitespace-nowrap rounded-full bg-white px-6 text-[15.5px] font-semibold text-[#123a9c] transition-colors hover:bg-white/90">
+                Start lesson 1 →
+              </Link>
+              <Link href="/daily" className="inline-flex h-12 items-center justify-center whitespace-nowrap rounded-full border border-white/50 px-6 text-[15.5px] font-medium transition-colors hover:border-white hover:bg-white/10">
+                Take today&apos;s incident
+              </Link>
+            </div>
+          </div>
         </section>
       </main>
 

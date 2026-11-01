@@ -14,6 +14,12 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Video workspaces (Remotion, HyperFrames) have their own toolchains.
     "videos/**",
+    // Vendored Stageshow kit (MIT, its own lint rules) and agent skills.
+    "components/stageshow/kit/**",
+    ".agents/**",
+    ".claude/**",
+    // Scratch work (prototypes, the launch video) is not part of the app.
+    ".scratch/**",
   ]),
 ]);
 

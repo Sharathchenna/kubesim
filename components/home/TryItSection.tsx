@@ -4,14 +4,13 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
+import { TryItSkeleton } from "./TryItSkeleton";
 
 const TryIt = dynamic(() => import("./TryIt"), { ssr: false, loading: () => <Placeholder /> });
 
 /** Boots the cluster when the section first comes near the screen, and only runs its clock while it's visible. */
 
-function Placeholder() {
-  return <div className="grid h-full place-items-center text-[14px] text-ink-soft">Starting a cluster…</div>;
-}
+const Placeholder = TryItSkeleton;
 
 export function TryItSection() {
   const ref = useRef<HTMLDivElement>(null);

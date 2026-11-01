@@ -101,8 +101,10 @@ spec:
         }
         resources:
           requests:
-            cpu: 50m
+            cpu: 200m
             memory: 32Mi
+          limits:
+            cpu: 250m
         readinessProbe:
           httpGet:
             path: /healthz
@@ -195,6 +197,10 @@ spec:
         image: redis:7
         ports:
         - containerPort: 6379
+        resources:
+          requests:
+            cpu: 100m
+            memory: 32Mi
         readinessProbe:
           tcpSocket:
             port: 6379

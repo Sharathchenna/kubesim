@@ -308,7 +308,9 @@ export function Workspace({ sim, selection, onSelect, showSystem = false, tabs =
   const tabOptions = [...tabs.map((t) => ({ value: t as string, label: labels[t] })), ...extraTabs.map((t) => ({ value: t.id, label: t.label }))];
   const extra = extraTabs.find((t) => t.id === tab);
 
-  const view = <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={selection} onSelect={onSelect} showSystem={showSystem} namespace={ns} inset={inset} perRow={perRow} wrap={wrap} />;
+  // Replicas set from the canvas go through kubectl, so the command shows in the terminal.
+  const scale = (kind: "deployment" | "statefulset", n: string, name: string, replicas: number) => sim.exec(`kubectl scale ${kind} ${name} --replicas=${replicas}${n !== "default" ? ` -n ${n}` : ""}`);
+  const view = <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={selection} onSelect={onSelect} showSystem={showSystem} namespace={ns} inset={inset} perRow={perRow} wrap={wrap} onScale={interactive ? scale : undefined} />;
   const canvas = (
     <div ref={setCanvasEl} className="relative h-full min-h-0 w-full overflow-hidden">
       {interactive ? (

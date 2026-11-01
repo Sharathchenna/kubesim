@@ -69,6 +69,9 @@ const TERM_MAX = 300;
 const HISTORY_MAX = 500;
 /** localStorage holds ~5 MB per origin; a save bigger than this would fail anyway. */
 const SAVE_MAX_CHARS = 4_000_000;
+/** What autosave compares: the objects' resource version and the Cluster View layout's revision. */
+const saveRev = (s: { rv: number; layoutRev?: number }) => `${s.rv}:${s.layoutRev ?? 0}`;
+
 /** A cluster from a shared link must run cleanly this long (real time) before it's autosaved. */
 const LINK_TRUST_MS = 5000;
 /** Sim time between the requests of a `curl` loop. */
@@ -139,7 +142,7 @@ export class SimStore {
   private lastLive = 0;
   private lastSave = 0;
   /** Cluster resourceVersion at the last autosave (skip saving when nothing changed). */
-  private savedRv = -1;
+  private savedRv = "";
   /** What the last frame showed, to skip re-rendering when nothing changed. */
   private shownRv = -1;
   private shownSec = -1;
@@ -175,7 +178,7 @@ export class SimStore {
     this.events = [];
     this.packets = [];
     this.slots = new Map();
-    this.savedRv = -1;
+    this.savedRv = "";
     c.subscribe((s) => {
       if (s.type === "event") {
         const i = this.events.findIndex((e) => e.metadata.uid === s.event.metadata.uid);
@@ -209,7 +212,8 @@ export class SimStore {
     const c = this.cluster;
     if (!key || !c || this.crashed) return;
     if (typeof performance !== "undefined" && performance.now() < this.holdSaveUntil) return;
-    if (!force && c.state.rv === this.savedRv) return;
+    const rev = saveRev(c.state);
+    if (!force && rev === this.savedRv) return;
     try {
       const snap = c.snapshot();
       for (const k of Object.keys(snap.logs)) snap.logs[k] = snap.logs[k].slice(-100);
@@ -221,7 +225,7 @@ export class SimStore {
       }
       if (tooBig) return;
       if (storageSet(key, json)) {
-        this.savedRv = c.state.rv;
+        this.savedRv = rev;
         if (this.loadedFromLink) storageSet(originKey(key), "link");
       }
     } catch {
@@ -235,7 +239,7 @@ export class SimStore {
       this.files = { "manifest.yaml": this.opts.editor ?? DEFAULT_MANIFEST, ...(this.opts.files ?? {}) };
       this.editorFile = "manifest.yaml";
       this.attach(saved);
-      this.savedRv = saved.state.rv;
+      this.savedRv = saveRev(saved.state);
       this.bootAt = saved.now;
       this.restoredFromSave = true;
       if (this.opts.speed) this.speed = this.opts.speed;
@@ -555,7 +559,7 @@ export class SimStore {
     this.restoredFromSave = true;
     this.loadedFromLink = false;
     storageSet(key, raw);
-    this.savedRv = c.state.rv;
+    this.savedRv = saveRev(c.state);
     storageRemove(originKey(key));
     storageRemove(backupKey(key));
     this.bump();

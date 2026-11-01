@@ -1024,7 +1024,20 @@ function cmdRun(s: Session): Res | string {
   const ns = nsOf(ctx, a);
   const name = a.pos[0];
   checkOut(s);
-  const pod = G.genPod(name, sflag(a, "--image") ?? "", ns, a.flags, a.rest.length ? a.rest : a.pos.slice(1));
+  let pod = G.genPod(name, sflag(a, "--image") ?? "", ns, a.flags, a.rest.length ? a.rest : a.pos.slice(1));
+  // --overrides: a patch over the generated Pod (run.go overrideFields), JSON merge by default, so a
+  // containers list replaces the generated one rather than merging into it.
+  const overrides = sflag(a, "--overrides");
+  if (overrides) {
+    const type = sflag(a, "--override-type") ?? "merge";
+    if (!(PATCH_TYPES as readonly string[]).includes(type)) throw new CmdError(`error: --override-type must be one of [${PATCH_TYPES.join(" ")}], not "${type}"`);
+    try {
+      pod = applyPatch(pod, parsePatch(overrides), type) as unknown as typeof pod;
+    } catch (e) {
+      if (e instanceof PatchError) throw new CmdError(e.message);
+      throw e;
+    }
+  }
   const rm = bflag(a, "--rm");
   const attach = bflag(a, "--stdin") || bflag(a, "--tty") || bflag(a, "--attach");
   if (rm && !attach) throw new CmdError("error: --rm should only be used for attached containers");

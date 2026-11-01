@@ -43,6 +43,9 @@ const GRID = 24;
 const HINT_KEY = "kubesim.canvasHint.v1";
 const GRID_MAJOR = GRID * 4;
 
+/** Enlarged on a tall screen, phone-width ("narrow") or wider ("tall"); "wide" otherwise; null when not enlarged. */
+export type FullShape = null | "wide" | "tall" | "narrow";
+
 export function PanZoom({
   bounds,
   mustFit,
@@ -52,6 +55,8 @@ export function PanZoom({
   inset,
   onZoom,
   captureWheel = true,
+  onFull,
+  controls,
 }: {
   bounds: Bounds;
   /** Part of the diagram that fit-to-screen always shows whole (the Nodes), zooming out further if it has to. */
@@ -63,6 +68,10 @@ export function PanZoom({
   onZoom?: (k: number) => void;
   /** Zoom with the plain mouse wheel. Off for canvases embedded in a scrolling page: there only pinch / Ctrl+wheel zooms. */
   captureWheel?: boolean;
+  /** The shape of the screen while enlarged (null when not), so the diagram can lay itself out for it. */
+  onFull?: (shape: FullShape) => void;
+  /** Extra buttons at the start of the zoom bar (the Cluster View's Tidy up). */
+  controls?: React.ReactNode;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   /** Active touch/pen pointers, for pinch-zoom. */
@@ -75,6 +84,10 @@ export function PanZoom({
   /** True once the Learner pans or zooms by hand; until then, resizes re-fit the view. */
   const touched = useRef(false);
   const [animating, setAnimating] = useState(false);
+  /** Enlarged to the whole screen: the browser's full screen where it has one for elements, else a full-window overlay (iPhone). */
+  const [full, setFull] = useState<false | "native" | "overlay">(false);
+  /** Enlarged, an embedded canvas works like the Sandbox's: wheel and fingers move the diagram, not the page. */
+  const capture = captureWheel || full !== false;
   /** First visit only: how to move around, until the Learner does or a few seconds pass. */
   const [hint, setHint] = useState<"mouse" | "touch" | null>(null);
   useEffect(() => {
@@ -109,7 +122,7 @@ export function PanZoom({
     boundsRef.current = bounds;
     mustRef.current = mustFit;
     insetRef.current = inset;
-    embeddedRef.current = !captureWheel;
+    embeddedRef.current = !capture;
   });
 
   const fit = useCallback((animate = true) => {
@@ -183,7 +196,7 @@ export function PanZoom({
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       // Embedded in a page: let the page scroll unless this is a pinch (Ctrl+wheel) gesture.
-      if (!captureWheel && !e.ctrlKey && !e.metaKey) return;
+      if (!capture && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       const r = el.getBoundingClientRect();
       if (e.ctrlKey || e.metaKey || Math.abs(e.deltaY) > Math.abs(e.deltaX) * 2) {
@@ -197,7 +210,46 @@ export function PanZoom({
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoomAt, captureWheel]);
+  }, [zoomAt, capture]);
+
+  // Leaving full screen by the browser's own means (Esc, a gesture) ends it here too; the overlay closes on Esc.
+  useEffect(() => {
+    if (!full) return;
+    const onChange = () => {
+      if (full === "native" && !document.fullscreenElement) setFull(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (full === "overlay" && e.key === "Escape") setFull(false);
+    };
+    const overflow = document.body.style.overflow;
+    if (full === "overlay") document.body.style.overflow = "hidden";
+    document.addEventListener("fullscreenchange", onChange);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener("fullscreenchange", onChange);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [full]);
+
+  const shape: FullShape = !full || size.w === 0 ? null : size.h > size.w * 0.7 ? (size.w < 640 ? "narrow" : "tall") : "wide";
+  useEffect(() => {
+    onFull?.(shape);
+  }, [shape, onFull]);
+
+  const toggleFull = () => {
+    const el = wrap.current;
+    if (!el) return;
+    // Either way the view re-fits to the new size.
+    touched.current = false;
+    if (full) {
+      if (full === "native" && document.fullscreenElement) void document.exitFullscreen();
+      setFull(false);
+      return;
+    }
+    if (document.fullscreenEnabled && el.requestFullscreen) el.requestFullscreen().then(() => setFull("native"), () => setFull("overlay"));
+    else setFull("overlay");
+  };
 
   const zoomCenter = (f: number) => {
     const r = wrap.current!.getBoundingClientRect();
@@ -221,7 +273,7 @@ export function PanZoom({
     <div
       ref={wrap}
       data-drop="canvas"
-      className={`cv-root canvas-grid relative h-full w-full ${captureWheel ? "touch-none" : "touch-pan-y"} overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal/50 ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
+      className={`cv-root canvas-grid ${full === "overlay" ? "fixed inset-0 z-[100] h-[100dvh] w-screen" : "relative h-full w-full"} ${capture ? "touch-none" : "touch-pan-y"} overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-signal/50 ${grabbing ? "cursor-grabbing" : "cursor-grab"}`}
       tabIndex={0}
       role="region"
       aria-label="Cluster View. Arrow keys pan, plus and minus zoom, 0 fits everything; Tab moves between objects."
@@ -257,7 +309,7 @@ export function PanZoom({
         }
         if (e.button !== 0) return;
         // Embedded in a scrolling page, a finger scrolls the page; only a mouse drags the diagram.
-        if (!captureWheel && e.pointerType !== "mouse") return;
+        if (!capture && e.pointerType !== "mouse") return;
         drag.current = { px: e.clientX, py: e.clientY, vx: v.x, vy: v.y, moved: false, id: e.pointerId };
         suppressClick.current = false;
       }}
@@ -329,6 +381,7 @@ export function PanZoom({
         </div>
       )}
       <div data-overlay="zoom" className="font-sheet absolute bottom-4 right-4 flex items-center rounded-md border border-ink/15 bg-paper" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+        {controls}
         <IconBtn label="Zoom out" onClick={() => zoomCenter(1 / 1.25)}>
           <path d="M5 10h10" />
         </IconBtn>
@@ -340,7 +393,10 @@ export function PanZoom({
         </IconBtn>
         <span className="h-8 w-px bg-ink/15" />
         <IconBtn label="Fit to screen" onClick={() => fit()}>
-          <path d="M4 8V4h4M16 8V4h-4M4 12v4h4M16 12v4h-4" />
+          <path d="M3.5 5h13v10h-13zM7.5 8.5h5v3h-5z" />
+        </IconBtn>
+        <IconBtn label={full ? "Exit full screen" : "Full screen"} onClick={toggleFull}>
+          <path d={full ? "M8 3v5H3M12 3v5h5M8 17v-5H3M12 17v-5h5" : "M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5"} />
         </IconBtn>
       </div>
     </div>

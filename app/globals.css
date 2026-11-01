@@ -290,3 +290,14 @@ body {
   .cv-pop, .cv-ripple, .burst-piece, .step-pop { animation: none !important; }
   .cv-ripple, .burst-piece { display: none; }
 }
+
+/* The replica stepper on a workload card: shown while the card is hovered, focused or selected. With a mouse it
+   keeps catching the pointer while hidden, so moving from the card down onto it doesn't lose the hover; on touch
+   it only takes taps once the card is selected. */
+.cv-step { opacity: 0; pointer-events: none; transition: opacity 0.15s ease; color: var(--cv-text); }
+.cv-obj:hover .cv-step, .cv-obj:focus-within .cv-step, .cv-step[data-on] { opacity: 1; pointer-events: auto; }
+@media (hover: hover) { .cv-step { pointer-events: auto; } }
+.cv-step-body { fill: var(--cv-surface); stroke: var(--cv-card-stroke); stroke-width: 1px; filter: drop-shadow(0 2px 6px rgb(15 23 42 / 0.12)); }
+.cv-step-btn { cursor: pointer; }
+.cv-step-btn:hover rect, .cv-step-btn:focus-visible rect { fill: var(--cv-hover, rgb(127 127 127 / 0.12)); }
+.cv-step-btn:focus { outline: none; }

@@ -167,6 +167,37 @@ const useMounted = () =>
     () => false,
   );
 
+/** A still of today's pager (IncidentPlayer's Pager), set into the Daily Incident banner on wider screens. */
+function TodayPager({ page, resolvedMs }: { page: string; resolvedMs?: number }) {
+  const resolved = resolvedMs !== undefined;
+  return (
+    <div aria-hidden className={`absolute -bottom-6 right-6 hidden w-[340px] rounded-2xl border px-5 pb-10 pt-4 text-ink shadow-[0_24px_50px_-20px_rgb(10_30_80/0.55)] md:block lg:right-10 lg:w-[420px] ${resolved ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-2 font-mono text-[11.5px] font-semibold uppercase tracking-[0.08em]">
+          <span className={`h-2 w-2 rounded-full ${resolved ? "bg-green-600" : "cv-blink bg-red-600"}`} />
+          {resolved ? "Resolved" : "Paged"}
+        </span>
+        <span className="font-mono text-[20px] font-semibold tabular-nums">{resolved ? clock(resolvedMs) : "0:00"}</span>
+      </div>
+      <div className="mt-1 text-[15px] font-medium">{resolved ? "The shop is serving again." : page}</div>
+      {resolved ? (
+        <div className="mt-2 flex items-baseline gap-5 font-mono tabular-nums">
+          <span>
+            <span className="text-[22px] font-semibold text-green-700">0%</span>
+            <span className="ml-1 text-[11px] uppercase tracking-[0.06em] text-ink-soft">errors</span>
+          </span>
+          <span>
+            <span className="text-[22px] font-semibold">10</span>
+            <span className="ml-1 text-[11px] uppercase tracking-[0.06em] text-ink-soft">req/s</span>
+          </span>
+        </div>
+      ) : (
+        <div className="mt-1.5 text-[13px] text-ink-soft">Something just changed. Watch the numbers.</div>
+      )}
+    </div>
+  );
+}
+
 export function IncidentIndex() {
   const mounted = useMounted();
   const today = mounted ? dailyIncident() : null;
@@ -174,14 +205,18 @@ export function IncidentIndex() {
   const streak = today ? dailyStreak(today.n) : 0;
   return (
     <Shell title="Incidents" intro="A small shop runs in the cluster: a website, an API, Postgres and Redis, with customers sending real traffic. Then something breaks and you're paged. Find the cause with kubectl and fix it against the clock; it's resolved once the shop has served cleanly for 15 seconds.">
-      <Link href="/daily" className="group mb-10 block rounded-2xl bg-signal p-6 text-white transition-colors hover:bg-[#2a5bc4]">
-        <div className="font-mono text-[12px] uppercase tracking-[0.08em] text-white/75">{today ? `Daily Incident #${today.n}` : "Daily Incident"}</div>
-        <div className="font-display mt-1 text-[26px] leading-tight">{done ? `Resolved in ${clock(done.ms)}` : "Today's outage is waiting"}</div>
-        <p className="mt-1.5 max-w-xl text-[15px] text-white/85">
-          {done ? "Come back tomorrow for the next one." : "One incident a day, the same for everyone. Fix it, share your time, keep your streak going."}
-          {streak > 0 ? ` ${streak}-day streak.` : ""}
-        </p>
-        <span className="mt-4 inline-flex h-9 items-center rounded-full bg-white px-4 text-[14px] font-medium text-[#123a9c]">{done ? "See it again →" : "Start today's incident →"}</span>
+      <Link href="/daily" className="group relative mb-10 block overflow-hidden rounded-2xl bg-signal p-6 text-white transition-colors hover:bg-[#2a5bc4]">
+        <div className="md:max-w-[46%] lg:max-w-[52%]">
+          <div className="font-mono text-[12px] uppercase tracking-[0.08em] text-white/75">{today ? `Daily Incident #${today.n}` : "Daily Incident"}</div>
+          <div className="font-display mt-1 text-[26px] leading-tight">{done ? `Resolved in ${clock(done.ms)}` : "Today's outage is waiting"}</div>
+          <p className="mt-1.5 max-w-xl text-[15px] text-white/85">
+            {done ? "Come back tomorrow for the next one." : "One incident a day, the same for everyone. Fix it, share your time, keep your streak going."}
+            {streak > 0 ? ` ${streak}-day streak.` : ""}
+          </p>
+          <span className="mt-4 inline-flex h-9 items-center rounded-full bg-white px-4 text-[14px] font-medium text-[#123a9c]">{done ? "See it again →" : "Start today's incident →"}</span>
+        </div>
+        {/* Today's pager, running off the banner's foot: what you'll see when you start. */}
+        {today && <TodayPager page={today.incident.page} resolvedMs={done?.ms} />}
       </Link>
       <div className={RULED}>
         {INCIDENTS.map((inc) => {

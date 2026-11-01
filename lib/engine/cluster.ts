@@ -29,6 +29,7 @@ import { runJobs } from "./controllers/job";
 import { runCronJobs } from "./controllers/cronjob";
 import { runHPAs } from "./controllers/hpa";
 import { runMetrics, type MetricsState } from "./controllers/metrics";
+import { runLoad, type ContainerFlow, type LoadState, type LoadStats } from "./controllers/load";
 import { runStorage } from "./controllers/storage";
 import { runNetworkControllers, ensureNamespaceDefaults } from "./controllers/network";
 import { runNodeLifecycle } from "./controllers/node-lifecycle";
@@ -119,6 +120,8 @@ export interface ContainerRuntime {
   reqs?: number[];
   /** Requests it answered with a 5xx (sim ms), for error rates. */
   errs?: number[];
+  /** What the traffic control's flow of requests did here (controllers/load.ts). */
+  flow?: ContainerFlow;
   /** Readiness as the prober sees it; startup probe passed. */
   ready?: boolean;
   started?: boolean;
@@ -196,6 +199,15 @@ export interface ClusterState {
   trafficRng: number;
   /** Requests to a Service that had no ready endpoint to send them to (sim ms), by Service uid. */
   svcErrs?: Record<string, number[]>;
+  /** Where the Learner dragged cards on the Cluster View (top-left, diagram units), by objKey. Not part of Kubernetes: kept so a saved or shared cluster looks the way it was left. */
+  layout?: Record<string, { x: number; y: number }>;
+  /** Bumped on every layout change (and traffic setting), so autosave notices. */
+  layoutRev?: number;
+  /** The traffic control: a steady flow of requests to one Service (controllers/load.ts). */
+  load?: LoadState;
+  loadStats?: LoadStats;
+  /** Flow requests a Service had no ready endpoint for (counts per sample), by Service uid. */
+  loadLost?: Record<string, { t: number[]; n: number[] }>;
 }
 
 export type ClusterSignal =
@@ -367,6 +379,7 @@ export class Cluster {
     runDaemonSets(this);
     runJobs(this);
     runCronJobs(this);
+    runLoad(this);
     runMetrics(this);
     runHPAs(this);
     runNetworkControllers(this);

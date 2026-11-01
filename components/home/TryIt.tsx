@@ -10,6 +10,7 @@ import { shopYaml } from "@/lib/sim/incidents";
 import { useSimulation } from "@/lib/sim/useSimulation";
 import { ClusterView, type Selection } from "../sim/ClusterView";
 import { Terminal } from "../sim/Terminal";
+import { TryItSkeleton } from "./TryItSkeleton";
 
 /** The shop from the Incidents (web, API, Postgres, Redis, and customers sending traffic), healthy. */
 function setup(c: Cluster) {
@@ -20,7 +21,7 @@ export default function TryIt({ active = true }: { active?: boolean }) {
   const sim = useSimulation({ setup, warmupMs: 60_000, seed: 3, onStart: (s) => s.exec("kubectl get pods") }, active);
   const [sel, setSel] = useState<Selection>(null);
   const c = sim.cluster;
-  if (!c) return <div className="grid h-full place-items-center text-[14px] text-ink-soft">Starting a cluster…</div>;
+  if (!c) return <TryItSkeleton />;
   const chips = [
     ["kubectl delete pod shop-db-0", "Kill the database"],
     ["kubectl rollout restart deployment shop-api", "Restart the API"],
@@ -32,7 +33,7 @@ export default function TryIt({ active = true }: { active?: boolean }) {
   return (
     <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_212px] md:grid-rows-[minmax(0,1fr)_230px]">
       <div className="relative min-h-0 border-b border-ink/10">
-        <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} captureWheel={false} />
+        <ClusterView cluster={c} packets={sim.packets} slots={sim.slots} now={sim.frameNow} selection={sel} onSelect={setSel} showSystem={false} namespace="*" inset={{ top: 8, bottom: 40 }} captureWheel={false} onScale={(kind, ns, name, n) => sim.exec(`kubectl scale ${kind} ${name} --replicas=${n}${ns !== "default" ? ` -n ${ns}` : ""}`)} />
       </div>
       <div className="flex min-h-0 flex-col bg-paper md:grid md:grid-cols-[230px_minmax(0,1fr)]">
         <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-ink/10 p-3 md:flex-col md:flex-wrap md:content-start md:overflow-visible md:border-b-0 md:border-r">

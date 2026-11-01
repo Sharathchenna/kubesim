@@ -6,19 +6,20 @@
 // with the scheduler queue on the left, config, storage, policies and access
 // in a column on the right, and traffic flowing along the edges.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarClock, Database, FileText, Globe, HardDrive, Hexagon, KeyRound, Layers, Network, Play, Server, ShieldCheck, UserCheck, type LucideIcon } from "lucide-react";
 import { fit, onFontsReady, textWidth } from "./textFit";
-import { isIsolated, podRequests, nodeAllocatable, type Cluster, type ConfigMap, type CronJob, type DaemonSet, type Deployment, type Endpoints, type HorizontalPodAutoscaler, type Ingress, type Job, type NetworkPolicy, type Node, type PersistentVolume, type PersistentVolumeClaim, type Pod, type ReplicaSet, type RoleBinding, type Secret, type Service, type StatefulSet } from "@/lib/engine";
+import { isIsolated, objKey, podRequests, nodeAllocatable, type Cluster, type ConfigMap, type CronJob, type DaemonSet, type Deployment, type Endpoints, type HorizontalPodAutoscaler, type Ingress, type Job, type NetworkPolicy, type Node, type PersistentVolume, type PersistentVolumeClaim, type Pod, type ReplicaSet, type RoleBinding, type Secret, type Service, type StatefulSet } from "@/lib/engine";
 import { fnv32a } from "@/lib/engine/util";
 import { SYSTEM_NAMESPACES } from "@/lib/engine/bootstrap";
 import { PACKET_MS, type Packet } from "@/lib/sim/useSimulation";
 import { isRollingOut, podCategory, podStatus, restarts, type PodCategory } from "@/lib/sim/status";
-import { PanZoom, type Bounds, type Inset } from "./PanZoom";
-import { useDrag } from "./DragLayer";
+import { PanZoom, type Bounds, type FullShape, type Inset } from "./PanZoom";
+import { useDrag, type MoveCallback } from "./DragLayer";
 import type { DragItem } from "@/lib/sim/drag";
+import type { ObjectKind } from "@/lib/sim/objects";
 
-export type SelKind = "pod" | "node" | "service" | "deployment" | "replicaset" | "statefulset" | "daemonset" | "job" | "cronjob" | "ingress" | "configmap" | "secret" | "pvc" | "networkpolicy" | "hpa" | "rolebinding";
+export type SelKind = ObjectKind;
 export type Selection = { kind: SelKind; ns?: string; name: string } | null;
 
 const NODE_W = 338;
@@ -75,8 +76,19 @@ function bucket(times: number[], t: number, out = new Array<number>(BUCKETS).fil
 /** Requests a Pod served (or answered with a 5xx: `errs`) in each second up to `t`, from its containers' logs. */
 function servedSeries(c: Cluster, uid: string, t: number, key: "reqs" | "errs" = "reqs"): number[] {
   const out = new Array<number>(BUCKETS).fill(0);
-  for (const crt of Object.values(c.state.pods[uid]?.containers ?? {})) bucket(crt[key] ?? [], t, out);
+  for (const crt of Object.values(c.state.pods[uid]?.containers ?? {})) {
+    bucket(crt[key] ?? [], t, out);
+    // The traffic control's flow, counted per sample rather than per request.
+    const f = crt.flow;
+    if (f) for (let j = 0; j < f.t.length; j++) addAt(out, f.t[j], t, key === "reqs" ? f.ok[j] + f.err[j] : f.err[j]);
+  }
   return out;
+}
+
+/** Adds `n` requests at time `at` into the per-second buckets ending at `t`. */
+function addAt(out: number[], at: number, t: number, n: number) {
+  const i = BUCKETS - 1 - Math.floor((t - at) / 1000);
+  if (at <= t && i >= 0) out[i] += n;
 }
 /** Requests per second over the last few seconds of a series. */
 const rateOf = (series: number[]) => series.slice(-RATE_SECONDS).reduce((a, b) => a + b, 0) / RATE_SECONDS;
@@ -185,6 +197,8 @@ interface Props {
   captureWheel?: boolean;
   /** A tall canvas: wrap the workloads into rows no wider than the Nodes and put config and storage underneath, so the diagram grows down instead of across. */
   wrap?: boolean;
+  /** Set replicas from the canvas (a stepper on Deployment and StatefulSet cards). Left out, the cards have none. */
+  onScale?: (kind: "deployment" | "statefulset", ns: string, name: string, replicas: number) => void;
 }
 
 type TopKind = "deployment" | "statefulset" | "daemonset" | "cronjob" | "job";
@@ -218,9 +232,85 @@ function podRefs(p: Pod): { configmap: Set<string>; secret: Set<string>; pvc: Se
   return out;
 }
 
-export function ClusterView({ cluster: c, packets, selection, onSelect, showSystem, slots, now, namespace, inset, perRow = 4, captureWheel, wrap = false }: Props) {
+export function ClusterView({ cluster: c, packets, selection, onSelect, showSystem, slots, now, namespace, inset, perRow: perRowProp = 4, captureWheel, wrap: wrapProp = false, onScale }: Props) {
+  // Enlarged to full screen, the diagram lays itself out for the screen it now has: one Node per row on a
+  // phone held upright, wrapped rows on a tall screen.
+  const [fullShape, setFullShape] = useState<FullShape>(null);
+  const perRow = fullShape === "narrow" ? 1 : fullShape ? Math.max(perRowProp, 2) : perRowProp;
+  const wrap = fullShape === "tall" || (fullShape !== "narrow" && wrapProp);
   const [k, setK] = useState(1);
   const drag = useDrag();
+  // ---- moving cards: like any canvas, a card goes where it's dropped and its wires follow. Kept in the
+  // cluster's state (c.state.layout), so it survives a reload and travels with a share link; Pods move with their Node.
+  const [moving, setMoving] = useState<{ key: string; dx: number; dy: number } | null>(null);
+  /** Bumped by Tidy up, so the view re-fits the automatic layout. */
+  const [tidied, setTidied] = useState(0);
+  const movedAt = useRef(0);
+  const layout = c.state.layout;
+  const custom = !!layout && Object.keys(layout).length > 0;
+  /** A finger moves cards only where it doesn't scroll the page (the Sandbox, or any canvas in full screen). */
+  const touchMoves = captureWheel !== false || fullShape !== null;
+  const baseOf = new Map<string, Pt>();
+  /** Where a card goes: where the Learner put it, else the automatic layout, plus any drag in progress. */
+  const place = (key: string, x: number, y: number): Pt => {
+    const p = layout?.[key];
+    const base = p && Number.isFinite(p.x) && Number.isFinite(p.y) ? { x: p.x, y: p.y } : { x, y };
+    baseOf.set(key, base);
+    return moving?.key === key ? { x: base.x + moving.dx, y: base.y + moving.dy } : base;
+  };
+  const keep = (key: string, to: Pt) => {
+    c.state.layout = { ...(c.state.layout ?? {}), [key]: { x: Math.round(to.x), y: Math.round(to.y) } };
+    c.state.layoutRev = (c.state.layoutRev ?? 0) + 1;
+    c.markChanged();
+  };
+  const tidy = () => {
+    delete c.state.layout;
+    c.state.layoutRev = (c.state.layoutRev ?? 0) + 1;
+    c.markChanged();
+    setTidied((n) => n + 1);
+  };
+  /** Pointer handlers that let a card be dragged to a new spot. With `item`, a drop on something it acts on (a Deployment, the trash) does that instead. */
+  const mover = (key: string, item?: DragItem) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      if (e.pointerType !== "mouse" && !touchMoves) return;
+      e.stopPropagation(); // don't pan the canvas
+      const from = baseOf.get(key);
+      if (!from) return;
+      const scale = k;
+      const onMove: MoveCallback = (dx, dy, phase) => {
+        if (phase === "move") return setMoving({ key, dx: dx / scale, dy: dy / scale });
+        setMoving(null);
+        movedAt.current = performance.now();
+        if (phase === "commit" && (dx || dy)) keep(key, { x: from.x + dx / scale, y: from.y + dy / scale });
+      };
+      if (drag && item) return drag.begin(item, e, onMove);
+      const sx = e.clientX;
+      const sy = e.clientY;
+      let active = false;
+      const off = () => {
+        window.removeEventListener("pointermove", mv);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", cancel);
+      };
+      const mv = (ev: PointerEvent) => {
+        if (!active && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+        active = true;
+        onMove(ev.clientX - sx, ev.clientY - sy, "move");
+      };
+      const up = (ev: PointerEvent) => {
+        off();
+        if (active) onMove(ev.clientX - sx, ev.clientY - sy, "commit");
+      };
+      const cancel = () => {
+        off();
+        if (active) onMove(0, 0, "cancel");
+      };
+      window.addEventListener("pointermove", mv);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", cancel);
+    },
+  });
   /** Drag + drop wiring for an object: its drop key, optional drag source, and highlight. */
   const dnd = (key: string, item?: DragItem) => ({
     "data-drop": key,
@@ -245,8 +335,15 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         e.preventDefault();
         onSelect(sel);
       }
+      // Delete (Backspace on a Mac keyboard) deletes it, the same as dropping it on the trash.
+      if ((e.key === "Delete" || e.key === "Backspace") && sel && drag) {
+        e.preventDefault();
+        drag.remove(item(sel.kind, sel.ns, sel.name, label.split(",")[0]));
+      }
     },
   });
+  /** The drag item for an object on the canvas: dropped on the trash, it's deleted. */
+  const item = (kind: ObjectKind, ns: string | undefined, name: string, label: string): DragItem => ({ kind: "object", type: kind, ns: ns ?? "default", name, label });
   const isSelObj = (s: Selection) => !!s && !!selection && s.kind === selection.kind && s.name === selection.name && (s.ns ?? "default") === (selection.ns ?? "default");
   const nodes = c.list<Node>("Node");
   const cp = nodes.find((n) => n.metadata.labels?.["node-role.kubernetes.io/control-plane"] !== undefined);
@@ -419,7 +516,6 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     // Bare ReplicaSets get their own boxes, after the last workload.
     bareRs.forEach((rs, j) => childBox.set(rs.metadata.uid, { kind: "replicaset", obj: rs, x: x + j * (RS_W + 12), y: y + Y_RS }));
   }
-  const workloadsRight = Math.max(0, ...topCards.map((t) => t.x + t.w), ...[...childBox.values()].map((b) => b.x + RS_W));
 
   // ---- services, then ingresses under them
   const svcY = nodesBottom + ROW_GAP;
@@ -440,8 +536,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   // A narrow canvas puts it under everything instead.
   const lowest = Math.max(nodesBottom, ...svcBoxes.map((b) => b.y + SVC_H), ...ingBoxes.map((b) => b.y + ING_H));
   const sideX = stacked ? 0 : Math.max(nodesW, ...svcBoxes.map((b) => b.x + SVC_W), ...ingBoxes.map((b) => b.x + ING_W)) + 44;
-  type Side = { kind: SelKind; ns?: string; name: string; title: string; sub: string; tone: string; y: number; uid: string; warn?: boolean };
-  const sections: { label: string; items: Omit<Side, "y">[] }[] = [
+  type Side = { kind: SelKind; ns?: string; name: string; title: string; sub: string; tone: string; x: number; y: number; uid: string; warn?: boolean };
+  const sections: { label: string; items: Omit<Side, "x" | "y">[] }[] = [
     {
       label: "CONFIG",
       items: [
@@ -477,13 +573,57 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     for (const s of sections) {
       sideLabels.push({ label: s.label, y: y - 14 });
       for (const it of s.items) {
-        sideItems.push({ ...it, y });
+        sideItems.push({ ...it, x: sideX, y });
         y += SIDE_H + 8;
       }
       y += 36;
     }
   }
   const sideByKey = new Map(sideItems.map((s) => [`${s.kind}:${s.ns}/${s.name}`, s]));
+
+  // ---- moved cards: each goes where the Learner put it; everything drawn from it (wires, traffic, its Pods) follows.
+  const inCard = new Set(topCards.flatMap((t) => t.children.map((ch) => ch.obj.metadata.uid)));
+  /** What dragging a box moves: a ReplicaSet or Job under a workload moves the workload's card. */
+  const moveKey = new Map<string, string>();
+  for (const card of topCards) {
+    const cardKey = objKey(card.obj.kind, card.obj.metadata.namespace, card.obj.metadata.name);
+    moveKey.set(card.obj.metadata.uid, cardKey);
+    for (const ch of card.children) moveKey.set(ch.obj.metadata.uid, cardKey);
+    const to = place(cardKey, card.x, card.y);
+    const dx = to.x - card.x;
+    const dy = to.y - card.y;
+    card.x = to.x;
+    card.y = to.y;
+    for (const ch of card.children) {
+      ch.x += dx;
+      ch.y += dy;
+    }
+  }
+  for (const b of childBox.values()) {
+    if (inCard.has(b.obj.metadata.uid)) continue;
+    const key = objKey(b.obj.kind, b.obj.metadata.namespace, b.obj.metadata.name);
+    moveKey.set(b.obj.metadata.uid, key);
+    const to = place(key, b.x, b.y);
+    b.x = to.x;
+    b.y = to.y;
+  }
+  for (const nb of nodeBoxes) {
+    const to = place(objKey("Node", undefined, nb.node.metadata.name), nb.x, nb.y);
+    const dx = to.x - nb.x;
+    const dy = to.y - nb.y;
+    nb.x = to.x;
+    nb.y = to.y;
+    for (const p of nodePods.get(nb.node.metadata.name) ?? []) {
+      const at = podPos.get(p.metadata.uid);
+      if (at) {
+        at.x += dx;
+        at.y += dy;
+      }
+    }
+  }
+  for (const b of svcBoxes) Object.assign(b, place(objKey("Service", b.s.metadata.namespace, b.s.metadata.name), b.x, b.y));
+  for (const b of ingBoxes) Object.assign(b, place(objKey("Ingress", b.ing.metadata.namespace, b.ing.metadata.name), b.x, b.y));
+  for (const it of sideItems) Object.assign(it, place(`side:${it.kind}/${it.ns ?? ""}/${it.name}`, it.x, it.y));
 
   // ---- relationships for highlighting
   const selPod = selection?.kind === "pod" ? pods.find((p) => p.metadata.name === selection.name && p.metadata.namespace === (selection.ns ?? "default")) : undefined;
@@ -507,7 +647,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   const isSel = (kind: string, name: string, ns?: string) => selection?.kind === kind && selection.name === name && (selection.ns ?? "default") === (ns ?? "default");
   const click = (s: Selection) => (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (drag?.justDropped()) return;
+    if (drag?.justDropped() || performance.now() - movedAt.current < 300) return;
     onSelect(s);
   };
 
@@ -559,7 +699,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   const linkPod = (p: Pod, it: Side) => {
     const a = podRight(p.metadata.uid);
     if (!a) return;
-    sideEdges.push({ d: hcurve(a, { x: sideX, y: it.y + SIDE_H / 2 }), key: `${p.metadata.uid}/${it.uid}` });
+    sideEdges.push({ d: hcurve(a, { x: it.x, y: it.y + SIDE_H / 2 }), key: `${p.metadata.uid}/${it.uid}` });
   };
   if (selPod) {
     const r = refsOf(selPod);
@@ -583,22 +723,33 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     for (const p of pods) {
       if (!policySelects(c, it.ns!, it.name, p)) continue;
       const a = podRight(p.metadata.uid);
-      if (a) polEdges.push({ d: hcurve(a, { x: sideX, y: it.y + SIDE_H / 2 }), key: `np${p.metadata.uid}/${it.uid}` });
+      if (a) polEdges.push({ d: hcurve(a, { x: it.x, y: it.y + SIDE_H / 2 }), key: `np${p.metadata.uid}/${it.uid}` });
     }
   }
 
   const hotChild = (uid: string) => !!selection && (selChildUid === uid || (!!hotTop && hotTop.children.some((ch) => ch.obj.metadata.uid === uid)));
   const hotCard = (uid: string) => !!hotTop && hotTop.obj.metadata.uid === uid;
 
-  const sideBottom = sideItems.length ? sideItems[sideItems.length - 1].y + SIDE_H : 0;
-  const minX = (pending.length ? qx : 0) - 40;
-  const maxX = Math.max(nodesW, workloadsRight, ...svcBoxes.map((s) => s.x + SVC_W), ...ingBoxes.map((s) => s.x + ING_W), sideItems.length ? sideX + SIDE_W : 0) + 40;
-  const maxY = Math.max(lowest, sideBottom) + 40;
-  const top = (topCards.length || childBox.size ? Y_DEP : yNodes) - 40;
+  // Everything on the canvas, wherever it was put.
+  const boxes: [x: number, y: number, w: number, h: number][] = [
+    ...topCards.map((t): [number, number, number, number] => [t.x, t.y, t.w, DEP_H]),
+    ...[...childBox.values()].map((b): [number, number, number, number] => [b.x, b.y, RS_W, RS_H]),
+    ...nodeBoxes.map((n): [number, number, number, number] => [n.x, n.y, n.w, n.h]),
+    ...svcBoxes.map((b): [number, number, number, number] => [b.x, b.y, SVC_W, SVC_H]),
+    ...ingBoxes.map((b): [number, number, number, number] => [b.x, b.y, ING_W, ING_H]),
+    ...sideItems.map((it): [number, number, number, number] => [it.x, it.y, SIDE_W, SIDE_H]),
+  ];
+  const minX = Math.min(pending.length ? qx : 0, ...boxes.map((b) => b[0])) - 40;
+  const maxX = Math.max(nodesW, ...boxes.map((b) => b[0] + b[2])) + 40;
+  const maxY = Math.max(lowest, pending.length ? yNodes + queueH : 0, ...boxes.map((b) => b[1] + b[3])) + 40;
+  const top = Math.min(topCards.length || childBox.size ? Y_DEP : yNodes, ...boxes.map((b) => b[1])) - 40;
   const bounds: Bounds = { x: minX, y: top, w: maxX - minX, h: maxY - top };
-  // Fit-to-screen always shows every Node (and the scheduler queue beside them).
-  const nodesLeft = pending.length ? qx : 0;
-  const nodesArea: Bounds = { x: nodesLeft, y: yNodes - 24, w: nodesW - nodesLeft, h: Math.max(nodesBottom, pending.length ? yNodes + queueH : 0) - yNodes + 24 };
+  // Fit-to-screen always shows every Node (and the scheduler queue beside them), wherever they were moved.
+  const nodesLeft = Math.min(pending.length ? qx : Infinity, ...nodeBoxes.map((n) => n.x));
+  const nodesTop = Math.min(yNodes, ...nodeBoxes.map((n) => n.y));
+  const nodesRight = Math.max(...nodeBoxes.map((n) => n.x + n.w), nodesLeft + 1);
+  const nodesLow = Math.max(...nodeBoxes.map((n) => n.y + n.h), pending.length ? yNodes + queueH : 0);
+  const nodesArea: Bounds = { x: nodesLeft, y: nodesTop - 24, w: nodesRight - nodesLeft, h: nodesLow - nodesTop + 24 };
 
   const hpaFor = (kind: string, name: string, ns?: string) => hpas.find((h) => h.spec?.scaleTargetRef.kind === kind && h.spec.scaleTargetRef.name === name && h.metadata.namespace === ns);
   const metrics = c.state.metrics;
@@ -621,6 +772,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   // A Service's traffic is what its Pods served, plus requests it had no ready Pod for (those all fail).
   const svcSeries = (svcUid: string, key: "reqs" | "errs" = "reqs") => {
     const out = bucket(c.state.svcErrs?.[svcUid] ?? [], beat);
+    const lost = c.state.loadLost?.[svcUid];
+    if (lost) lost.t.forEach((at, j) => addAt(out, at, beat, lost.n[j]));
     for (const e of svcEdges.values()) if (e.svcUid === svcUid) (key === "reqs" ? series : errSeries).get(e.podUid)?.forEach((n, i) => (out[i] += n));
     return out;
   };
@@ -634,12 +787,16 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
       ...[...svcEdges.values()].filter((e) => e.ready).map((e) => ({ key: `s${e.svcUid}/${e.podUid}`, e, r: podRate(e.podUid), err: podErr(e.podUid) })),
       ...[...ingEdges.values()].map((e) => ({ key: `i${e.ingUid}/${e.svcUid}`, e, r: svcRate.get(e.svcUid) ?? 0, err: svcErr.get(e.svcUid) ?? 0 })),
     ];
+    // A label never sits on a Pod: the wire may cross other Pods on its way, and the Pod shows its own rate anyway.
+    const chips = [...podPos.values()];
+    const onPod = (q: Pt, w: number) => chips.some((c) => q.x + w / 2 > c.x - 4 && q.x - w / 2 < c.x + CHIP_W + 4 && q.y + 11 * T > c.y - 4 && q.y - 11 * T < c.y + CHIP_H + 4);
     for (const { key, e, r, err } of wires) {
       if (!r) continue;
       const text = fmtTraffic(r, err);
       const w = rateWidth(text, T);
-      const spots = [0.5, 0.62, 0.38, 0.72, 0.28].map((t) => onCubic(e.a, e.c1, e.c2, e.b, t));
+      const spots = [0.5, 0.62, 0.38, 0.72, 0.28, 0.82, 0.18, 0.9].map((t) => onCubic(e.a, e.c1, e.c2, e.b, t)).filter((q) => !onPod(q, w));
       const at = spots.find((q) => placed.every((o) => Math.abs(o.x - q.x) > (o.w + w) / 2 + 18 || Math.abs(o.y - q.y) > 21 * T)) ?? spots[0];
+      if (!at) continue;
       placed.push({ ...at, w });
       rateLabels.push({ ...at, key, text, bad: err >= 0.01 });
     }
@@ -666,8 +823,10 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
     // Each owner turns on its own lane so different workloads' wires don't merge into one line.
     const turnY = yNodes - 14 - (lane.get(folded.get(own.uid) ?? own.uid) ?? 0) * 7;
     const sched = !!p.spec?.nodeName;
-    const d = sched ? ortho(from, t, turnY) : curve(from, t).d;
-    const len = sched ? orthoLen(from, t, turnY) : Math.hypot(t.x - from.x, t.y - from.y) * 1.25;
+    // A card moved out of the band above the Nodes gets a curve: a right-angle route only reads from above.
+    const routed = sched && from.y < turnY - 4 && t.y > turnY + 4;
+    const d = routed ? ortho(from, t, turnY) : curve(from, t).d;
+    const len = routed ? orthoLen(from, t, turnY) : Math.hypot(t.x - from.x, t.y - from.y) * 1.25;
     const root = child ? (parentOf.get(own.uid) ?? own.uid) : card!.obj.metadata.uid;
     return [{ p, own, child, d, len, hue, h, cat: podCategory(p), sched, root }];
   });
@@ -677,9 +836,9 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
   for (const w of podWires) spanOf.set(w.own.uid, Math.max(spanOf.get(w.own.uid) ?? 0, w.len));
 
   return (
-    <PanZoom bounds={bounds} mustFit={nodesArea} captureWheel={captureWheel} fitKey={`${perRow}:${wrap}:${yNodes}:${ordered.length}:${topCards.length}:${services.length}:${ingresses.length}:${sideItems.length > 0}`} onBackgroundClick={() => onSelect(null)} inset={inset} onZoom={setK}>
+    <PanZoom bounds={bounds} mustFit={nodesArea} captureWheel={captureWheel} fitKey={`${tidied}:${perRow}:${wrap}:${yNodes}:${ordered.length}:${topCards.length}:${services.length}:${ingresses.length}:${sideItems.length > 0}`} onBackgroundClick={() => onSelect(null)} inset={inset} onZoom={setK} onFull={setFullShape} controls={custom ? <TidyButton onClick={tidy} /> : undefined}>
       {/* section labels */}
-      {detail > 0 && (
+      {detail > 0 && !custom && (
         <g className="cv-label">
           {topCards.length > 0 && <text x={minX + 40} y={Y_DEP - 14}>WORKLOADS</text>}
           <text x={minX + 40} y={yNodes - 14}>NODES</text>
@@ -702,8 +861,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             const from = { x: x + w / 2, y: y + DEP_H };
             const turn = (y + DEP_H + b.y) / 2;
             const end = { x: tip.x, y: tip.y - ARROW };
-            const d = ortho(from, end, turn);
-            const len = orthoLen(from, end, turn);
+            const d = end.y > from.y + 8 ? ortho(from, end, turn) : curve(from, end).d;
+            const len = end.y > from.y + 8 ? orthoLen(from, end, turn) : Math.hypot(end.x - from.x, end.y - from.y) * 1.25;
             const rs = b.kind === "replicaset" ? (b.obj as ReplicaSet) : undefined;
             const want = rs ? (rs.spec?.replicas ?? 0) : 1;
             const settled = !rs || (rs.status?.readyReplicas ?? 0) >= want;
@@ -769,7 +928,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const card = cardSummary(c, kind, obj);
         const hpa = kind === "deployment" ? hpaFor("Deployment", name, ns) : kind === "statefulset" ? hpaFor("StatefulSet", name, ns) : undefined;
         const dropKey = kind === "deployment" ? `deployment:${ns}/${name}` : undefined;
-        const dragItem: DragItem | undefined = kind === "deployment" ? { kind: "object", type: "deployment", ns: ns ?? "default", name, label: `Deployment ${name}` } : undefined;
+        const dragItem = item(kind, ns, name, `${cardSummary(c, kind, obj).kindLabel} ${name}`);
         // The colour bar matches the Pods' revision colour: the newest ReplicaSet's, folded or not.
         const newest = kind === "deployment" ? [...children.map((ch) => ch.obj), ...rsAll.filter((r) => folded.get(r.metadata.uid) === obj.metadata.uid)].sort((p, q) => q.metadata.creationTimestamp - p.metadata.creationTimestamp)[0] : undefined;
         const hue = hueFor(newest?.metadata.name ?? name);
@@ -781,8 +940,8 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             key={obj.metadata.uid}
             data-kind={kind}
             className={cls("cv-obj cv-fade cursor-pointer", card.tone === "bad" && "is-bad", card.tone === "warn" && "is-warn", hotCard(obj.metadata.uid) && !sel && "is-hot")}
-            opacity={kind === "deployment" && dragged("deployment", ns, name) ? 0.45 : 1}
-            {...(dropKey ? dnd(dropKey, dragItem) : {})}
+            {...(dropKey ? { "data-drop": dropKey } : {})}
+            {...mover(moveKey.get(obj.metadata.uid)!, dragItem)}
             onClick={click({ kind, ns, name })}
             {...act({ kind, ns, name }, `${card.kindLabel} ${name}, ${card.status}`)}
           >
@@ -813,6 +972,17 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
               </>
             )}
             {hpa && detail > 1 && <Tag s={T} x={x + w / 2} y={ty + DEP_H + 7} anchor="middle" cat="hpa" text={`HPA ${hpa.spec?.minReplicas ?? 1}–${hpa.spec?.maxReplicas} · ${hpaTarget(hpa)}`} />}
+            {/* Replicas, set from the card: shown on hover, or while the card is selected (touch). An HPA owns the count when there is one. */}
+            {onScale && !hpa && detail > 0 && (kind === "deployment" || kind === "statefulset") && (
+              <Stepper
+                x={x + w}
+                y={ty + DEP_H}
+                on={sel}
+                label={name}
+                value={(obj as Deployment | StatefulSet).spec?.replicas ?? 1}
+                onChange={(n) => onScale(kind, ns ?? "default", name, n)}
+              />
+            )}
           </g>
         );
       })}
@@ -830,7 +1000,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const label = isRs ? `ReplicaSet ${obj.metadata.name}, ${rs.status?.readyReplicas ?? 0} of ${want} ready` : `Job ${obj.metadata.name}, ${job.status?.succeeded ?? 0} of ${want} succeeded`;
         const rightW = textWidth(right, fz(12), { mono: true, weight: 600 });
         return (
-          <g key={obj.metadata.uid} data-kind={kind} className={cls("cv-obj cv-fade cursor-pointer", failed && "is-bad", hotChild(obj.metadata.uid) && !sel && "is-hot")} opacity={retired ? 0.55 : 1} style={{ transform: `translate(${x}px, ${y}px)`, transition: "transform .6s cubic-bezier(.22,1,.36,1)" }} onClick={click({ kind, ns: obj.metadata.namespace, name: obj.metadata.name })} {...act({ kind, ns: obj.metadata.namespace, name: obj.metadata.name }, label)}>
+          <g key={obj.metadata.uid} data-kind={kind} className={cls("cv-obj cv-fade cursor-pointer", failed && "is-bad", hotChild(obj.metadata.uid) && !sel && "is-hot")} opacity={retired ? 0.55 : 1} style={{ transform: `translate(${x}px, ${y}px)`, transition: moving ? "none" : "transform .6s cubic-bezier(.22,1,.36,1)" }} {...mover(moveKey.get(obj.metadata.uid)!, item(kind, obj.metadata.namespace, obj.metadata.name, `ReplicaSet ${obj.metadata.name}`))} onClick={click({ kind, ns: obj.metadata.namespace, name: obj.metadata.name })} {...act({ kind, ns: obj.metadata.namespace, name: obj.metadata.name }, label)}>
             <rect className="cv-body" width={RS_W} height={RS_H} rx={R} />
             {sel && <rect className="cv-ring" x={-3.5} y={-3.5} width={RS_W + 7} height={RS_H + 7} rx={R + 3} />}
             <rect x={0} y={12} width={3} height={RS_H - 24} rx={1.5} fill={`hsl(${hue} 65% 55%)`} />
@@ -888,7 +1058,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const barW = NW / 2 - 16;
         const statusW = textWidth(status, fz(12.5), { weight: 500 }) + fz(14);
         return (
-          <g key={node.metadata.uid} data-kind={isCp ? "cp" : "node"} className={cls("cv-obj cv-fade cursor-pointer", down && "is-down", !down && tone === "warn" && "is-warn")} {...dnd(`node:${name}`)} onClick={click({ kind: "node", name })} {...act({ kind: "node", name }, `Node ${name}, ${status}, ${used} pods${showBars ? `, CPU requested ${Math.round((req.cpu / alloc.cpu) * 100)}%` : ""}`)}>
+          <g key={node.metadata.uid} data-kind={isCp ? "cp" : "node"} className={cls("cv-obj cv-fade cursor-pointer", down && "is-down", !down && tone === "warn" && "is-warn")} {...dnd(`node:${name}`)} {...mover(objKey("Node", undefined, name), isCp ? undefined : item("node", undefined, name, `Node ${name}`))} onClick={click({ kind: "node", name })} {...act({ kind: "node", name }, `Node ${name}, ${status}, ${used} pods${showBars ? `, CPU requested ${Math.round((req.cpu / alloc.cpu) * 100)}%` : ""}`)}>
             <title>{`${name} · ${node.status?.addresses[0].address}`}</title>
             <rect className="cv-body" x={x} y={y} width={NW} height={h} rx={R} />
             {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={NW + 7} height={h + 7} rx={R} />}
@@ -963,6 +1133,40 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         ))}
       </g>
 
+      {/* ------------ traffic: over the Node cards, under the Pods, so a request crossing a Node never draws over a Pod */}
+      <g pointerEvents="none">
+        {packets.map((p) => {
+          const t0 = Math.min(1, (now - p.born) / PACKET_MS);
+          const t = t0 < 0.5 ? 2 * t0 * t0 : 1 - (-2 * t0 + 2) ** 2 / 2;
+          const stop = p.ok ? 1 : 0.82;
+          let pt: Pt | undefined;
+          const se = p.serviceUid ? svcEdges.get(`${p.serviceUid}/${p.podUid}`) : undefined;
+          const ie = p.ingressUid && p.serviceUid ? ingEdges.get(`${p.ingressUid}/${p.serviceUid}`) : undefined;
+          if (ie && se) {
+            // Ingress → Service, then Service → Pod.
+            pt = t < 0.5 ? onCubic(ie.a, ie.c1, ie.c2, ie.b, t * 2) : onCubic(se.a, se.c1, se.c2, se.b, Math.min((t - 0.5) * 2, stop));
+          } else if (se) pt = onCubic(se.a, se.c1, se.c2, se.b, Math.min(t, stop));
+          else if (p.fromUid && podPos.has(p.fromUid) && podPos.has(p.podUid) && p.fromUid !== p.podUid) {
+            const a = podTop(p.fromUid)!;
+            const b = podTop(p.podUid)!;
+            const mid = { x: (a.x + b.x) / 2, y: Math.min(a.y, b.y) - 50 };
+            const q = Math.min(t, stop);
+            pt = lerp(lerp(a, mid, q), lerp(mid, b, q), q);
+          } else {
+            const b = podBottom(p.podUid);
+            if (b) pt = { x: b.x, y: b.y + 60 * (1 - Math.min(t, stop)) };
+          }
+          if (!pt) return null;
+          const fade = t0 > 0.85 ? (1 - t0) / 0.15 : 1;
+          return (
+            <g key={p.id} opacity={fade} className="cv-packet" aria-hidden="true">
+              <circle cx={pt.x} cy={pt.y} r={3.5} fill={p.ok ? "var(--cv-flow)" : "var(--cv-danger)"} stroke="var(--cv-surface)" strokeWidth={1.5} />
+              {p.blocked && t0 > 0.5 && <path d={`M${pt.x - 4},${pt.y - 12} l8,8 M${pt.x + 4},${pt.y - 12} l-8,8`} stroke="var(--cv-danger)" strokeWidth={1.8} strokeLinecap="round" />}
+            </g>
+          );
+        })}
+      </g>
+
       {/* ------------ pods */}
       {[...podPos.values()].map(({ x, y, pod }) => {
         const nodeName = pod.spec?.nodeName;
@@ -990,7 +1194,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
             key={pod.metadata.uid}
             data-kind="pod"
             className={cls("cv-obj cv-pod cursor-pointer", cat === "gone" && "cv-gone", cat === "bad" && "is-bad", cat === "starting" && "is-warn")}
-            style={{ transform: `translate(${x}px, ${y}px)` }}
+            style={{ transform: `translate(${x}px, ${y}px)`, ...(moving ? { transition: "none" } : {}) }}
             opacity={dragged("pod", pod.metadata.namespace, pod.metadata.name) ? 0.35 : undefined}
             {...dnd(`pod:${pod.metadata.namespace}/${pod.metadata.name}`, { kind: "object", type: "pod", ns: pod.metadata.namespace ?? "default", name: pod.metadata.name, label: `Pod ${short}` })}
             onClick={click({ kind: "pod", ns: pod.metadata.namespace, name: pod.metadata.name })}
@@ -1058,7 +1262,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         // On the card, a failing Service shows just its error share (the rate rides on its wires).
         const traffic = err >= 0.01 ? `${Math.round(err * 100)}% err` : fmtRate(rate);
         return (
-          <g key={s.metadata.uid} data-kind="service" className={cls("cv-obj cv-fade cursor-pointer", !ready && "is-warn", hot && "is-hot")} opacity={dragged("service", s.metadata.namespace, s.metadata.name) ? 0.45 : 1} {...dnd(`service:${s.metadata.namespace}/${s.metadata.name}`, { kind: "object", type: "service", ns: s.metadata.namespace ?? "default", name: s.metadata.name, label: `Service ${s.metadata.name}` })} onClick={click({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name })} {...act({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name }, `Service ${s.metadata.name}, ${headless ? "headless, " : ""}${ready} endpoints`)}>
+          <g key={s.metadata.uid} data-kind="service" className={cls("cv-obj cv-fade cursor-pointer", !ready && "is-warn", hot && "is-hot")} data-drop={`service:${s.metadata.namespace}/${s.metadata.name}`} {...mover(objKey("Service", s.metadata.namespace, s.metadata.name), { kind: "object", type: "service", ns: s.metadata.namespace ?? "default", name: s.metadata.name, label: `Service ${s.metadata.name}` })} onClick={click({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name })} {...act({ kind: "service", ns: s.metadata.namespace, name: s.metadata.name }, `Service ${s.metadata.name}, ${headless ? "headless, " : ""}${ready} endpoints`)}>
             <title>{`Service ${s.metadata.name} · ${sub}`}</title>
             <rect className="cv-body" x={x} y={y} width={SVC_W} height={SVC_H} rx={R} />
             {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={SVC_W + 7} height={SVC_H + 7} rx={R + 3} />}
@@ -1094,7 +1298,7 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
         const addr = ing.status?.loadBalancer?.ingress?.[0]?.hostname ?? ing.status?.loadBalancer?.ingress?.[0]?.ip;
         const tag = addr ?? "no address";
         return (
-          <g key={ing.metadata.uid} data-kind="ingress" className={cls("cv-obj cv-fade cursor-pointer", !addr && "is-warn")} onClick={click({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name })} {...act({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name }, `Ingress ${ing.metadata.name}, ${rules.length} rules${addr ? `, address ${addr}` : ", no address yet"}`)}>
+          <g key={ing.metadata.uid} data-kind="ingress" className={cls("cv-obj cv-fade cursor-pointer", !addr && "is-warn")} {...mover(objKey("Ingress", ing.metadata.namespace, ing.metadata.name), item("ingress", ing.metadata.namespace, ing.metadata.name, `Ingress ${ing.metadata.name}`))} onClick={click({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name })} {...act({ kind: "ingress", ns: ing.metadata.namespace, name: ing.metadata.name }, `Ingress ${ing.metadata.name}, ${rules.length} rules${addr ? `, address ${addr}` : ", no address yet"}`)}>
             <rect className="cv-body" x={x} y={y} width={ING_W} height={ING_H} rx={R} />
             {sel && <rect className="cv-ring" x={x - 3.5} y={y - 3.5} width={ING_W + 7} height={ING_H + 7} rx={R + 3} />}
             {detail > 0 && (
@@ -1123,55 +1327,21 @@ export function ClusterView({ cluster: c, packets, selection, onSelect, showSyst
       {sideItems.map((it) => {
         const sel = isSel(it.kind, it.name, it.ns);
         return (
-          <g key={it.uid} data-kind={it.kind} className={cls("cv-obj cv-fade cursor-pointer", it.warn && "is-warn")} onClick={click({ kind: it.kind, ns: it.ns, name: it.name })} {...act({ kind: it.kind, ns: it.ns, name: it.name }, `${it.sub.split(" · ")[0]} ${it.name}, ${it.sub}`)}>
-            <rect className="cv-body" x={sideX} y={it.y} width={SIDE_W} height={SIDE_H} rx={R} />
-            {sel && <rect className="cv-ring" x={sideX - 3.5} y={it.y - 3.5} width={SIDE_W + 7} height={SIDE_H + 7} rx={R} />}
-            <KindGlyph kind={it.kind} x={sideX + 12} y={it.y + 14} size={16} />
-            <text x={sideX + 38} y={detail ? it.y + 19 : it.y + 27} className="cv-title" style={{ fontSize: fz(13) }}>
+          <g key={it.uid} data-kind={it.kind} className={cls("cv-obj cv-fade cursor-pointer", it.warn && "is-warn")} {...mover(`side:${it.kind}/${it.ns ?? ""}/${it.name}`, item(it.kind, it.ns, it.name, `${it.sub.split(" · ")[0]} ${it.name}`))} onClick={click({ kind: it.kind, ns: it.ns, name: it.name })} {...act({ kind: it.kind, ns: it.ns, name: it.name }, `${it.sub.split(" · ")[0]} ${it.name}, ${it.sub}`)}>
+            <rect className="cv-body" x={it.x} y={it.y} width={SIDE_W} height={SIDE_H} rx={R} />
+            {sel && <rect className="cv-ring" x={it.x - 3.5} y={it.y - 3.5} width={SIDE_W + 7} height={SIDE_H + 7} rx={R} />}
+            <KindGlyph kind={it.kind} x={it.x + 12} y={it.y + 14} size={16} />
+            <text x={it.x + 38} y={detail ? it.y + 19 : it.y + 27} className="cv-title" style={{ fontSize: fz(13) }}>
               {fit(it.title, SIDE_W - 48, fz(13), { weight: 600 })}
             </text>
             {detail > 0 && (
-              <text x={sideX + 38} y={it.y + 35} className="cv-sub" style={{ fontSize: fz(11) }}>
+              <text x={it.x + 38} y={it.y + 35} className="cv-sub" style={{ fontSize: fz(11) }}>
                 {fit(it.sub, SIDE_W - 48, fz(11))}
               </text>
             )}
           </g>
         );
       })}
-
-      {/* ------------ traffic */}
-      <g pointerEvents="none">
-        {packets.map((p) => {
-          const t0 = Math.min(1, (now - p.born) / PACKET_MS);
-          const t = t0 < 0.5 ? 2 * t0 * t0 : 1 - (-2 * t0 + 2) ** 2 / 2;
-          const stop = p.ok ? 1 : 0.82;
-          let pt: Pt | undefined;
-          const se = p.serviceUid ? svcEdges.get(`${p.serviceUid}/${p.podUid}`) : undefined;
-          const ie = p.ingressUid && p.serviceUid ? ingEdges.get(`${p.ingressUid}/${p.serviceUid}`) : undefined;
-          if (ie && se) {
-            // Ingress → Service, then Service → Pod.
-            pt = t < 0.5 ? onCubic(ie.a, ie.c1, ie.c2, ie.b, t * 2) : onCubic(se.a, se.c1, se.c2, se.b, Math.min((t - 0.5) * 2, stop));
-          } else if (se) pt = onCubic(se.a, se.c1, se.c2, se.b, Math.min(t, stop));
-          else if (p.fromUid && podPos.has(p.fromUid) && podPos.has(p.podUid) && p.fromUid !== p.podUid) {
-            const a = podTop(p.fromUid)!;
-            const b = podTop(p.podUid)!;
-            const mid = { x: (a.x + b.x) / 2, y: Math.min(a.y, b.y) - 50 };
-            const q = Math.min(t, stop);
-            pt = lerp(lerp(a, mid, q), lerp(mid, b, q), q);
-          } else {
-            const b = podBottom(p.podUid);
-            if (b) pt = { x: b.x, y: b.y + 60 * (1 - Math.min(t, stop)) };
-          }
-          if (!pt) return null;
-          const fade = t0 > 0.85 ? (1 - t0) / 0.15 : 1;
-          return (
-            <g key={p.id} opacity={fade} className="cv-packet" aria-hidden="true">
-              <circle cx={pt.x} cy={pt.y} r={3.5} fill={p.ok ? "var(--cv-flow)" : "var(--cv-danger)"} stroke="var(--cv-surface)" strokeWidth={1.5} />
-              {p.blocked && t0 > 0.5 && <path d={`M${pt.x - 4},${pt.y - 12} l8,8 M${pt.x + 4},${pt.y - 12} l-8,8`} stroke="var(--cv-danger)" strokeWidth={1.8} strokeLinecap="round" />}
-            </g>
-          );
-        })}
-      </g>
 
       {/* ------------ live rates, above the packets so the numbers stay readable */}
       {rateLabels.map((l) => (
@@ -1315,6 +1485,48 @@ function Mark({ cat, x, y, r = 3.5 }: { cat: PodCategory | TagCat; x: number; y:
 }
 
 /** Status tag: a quiet pill with a health mark. Width is measured, so text never spills. */
+/** − n + under a workload card's right edge. Hangs off the card (a transparent bridge keeps the hover when the pointer crosses the gap). */
+function Stepper({ x, y, value, on, label, onChange }: { x: number; y: number; value: number; on: boolean; label: string; onChange: (n: number) => void }) {
+  const W = 92;
+  const H = 26;
+  const left = x - W;
+  const top = y + 6;
+  const stop = (e: React.SyntheticEvent) => e.stopPropagation();
+  const btn = (dx: number, delta: number, d: string, name: string) => (
+    <g
+      role="button"
+      tabIndex={0}
+      aria-label={`${name} ${label}`}
+      className="cv-step-btn"
+      onPointerDown={stop}
+      onClick={(e) => {
+        stop(e);
+        if (value + delta >= 0) onChange(value + delta);
+      }}
+      onKeyDown={(e) => {
+        stop(e); // not the card's keys: Delete here mustn't delete the workload
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        if (value + delta >= 0) onChange(value + delta);
+      }}
+    >
+      <rect x={left + dx} y={top} width={H} height={H} rx={8} fill="transparent" />
+      <path d={d} transform={`translate(${left + dx + H / 2} ${top + H / 2})`} stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" fill="none" opacity={delta < 0 && value === 0 ? 0.3 : 1} />
+    </g>
+  );
+  return (
+    <g className="cv-step" data-on={on || undefined}>
+      <rect x={left} y={y} width={W} height={6} fill="transparent" />
+      <rect x={left} y={top} width={W} height={H} rx={9} className="cv-step-body" />
+      {btn(0, -1, "M-4.5 0h9", "Scale down")}
+      <text x={left + W / 2} y={top + H / 2 + 4.5} textAnchor="middle" className="cv-mono" style={{ fontSize: 13, fontWeight: 600, fill: "var(--cv-text)" }}>
+        {value}
+      </text>
+      {btn(W - H, 1, "M-4.5 0h9M0 -4.5v9", "Scale up")}
+    </g>
+  );
+}
+
 function Tag({ x, y, text, cat, anchor = "start", s = 1 }: { x: number; y: number; text: string; cat: TagCat; anchor?: "start" | "end" | "middle"; s?: number }) {
   const w = tagWidth(text, s);
   const h = 19 * s;
@@ -1357,5 +1569,11 @@ function KindGlyph({ kind, x, y, size = 16 }: { kind: string; x: number; y: numb
   );
 }
 
-
-
+/** Puts every moved card back in the automatic layout. */
+function TidyButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} title="Tidy up: put every card back in the automatic layout" className="h-8 border-r border-ink/15 px-2.5 text-[12px] font-medium text-ink hover:bg-ink/[0.05]">
+      Tidy up
+    </button>
+  );
+}

@@ -1,5 +1,6 @@
 "use client";
 
+import { TrafficBar } from "./TrafficBar";
 import { useEffect, useState } from "react";
 import type { Cluster, Deployment, Node, Pod } from "@/lib/engine";
 import * as A from "@/lib/sim/actions";
@@ -644,6 +645,7 @@ export function Sandbox() {
           )}
         </div>
       )}
+      <TrafficBar sim={sim} c={c} onInspect={(kind, ns, name) => setSel({ kind, ns, name })} />
       <Workspace
         sim={sim}
         selection={sel}

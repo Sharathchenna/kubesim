@@ -83,3 +83,32 @@ test("blueprints: unique names, and the ones that need a Service say so", () => 
   expect(canDrop({ kind: "blueprint", id: "load", label: "" }, parseTarget("service:default/web"))).toBe(true);
   expect(canDrop({ kind: "blueprint", id: "redis", label: "" }, parseTarget("service:default/web"))).toBe(false);
 });
+
+test("anything on the canvas can go in the trash: a worker Node takes its Pods with it, and they come back elsewhere", () => {
+  const s = store();
+  const c = s.cluster!;
+  s.exec("kubectl create deployment web --image=nginx --replicas=4");
+  c.advance(30_000);
+  const on1 = () => c.list<Pod>("Pod", "default").filter((p) => p.spec?.nodeName === "worker-1").length;
+  expect(on1()).toBeGreaterThan(0);
+  const r = performDrop(s, { kind: "object", type: "node", ns: "default", name: "worker-1", label: "Node worker-1" }, { type: "trash" });
+  expect(r.ok).toBe(true);
+  expect(r.note).toMatch(/Controllers recreate/);
+  expect(s.term.at(-1)?.cmd).toBe("kubectl delete node worker-1");
+  c.advance(60_000);
+  expect(c.raw("Node", undefined, "worker-1")).toBeUndefined();
+  const running = c.list<Pod>("Pod", "default").filter((p) => p.status?.phase === "Running");
+  expect(running).toHaveLength(4);
+  expect(running.every((p) => p.spec?.nodeName === "worker-2")).toBe(true);
+  // A ConfigMap, through kubectl too.
+  s.exec("kubectl create configmap app --from-literal=a=b");
+  expect(performDrop(s, { kind: "object", type: "configmap", ns: "default", name: "app", label: "ConfigMap app" }, { type: "trash" }).ok).toBe(true);
+  expect(c.raw("ConfigMap", "default", "app")).toBeUndefined();
+});
+
+test("the control plane's Node can't be trashed from the canvas", () => {
+  const s = store();
+  const r = performDrop(s, { kind: "object", type: "node", ns: "default", name: "control-plane", label: "Node control-plane" }, { type: "trash" });
+  expect(r.ok).toBe(false);
+  expect(s.cluster!.raw("Node", undefined, "control-plane")).toBeDefined();
+});

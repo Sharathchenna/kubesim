@@ -4,11 +4,11 @@
 // Used by `curl` in the terminal, `kubectl exec … -- wget`, container
 // programs (load generators) and the Cluster View's traffic animation.
 
-import type { Cluster } from "./cluster";
+import type { Cluster, ContainerRuntime } from "./cluster";
 import { containerFs } from "./fs";
 import { listenPorts, lookupImage, NGINX_404, NGINX_503, type HttpResponse } from "./images";
 import { connectionAllowed, dnsAllowed } from "./netpol";
-import type { Ingress, IngressBackend, Node, Pod, Service } from "./types";
+import type { Container, Ingress, IngressBackend, Node, Pod, Service } from "./types";
 import { slicesFor } from "./controllers/endpointslices";
 import { unixDate } from "./util";
 
@@ -447,3 +447,66 @@ function viaIngress(cluster: Cluster, u: { host: string; path: string; port?: nu
 }
 
 const nginxPage = (code: number, text: string) => `<html>\n<head><title>${code} ${text}</title></head>\n<body>\n<center><h1>${code} ${text}</h1></center>\n<hr><center>nginx</center>\n</body>\n</html>`;
+
+// ---------- routing, for the load model (controllers/load.ts) ----------
+// The traffic control sends hundreds of requests a second, too many to walk one by one. The load model
+// routes them as flows instead, through the same DNS, Services, endpoints and NetworkPolicy as a single
+// request, using these helpers.
+
+/** One place a flow of requests lands: a Pod and the port it's reached on. */
+export interface LoadHop {
+  pod: Pod;
+  port: number;
+}
+
+/** A Service's ready endpoints on one of its ports, as kube-proxy would spread connections over them. */
+export function serviceHops(cluster: Cluster, svc: Service, port: number): LoadHop[] {
+  const sp = svc.spec?.ports?.find((p) => p.port === port) ?? svc.spec?.ports?.[0];
+  if (!sp) return [];
+  const out: LoadHop[] = [];
+  for (const a of endpointAddrs(cluster, svc)) {
+    const pod = cluster.byUid(a.uid ?? "") as unknown as Pod | undefined;
+    if (pod) out.push({ pod, port: a.ports.find((p) => p.name === sp.name || (!p.name && !sp.name))?.port ?? a.ports[0]?.port ?? sp.port });
+  }
+  return out;
+}
+
+/** Where calls to `url` from `from` go: a Service's endpoints, or a Pod reached directly. Undefined if the name doesn't resolve. */
+export function routeCall(cluster: Cluster, url: string, from: Pod | undefined): { svc?: Service; hops: LoadHop[]; tcp: boolean } | undefined {
+  const m = url.match(/^([a-z]+):\/\/(?:[^@/]*@)?([^/:?#]+)(?::(\d+))?/);
+  if (!m) return undefined;
+  const tcp = m[1] !== "http" && m[1] !== "https";
+  const port = m[3] ? parseInt(m[3], 10) : tcp ? (DEFAULT_PORT[m[1]] ?? 0) : m[1] === "https" ? 443 : 80;
+  const t = resolveTarget(cluster, m[2], port, from);
+  if (t.kind === "service") return { svc: t.svc, tcp, hops: serviceHops(cluster, t.svc, t.port) };
+  if (t.kind === "pod") {
+    // A headless Service resolves to its Pods' IPs: spread over all of them, as clients re-resolving would.
+    const headless = cluster.list<Service>("Service", t.pod.metadata.namespace).find((s) => s.spec?.clusterIP === "None" && m[2].split(".")[0] === s.metadata.name);
+    return headless ? { svc: headless, tcp, hops: serviceHops(cluster, headless, port) } : { tcp, hops: [{ pod: t.pod, port }] };
+  }
+  // A Service with no ready Pods doesn't resolve (headless) or doesn't answer: still say which one it was.
+  const svc = resolveName(cluster, m[2], from).svc;
+  return svc ? { svc, tcp, hops: [] } : undefined;
+}
+
+/**
+ * Would one request to this Pod be answered, load aside: its Node is up, NetworkPolicy lets it in, and a
+ * running container listens on the port. Returns that container and what it calls for each request.
+ */
+export function probeHop(cluster: Cluster, hop: LoadHop, from: Pod | undefined, tcp: boolean): { ok: boolean; container?: Container; crt?: ContainerRuntime; calls: string[] } {
+  const { pod, port } = hop;
+  const node = pod.spec?.nodeName;
+  if (!node || cluster.state.nodes[node]?.up === false) return { ok: false, calls: [] };
+  const src = from ? { pod: from, ip: from.status?.podIP ?? "" } : { ip: "10.244.0.1" };
+  if (from !== pod && !connectionAllowed(cluster, src, pod, port)) return { ok: false, calls: [] };
+  const prt = cluster.state.pods[pod.metadata.uid];
+  for (const c of [...(pod.spec?.containers ?? []), ...(pod.spec?.initContainers ?? []).filter((x) => x.restartPolicy === "Always")]) {
+    const crt = prt?.containers[c.name];
+    if (!crt || (crt.phase !== "running" && crt.phase !== "stopping")) continue;
+    const serving = crt.program?.[crt.pc]?.op === "serve" && crt.wakeAt <= cluster.now;
+    const { info } = lookupImage(crt.image);
+    if (!serving || !listenPorts(info, c).includes(port) || (!tcp && !info?.http)) continue;
+    return { ok: true, container: c, crt, calls: tcp ? [] : (info?.calls?.(crt.env ?? {}, "/") ?? []) };
+  }
+  return { ok: false, calls: [] };
+}

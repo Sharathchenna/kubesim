@@ -2,12 +2,21 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { BLUEPRINTS, type BlueprintGroup } from "@/lib/sim/blueprints";
-import { canDrop, parseTarget, performDrop, type DragItem } from "@/lib/sim/drag";
+import { canDrop, parseTarget, performDrop, type DragItem, type Target } from "@/lib/sim/drag";
+import { podChoices, type PodChoice, type PodChoiceGroup } from "@/lib/sim/podChoices";
+import type { Cluster } from "@/lib/engine";
 import type { SimStore } from "@/lib/sim/useSimulation";
 
+/** A card being moved on the canvas while it's dragged: told how far the pointer has gone (screen px), then whether to keep the move. */
+export type MoveCallback = (dx: number, dy: number, phase: "move" | "commit" | "cancel") => void;
+
 interface DragApi {
-  /** Call from onPointerDown; the drag starts once the pointer moves a few px. */
-  begin: (item: DragItem, e: React.PointerEvent) => void;
+  /**
+   * Call from onPointerDown; the drag starts once the pointer moves a few px. With `onMove`, the object
+   * itself moves with the pointer (no ghost) and is kept where it's let go, unless it's dropped on a
+   * target it does something to (a Deployment, the trash): then that happens instead and the move is undone.
+   */
+  begin: (item: DragItem, e: React.PointerEvent, onMove?: MoveCallback) => void;
   dragging: DragItem | null;
   /** The data-drop string under the pointer, if it's a valid target. */
   over: string | null;
@@ -15,6 +24,8 @@ interface DragApi {
   justDropped: () => boolean;
   /** Adds an item to the cluster without dragging (a click, or Enter). */
   add: (item: DragItem) => void;
+  /** Deletes an object without dragging (the Delete key), as if it were dropped on the trash. */
+  remove: (item: DragItem) => void;
 }
 
 const Ctx = createContext<DragApi | null>(null);
@@ -36,11 +47,24 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
   const [dragging, setDragging] = useState<DragItem | null>(null);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [over, setOver] = useState<string | null>(null);
+  /** The object is moving with the pointer itself: no ghost unless it's over something it can be dropped on. */
+  const [moving, setMoving] = useState(false);
   const [note, setNote] = useState<{ text: string; ok: boolean; id: number; file?: string } | null>(null);
+  /** Adding a Pod asks what it should run first; `node` is where it was dropped. */
+  const [choosing, setChoosing] = useState<{ node?: string } | null>(null);
   const dropped = useRef(0);
+  /** performDrop, except a new Pod opens the chooser instead of making an nginx. */
+  const perform = useCallback(
+    (item: DragItem, t: Target) => {
+      if (item.kind === "palette" && item.what === "pod") return setChoosing({ node: t.type === "node" ? t.name : undefined });
+      const r = performDrop(sim, item, t);
+      setNote({ text: r.note, ok: r.ok, id: performance.now(), file: r.file });
+    },
+    [sim],
+  );
 
   const begin = useCallback(
-    (item: DragItem, e: React.PointerEvent) => {
+    (item: DragItem, e: React.PointerEvent, onMove?: MoveCallback) => {
       if (e.button !== 0) return;
       e.stopPropagation(); // don't pan the canvas
       const sx = e.clientX;
@@ -52,9 +76,11 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
         if (!active) {
           active = true;
           setDragging(item);
+          setMoving(!!onMove);
           document.body.style.cursor = "grabbing";
         }
         setPos({ x: ev.clientX, y: ev.clientY });
+        onMove?.(ev.clientX - sx, ev.clientY - sy, "move");
         const raw = targetAt(ev.clientX, ev.clientY, item);
         lastOver = raw;
         setOver(canDrop(item, parseTarget(raw)) ? raw : null);
@@ -69,9 +95,15 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
         const t = parseTarget(targetAt(ev.clientX, ev.clientY, item) ?? lastOver);
         setDragging(null);
         setOver(null);
+        setMoving(false);
+        if (onMove) {
+          // Moving: only a drop on something it acts on (not the canvas) does more than move it.
+          const acts = !!t && t.type !== "canvas" && canDrop(item, t);
+          onMove(ev.clientX - sx, ev.clientY - sy, acts ? "cancel" : "commit");
+          if (!acts) return;
+        }
         if (!t) return; // dropped outside the canvas: cancel quietly
-        const r = performDrop(sim, item, t);
-        setNote({ text: r.note, ok: r.ok, id: performance.now(), file: r.file });
+        perform(item, t);
       };
       const cancel = () => {
         window.removeEventListener("pointermove", move);
@@ -80,12 +112,14 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
         document.body.style.cursor = "";
         setDragging(null);
         setOver(null);
+        setMoving(false);
+        if (active) onMove?.(0, 0, "cancel");
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
       window.addEventListener("pointercancel", cancel);
     },
-    [sim],
+    [perform],
   );
 
   useEffect(() => {
@@ -101,15 +135,17 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
     return () => window.removeEventListener("keydown", esc);
   }, [dragging]);
 
-  const add = useCallback(
+  const add = useCallback((item: DragItem) => perform(item, { type: "canvas" }), [perform]);
+
+  const remove = useCallback(
     (item: DragItem) => {
-      const r = performDrop(sim, item, { type: "canvas" });
-      setNote({ text: r.note, ok: r.ok, id: performance.now(), file: r.file });
+      const r = performDrop(sim, item, { type: "trash" });
+      setNote({ text: r.note, ok: r.ok, id: performance.now() });
     },
     [sim],
   );
 
-  const api: DragApi = { begin, dragging, over, justDropped: () => performance.now() - dropped.current < 250, add };
+  const api: DragApi = { begin, dragging, over, justDropped: () => performance.now() - dropped.current < 250, add, remove };
   const isObject = dragging?.kind === "object";
 
   return (
@@ -128,13 +164,25 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
         </div>
       )}
       {/* ghost following the pointer */}
-      {dragging && (
+      {dragging && (!moving || over) && (
         <div className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-[130%]" style={{ left: pos.x, top: pos.y }}>
           <div className={`whitespace-nowrap rounded-lg border px-2.5 py-1 text-[12.5px] ${over ? "border-signal bg-signal text-white" : "border-dashed border-ink bg-paper text-ink"}`}>
             {dragging.label}
             {over && <span className="ml-1.5 opacity-70">→ {describe(over)}</span>}
           </div>
         </div>
+      )}
+      {choosing && sim.cluster && (
+        <PodChooser
+          c={sim.cluster}
+          node={choosing.node}
+          onClose={() => setChoosing(null)}
+          onPick={(ch) => {
+            setChoosing(null);
+            const r = sim.exec(ch.cmd);
+            setNote({ text: r?.ok ? ch.note : (r?.out ?? "The cluster isn't running."), ok: !!r?.ok, id: performance.now() });
+          }}
+        />
       )}
       {note && !dragging && (
         <div key={note.id} className="cv-fade absolute bottom-6 left-1/2 z-30 w-[min(560px,calc(100%-2rem))] -translate-x-1/2">
@@ -155,6 +203,55 @@ export function DragProvider({ sim, children }: { sim: SimStore; children: React
         </div>
       )}
     </Ctx.Provider>
+  );
+}
+
+const GROUPS: PodChoiceGroup[] = ["More of what's running", "Tools", "Break something"];
+
+/** "What should this Pod run?": choices from the cluster as it is, each shown as the kubectl it runs. */
+function PodChooser({ c, node, onClose, onPick }: { c: Cluster; node?: string; onClose: () => void; onPick: (ch: PodChoice) => void }) {
+  const choices = podChoices(c, node);
+  const [focus, setFocus] = useState<string | undefined>(undefined);
+  const shown = choices.find((x) => x.id === focus) ?? choices[0];
+  return (
+    <div className="absolute inset-0 z-40 grid place-items-center bg-ink/20 p-4" onPointerDown={(e) => e.target === e.currentTarget && onClose()} onKeyDown={(e) => e.key === "Escape" && (e.stopPropagation(), onClose())}>
+      <div role="dialog" aria-modal="true" aria-label="What should this Pod run?" className="flex max-h-full w-[min(540px,100%)] flex-col overflow-hidden rounded-xl border border-ink/15 bg-paper text-ink shadow-2xl">
+        <div className="flex items-start justify-between gap-3 border-b border-ink/15 px-4 py-3">
+          <div>
+            <div className="text-[15px] font-medium">What should this Pod run?</div>
+            <div className="mt-0.5 text-[12.5px] text-ink-soft">{node ? `You dropped it on ${node}. Bare Pods are pinned there; replicas go where the scheduler puts them.` : "Drop it on a Node to pin it there; otherwise the scheduler picks."}</div>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="-mr-1 grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-soft hover:bg-ink/[0.05] hover:text-ink">
+            ×
+          </button>
+        </div>
+        <div className="min-h-0 overflow-y-auto">
+          {GROUPS.map((g) => {
+            const items = choices.filter((x) => x.group === g);
+            if (!items.length) return null;
+            return (
+              <div key={g}>
+                <div className="px-4 pb-1 pt-3 text-[11px] font-medium uppercase tracking-[0.06em] text-ink-soft">{g}</div>
+                {items.map((ch, i) => (
+                  <button
+                    key={ch.id}
+                    autoFocus={ch === choices[0] && i === 0}
+                    onClick={() => onPick(ch)}
+                    onMouseEnter={() => setFocus(ch.id)}
+                    onFocus={() => setFocus(ch.id)}
+                    className={`flex w-full items-baseline justify-between gap-3 px-4 py-2 text-left outline-none transition-colors ${shown?.id === ch.id ? "bg-signal-soft" : "hover:bg-ink/[0.04]"}`}
+                  >
+                    <span className="text-[13.5px] font-medium">{ch.label}</span>
+                    <span className="truncate text-[12px] text-ink-soft">{ch.hint}</span>
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+        {shown && <code className="block border-t border-ink/15 bg-ink/[0.03] px-4 py-2.5 font-mono text-[11.5px] leading-snug text-ink-soft [overflow-wrap:anywhere]">$ {shown.cmd}</code>}
+      </div>
+    </div>
   );
 }
 
@@ -193,7 +290,7 @@ const PALETTE: { group: string; items: PaletteEntry[] }[] = [
     group: "Basics",
     items: [
       { kind: "palette", what: "deployment", image: "nginxdemos/hello:plain-text", label: "Deployment", hint: "3 Pods, nothing else", icon: <path d="M3 3h5v5H3zM10 3h5v5h-5zM3 10h5v5H3zM10 10h5v5h-5z" /> },
-      { kind: "palette", what: "pod", image: "nginx", label: "Pod", hint: "drop on a Node to pin", icon: <rect x="4" y="4" width="10" height="10" /> },
+      { kind: "palette", what: "pod", image: "nginx", label: "Pod", hint: "choose what it runs", icon: <rect x="4" y="4" width="10" height="10" /> },
       { kind: "palette", what: "service", label: "Service", hint: "drop on a Deployment", icon: <path d="M9 2.5a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zM4 12a1.8 1.8 0 1 0 0 3.6A1.8 1.8 0 0 0 4 12zm10 0a1.8 1.8 0 1 0 0 3.6 1.8 1.8 0 0 0 0-3.6zM9 6v3m0 0l-4 3m4-3l4 3" /> },
       { kind: "palette", what: "node", label: "Node", hint: "add a worker", icon: <path d="M3 4h12v4H3zM3 10h12v4H3z" /> },
     ],

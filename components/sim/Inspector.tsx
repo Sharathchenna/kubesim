@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 import {
   isIsolated,
   selectingPolicies,
@@ -33,6 +33,8 @@ import {
   type StorageClass,
 } from "@/lib/engine";
 import * as A from "@/lib/sim/actions";
+import { diagnose, type Finding, type Fix } from "@/lib/sim/diagnose";
+import { RAW_KIND, canDelete, deleteCommand, deleteNote } from "@/lib/sim/objects";
 import type { SimStore } from "@/lib/sim/useSimulation";
 import { age, podCategory, podReady, podStatus, restarts } from "@/lib/sim/status";
 import { manifestFor } from "@/lib/kubectl/kubectl";
@@ -78,17 +80,113 @@ function EventList({ events, now }: { events: KubeEvent[]; now: number }) {
   );
 }
 
+/** What the header needs from the Inspector around it: the selection (for Delete) and what's wrong with it. */
+const Selected = createContext<{ sim: Sim; c: Cluster; sel: NonNullable<Selection>; onSelect: (s: Selection) => void; findings?: Finding[] } | null>(null);
+
 function InspectHeader({ kind, name, color, status, actions }: { kind: string; name: string; color: string; status: string; actions?: React.ReactNode }) {
+  const ctx = useContext(Selected);
   return (
-    <div className="border-b border-ink/15 p-4">
-      <div className="text-[12px] font-medium text-ink-soft">{kind}</div>
-      <div className="mt-1 break-all font-mono text-[14px] font-medium text-ink">{name}</div>
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-1.5 text-[12px] text-ink">
-          <Dot color={color} />
-          {status}
+    <>
+      <div className="border-b border-ink/15 p-4">
+        <div className="text-[12px] font-medium text-ink-soft">{kind}</div>
+        <div className="mt-1 break-all font-mono text-[14px] font-medium text-ink">{name}</div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-[12px] text-ink">
+            <Dot color={color} />
+            {status}
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {actions}
+            {ctx && <DeleteButton {...ctx} />}
+          </div>
+        </div>
+      </div>
+      {ctx?.findings && <WhatsWrong {...ctx} findings={ctx.findings} />}
+    </>
+  );
+}
+
+/** Deletes whatever is selected, through kubectl. Anything but a Pod asks twice: the second click says what will happen. */
+function DeleteButton({ sim, c, sel, onSelect }: { sim: Sim; c: Cluster; sel: NonNullable<Selection>; onSelect: (s: Selection) => void }) {
+  const [armed, setArmed] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  if (!canDelete(c, sel.kind, sel.ns, sel.name)) return null;
+  const go = () => {
+    window.clearTimeout(timer.current);
+    if (sel.kind !== "pod" && !armed) {
+      setArmed(true);
+      timer.current = window.setTimeout(() => setArmed(false), 4000);
+      return;
+    }
+    setArmed(false);
+    sim.exec(deleteCommand(sel.kind, sel.ns, sel.name));
+    // A deleted Pod lingers while it shuts down, which is worth watching; anything else is gone.
+    if (sel.kind !== "pod") onSelect(null);
+  };
+  return (
+    <span className="relative">
+      <Btn tone="danger" onClick={go} title={armed ? deleteNote(c, sel.kind, sel.ns, sel.name) : deleteCommand(sel.kind, sel.ns, sel.name)} className={armed ? "!border-red-700 !bg-red-50" : ""}>
+        {armed ? "Really delete?" : "Delete"}
+      </Btn>
+      {armed && (
+        <span role="status" className="absolute right-0 top-full z-10 mt-1.5 w-64 rounded-lg border border-red-300 bg-paper p-2.5 text-[12px] leading-snug text-ink shadow-lg">
+          <code className="block font-mono text-[11px] text-red-700">{deleteCommand(sel.kind, sel.ns, sel.name)}</code>
+          <span className="mt-1 block">{deleteNote(c, sel.kind, sel.ns, sel.name)}</span>
         </span>
-        <div className="flex flex-wrap gap-1.5">{actions}</div>
+      )}
+    </span>
+  );
+}
+
+const LEVEL = {
+  bad: { bar: "border-red-700", tint: "bg-red-50", title: "text-red-900", dot: CAT_COLOR.bad },
+  warn: { bar: "border-amber-700", tint: "bg-amber-50", title: "text-amber-900", dot: CAT_COLOR.starting },
+  info: { bar: "border-ink/25", tint: "bg-ink/[0.03]", title: "text-ink", dot: NEUTRAL },
+} as const;
+
+/** What's wrong with the selection, in plain English, with fixes that run the kubectl they show. */
+function WhatsWrong({ sim, onSelect, findings }: { sim: Sim; onSelect: (s: Selection) => void; findings: Finding[] }) {
+  const run = (f: Fix) => ("cmd" in f ? sim.exec(f.cmd) : sim.run(f.run));
+  const problems = findings.filter((f) => f.level !== "info").length;
+  return (
+    <div className="border-b border-ink/15 p-4" aria-label="What's wrong">
+      <Heading>{problems ? "What's wrong" : findings.length ? "Worth knowing" : "Health"}</Heading>
+      {!findings.length && (
+        <p className="flex items-center gap-1.5 text-[12.5px] text-ink">
+          <Dot color={CAT_COLOR.ok} />
+          Nothing wrong.
+        </p>
+      )}
+      <div className="flex flex-col gap-2">
+        {findings.map((f) => {
+          const t = LEVEL[f.level];
+          return (
+            <div key={f.title} className={`border-l-[3px] ${t.bar} ${t.tint} rounded-r-lg px-3 py-2.5`}>
+              <div className={`flex items-center gap-1.5 text-[13px] font-medium ${t.title}`}>
+                <Dot color={t.dot} />
+                {f.title}
+              </div>
+              <p className="mt-1 text-[12.5px] leading-relaxed text-ink">{f.detail}</p>
+              {!!f.fixes?.length && (
+                <div className="mt-2.5 flex flex-col gap-2">
+                  {f.fixes.map((x) => (
+                    <div key={x.label} className="flex min-w-0 flex-col items-start gap-1">
+                      <Btn tone="primary" onClick={() => run(x)} title={"cmd" in x ? `Runs: ${x.cmd}` : undefined} className="h-7 shrink-0 px-2.5 text-[12px]">
+                        {x.label}
+                      </Btn>
+                      {"cmd" in x && <code className="break-all font-mono text-[11px] leading-snug text-ink-soft">$ {x.cmd}</code>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {f.see && (
+                <button onClick={() => onSelect(f.see!)} className="mt-2 text-[12px] font-medium text-signal underline-offset-2 hover:underline">
+                  Look at {f.see.kind === "pod" ? "Pod" : f.see.kind === "node" ? "Node" : f.see.kind === "hpa" ? "HPA" : f.see.kind} {f.see.name} →
+                </button>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -140,25 +238,6 @@ const Link = ({ onClick, children }: { onClick: () => void; children: React.Reac
   </button>
 );
 
-const RAW_KIND: Record<SelKind, string> = {
-  pod: "Pod",
-  node: "Node",
-  service: "Service",
-  deployment: "Deployment",
-  replicaset: "ReplicaSet",
-  statefulset: "StatefulSet",
-  daemonset: "DaemonSet",
-  job: "Job",
-  cronjob: "CronJob",
-  ingress: "Ingress",
-  configmap: "ConfigMap",
-  secret: "Secret",
-  pvc: "PersistentVolumeClaim",
-  networkpolicy: "NetworkPolicy",
-  hpa: "HorizontalPodAutoscaler",
-  rolebinding: "RoleBinding",
-};
-
 const probeText = (p: Probe) =>
   `${p.httpGet ? `GET :${p.httpGet.port}${p.httpGet.path ?? "/"}` : p.tcpSocket ? `TCP :${p.tcpSocket.port}` : p.exec ? `exec ${(p.exec.command ?? []).join(" ")}` : "grpc"} every ${p.periodSeconds ?? 10}s${p.initialDelaySeconds ? `, after ${p.initialDelaySeconds}s` : ""}, ${p.failureThreshold ?? 3} failures`;
 
@@ -178,6 +257,7 @@ export function Inspector({ sim, c, sel, onSelect }: { sim: Sim; c: Cluster; sel
   const obj = c.raw(kind, sel.kind === "node" ? undefined : (sel.ns ?? "default"), sel.name);
   if (!obj) return <p className="p-6 text-[13px] text-ink-soft">{sel.name} no longer exists.</p>;
   const props = { sim, c, onSelect };
+  const findings = DIAGNOSED.has(sel.kind) ? diagnose(c, sel.kind, sel.ns, sel.name) : undefined;
   const body = (() => {
     switch (sel.kind) {
       case "pod":
@@ -216,7 +296,7 @@ export function Inspector({ sim, c, sel, onSelect }: { sim: Sim; c: Cluster; sel
   return (
     // Keyed by the selection so per-object state (decoded Secret values, chosen container) never carries over.
     <div key={`${sel.kind}/${sel.ns ?? ""}/${sel.name}`}>
-      {body}
+      <Selected.Provider value={{ sim, c, sel, onSelect, findings }}>{body}</Selected.Provider>
       <Section title="Events">
         <EventList events={c.eventsFor(obj)} now={c.now} />
       </Section>
@@ -225,13 +305,16 @@ export function Inspector({ sim, c, sel, onSelect }: { sim: Sim; c: Cluster; sel
   );
 }
 
+/** Kinds "What's wrong" knows how to read; the rest (config, policies, bindings) get no health section. */
+const DIAGNOSED = new Set<SelKind>(["pod", "node", "service", "deployment", "replicaset", "statefulset", "daemonset", "job", "cronjob", "ingress", "pvc", "hpa"]);
+
 interface P {
   sim: Sim;
   c: Cluster;
   onSelect: (s: Selection) => void;
 }
 
-function PodInspector({ sim, c, onSelect, p }: P & { p: Pod }) {
+function PodInspector({ c, onSelect, p }: P & { p: Pod }) {
   const containers = p.spec?.containers ?? [];
   const [cname, setCname] = useState(containers[0]?.name ?? "");
   const ct: Container = containers.find((x) => x.name === cname) ?? containers[0] ?? { name: "", image: "" };
@@ -246,7 +329,7 @@ function PodInspector({ sim, c, onSelect, p }: P & { p: Pod }) {
   const req = podRequests(p.spec);
   return (
     <>
-      <InspectHeader kind="Pod" name={p.metadata.name} color={CAT_COLOR[podCategory(p)]} status={podStatus(p)} actions={<Btn tone="danger" onClick={() => sim.run((cl) => A.deletePod(cl, p.metadata.name, ns))}>Delete</Btn>} />
+      <InspectHeader kind="Pod" name={p.metadata.name} color={CAT_COLOR[podCategory(p)]} status={podStatus(p)} />
       <div className="p-4">
         <KV k="Namespace" v={ns} />
         <KV k="Ready" v={podReady(p)} />
@@ -400,7 +483,6 @@ function ServiceInspector({ sim, c, s }: P & { s: Service }) {
         actions={
           <>
             <Btn onClick={() => sim.curl(`http://${s.metadata.name}${s.metadata.namespace !== "default" ? "." + s.metadata.namespace : ""}`, 10)} title="curl the Service 10 times and watch which Pods answer">Send 10 requests</Btn>
-            <Btn tone="danger" onClick={() => sim.run((cl) => A.deleteService(cl, s.metadata.name))}>Delete</Btn>
           </>
         }
       />
@@ -428,7 +510,7 @@ function DeploymentInspector({ sim, c, onSelect, d }: P & { d: Deployment }) {
   const hpa = c.list<HorizontalPodAutoscaler>("HorizontalPodAutoscaler", ns).find((h) => h.spec?.scaleTargetRef.kind === "Deployment" && h.spec.scaleTargetRef.name === d.metadata.name);
   return (
     <>
-      <InspectHeader kind="Deployment" name={d.metadata.name} color={(st.availableReplicas ?? 0) === want ? CAT_COLOR.ok : CAT_COLOR.starting} status={`${st.readyReplicas ?? 0}/${want} ready`} actions={<><Btn onClick={() => sim.run((cl) => A.scale(cl, d.metadata.name, want + 1))}>Scale +1</Btn><Btn onClick={() => sim.run((cl) => A.rolloutUndo(cl, d.metadata.name, ns))} title="kubectl rollout undo: go back to the previous Pod template">Undo rollout</Btn></>} />
+      <InspectHeader kind="Deployment" name={d.metadata.name} color={(st.availableReplicas ?? 0) === want ? CAT_COLOR.ok : CAT_COLOR.starting} status={`${st.readyReplicas ?? 0}/${want} ready`} actions={<><Btn onClick={() => sim.run((cl) => A.scale(cl, d.metadata.name, want + 1))}>Scale +1</Btn><Btn onClick={() => sim.run((cl) => A.scale(cl, d.metadata.name, Math.max(0, want - 1)))}>Scale −1</Btn><Btn onClick={() => sim.run((cl) => A.rolloutUndo(cl, d.metadata.name, ns))} title="kubectl rollout undo: go back to the previous Pod template">Undo rollout</Btn></>} />
       <div className="p-4">
         <Explain>A Deployment keeps <b>{want}</b> copies of a Pod template running. When the template changes, it creates a new ReplicaSet and shifts Pods over one step at a time.</Explain>
         <KV k="Image" v={d.spec?.template?.spec?.containers?.[0]?.image ?? "—"} />

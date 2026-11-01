@@ -17,9 +17,9 @@ export function trimForShare(state: ClusterState): ClusterState {
   for (const [k, o] of Object.entries(state.objects)) if (o.kind !== "Event") objects[k] = o;
   const pods: ClusterState["pods"] = {};
   for (const [uid, p] of Object.entries(state.pods)) {
-    pods[uid] = { ...p, containers: Object.fromEntries(Object.entries(p.containers).map(([n, c]) => [n, { ...c, reqs: [] }])) };
+    pods[uid] = { ...p, containers: Object.fromEntries(Object.entries(p.containers).map(([n, c]) => [n, { ...c, reqs: [], flow: undefined }])) };
   }
-  return { ...state, objects, pods, logs: {}, metrics: { at: 0, pods: {}, nodes: {} } };
+  return { ...state, objects, pods, logs: {}, metrics: { at: 0, pods: {}, nodes: {} }, loadStats: undefined, loadLost: undefined };
 }
 
 function toB64Url(bytes: Uint8Array): string {
@@ -108,6 +108,11 @@ function checkCluster(v: unknown): ClusterState {
   }
   for (const [, p] of pods) if (!isRecord(p) || !isRecord(p.containers)) throw new LinkError(NOT_A_CLUSTER);
   for (const [, n] of nodes) if (!isRecord(n)) throw new LinkError(NOT_A_CLUSTER);
+  // Card positions: a capped map of finite numbers, or dropped.
+  if (v.layout !== undefined) {
+    const ok = isRecord(v.layout) && Object.keys(v.layout).length <= SHARE_LIMITS.objects && Object.values(v.layout).every((p) => isRecord(p) && Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x as number) < 1e5 && Math.abs(p.y as number) < 1e5);
+    if (!ok) delete v.layout;
+  }
   return v as unknown as ClusterState;
 }
 

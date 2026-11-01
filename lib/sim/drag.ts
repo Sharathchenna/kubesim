@@ -4,6 +4,7 @@
 import { ApiError, type Cluster, type Deployment, type Node, type Pod, type Service } from "@/lib/engine";
 import * as A from "./actions";
 import { BLUEPRINTS } from "./blueprints";
+import { RAW_KIND as KIND_OF, canDelete, deleteCommand, deleteNote, type ObjectKind } from "./objects";
 import type { SimStore } from "./useSimulation";
 
 export type DragItem =
@@ -12,7 +13,7 @@ export type DragItem =
   | { kind: "palette"; what: "service" | "node"; label: string }
   | { kind: "blueprint"; id: string; label: string }
   | { kind: "tool"; what: "chaos" | "cordon"; label: string }
-  | { kind: "object"; type: "pod" | "deployment" | "service"; ns: string; name: string; label: string };
+  | { kind: "object"; type: ObjectKind; ns: string; name: string; label: string };
 
 /** Drop targets are encoded as strings on SVG elements: data-drop="node:worker-1", "deployment:default/web", … */
 export type Target = { type: "canvas" | "trash" } | { type: "node"; name: string } | { type: "deployment" | "service" | "pod"; ns: string; name: string };
@@ -191,6 +192,13 @@ export function performDrop(sim: SimStore, item: DragItem, t: Target): DropResul
   // ---- existing objects
   if (item.kind === "object") {
     const nsFlag = item.ns !== "default" ? ` -n ${item.ns}` : "";
+    if (t.type === "trash" && item.type !== "pod" && item.type !== "deployment" && item.type !== "service") {
+      if (!c.raw(KIND_OF[item.type], item.type === "node" ? undefined : item.ns, item.name)) return { ok: false, note: `${item.label} is already gone.` };
+      if (!canDelete(c, item.type, item.ns, item.name)) return { ok: false, note: "The control plane runs the cluster's own components, so it stays. Delete a worker Node instead." };
+      const note = deleteNote(c, item.type, item.ns, item.name);
+      const r = sim.exec(deleteCommand(item.type, item.ns, item.name));
+      return r?.ok ? { ok: true, note: `Deleted. ${note}` } : { ok: false, note: r?.out ?? "The cluster isn't running." };
+    }
     if (t.type === "trash") {
       const kind = item.type === "pod" ? "Pod" : item.type === "deployment" ? "Deployment" : "Service";
       const noun = item.type === "deployment" ? "deployment.apps" : item.type;

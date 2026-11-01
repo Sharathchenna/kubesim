@@ -35,7 +35,8 @@ export function containerCpu(c: Container, crt: ContainerRuntime, now: number): 
   const { info } = lookupImage(crt.image);
   const recent = (crt.reqs ?? []).filter((t) => now - t <= WINDOW_MS).length;
   const rps = recent / (WINDOW_MS / 1000);
-  const raw = (info?.idleCpu ?? 1) + rps * (info?.cpuPerRps ?? 1) + (crt.burn ?? 0);
+  // The traffic control's flow adds the CPU it costs (already capped by what the container could get).
+  const raw = (info?.idleCpu ?? 1) + rps * (info?.cpuPerRps ?? 1) + (crt.burn ?? 0) + (crt.flow?.cpu ? crt.flow.cpu - (info?.idleCpu ?? 1) : 0);
   const limit = containerLimits(c).cpu;
   return Math.max(0, Math.round(limit ? Math.min(raw, limit) : raw));
 }

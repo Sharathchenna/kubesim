@@ -78,6 +78,8 @@ export interface ImageInfo {
   /** Idle CPU in millicores, and CPU cost per request/s. */
   idleCpu?: number;
   cpuPerRps?: number;
+  /** Time to answer one request when idle (ms), for the load model; 12 for HTTP, 2 for a database by default. */
+  latencyMs?: number;
   /** Resident memory in bytes. */
   baseMem?: number;
   /** Dependencies it calls to serve a request to `path`, from its environment (URLs). */
@@ -405,6 +407,9 @@ export const IMAGES: ImageInfo[] = [
       ]),
     termExit: 0,
     idleCpu: 2,
+    // Redis does tens of thousands of operations a second on one core.
+    cpuPerRps: 0.05,
+    latencyMs: 1,
     baseMem: 3 * Mi,
   },
   {
@@ -428,6 +433,9 @@ export const IMAGES: ImageInfo[] = [
           ],
     termExit: 0,
     idleCpu: 5,
+    // A simple indexed query costs a fraction of a millisecond of CPU.
+    cpuPerRps: 0.3,
+    latencyMs: 3,
     baseMem: 22 * Mi,
   },
   {
