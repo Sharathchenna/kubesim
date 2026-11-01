@@ -1,37 +1,72 @@
-# kubesim
+<div align="center">
 
-**[kubesim.app](https://kubesim.app)** · Learn Kubernetes by breaking it.
+<a href="https://kubesim.app"><img src="docs/media/banner.png" alt="kubesim: learn Kubernetes by breaking it. A Pod crashes on one Node while a new one is dragged in to replace it." width="100%"></a>
 
-![The kubesim logo is made of live Pods: a Node fails and they come back](docs/media/hero.gif)
+A whole Kubernetes cluster runs in your browser tab. Break it on purpose, watch it heal, and see the `kubectl` behind every click.
 
-Learn Kubernetes on a cluster you can see. kubesim runs a simulated Kubernetes cluster in your browser tab. You type real `kubectl` commands and watch Pods get scheduled, crash, heal and roll out, with every step explained in plain English.
+[![Try it at kubesim.app](https://img.shields.io/badge/try_it-kubesim.app-326ce5?style=for-the-badge&logo=kubernetes&logoColor=white)](https://kubesim.app)
 
-It's free, open source (MIT), and has no backend: no sign-up, no cloud account, nothing to install.
+[![CI](https://github.com/Sharathchenna/kubesim/actions/workflows/ci.yml/badge.svg)](https://github.com/Sharathchenna/kubesim/actions/workflows/ci.yml)
+[![MIT license](https://img.shields.io/badge/license-MIT-0f172a)](LICENSE)
+![No sign-up](https://img.shields.io/badge/sign--up-none-16a34a)
+![No backend](https://img.shields.io/badge/backend-none-16a34a)
+![Kubernetes v1.37 behaviour](https://img.shields.io/badge/modelled_on-Kubernetes_v1.37-326ce5)
 
-![A shop running on the simulated cluster: the database Pod is deleted, errors travel up the request chain in red, and it heals](docs/media/break-and-heal.gif)
+[Lessons](https://kubesim.app/learn) · [Incidents](https://kubesim.app/incidents) · [Daily Incident](https://kubesim.app/daily) · [Challenges](https://kubesim.app/challenges) · [Practice exams](https://kubesim.app/exams) · [Sandbox](https://kubesim.app/sandbox)
 
-It's a simulation built for learning, not a real cluster: there's no Helm, no CRDs and no interactive shell, and some corners are simpler than the real thing. What it does simulate is pinned by tests against real Kubernetes behaviour.
+</div>
+
+<br>
+
+![The kubesim logo is made of live Pods: a Node fails and they come back](docs/media/hero.webp)
+
+Most people learn Kubernetes from diagrams of a cluster they never get to touch. kubesim gives you one you can see. You type real `kubectl` commands, or drag things around, and watch Pods get scheduled, crash, heal and roll out, with every step explained in plain English.
+
+It's free and open source, and there's nothing to install: no sign-up, no cloud account, no backend. Everything runs in your tab.
+
+## Break it in 30 seconds
+
+Open the [Sandbox](https://kubesim.app/sandbox), press **Add the shop** (web, API, Postgres, Redis), and try one of these:
+
+| Do this | What you'll see |
+|---|---|
+| Drag a **Pod** onto a Node and pick *"runs out of memory"* | It goes `OOMKilled`, then `CrashLoopBackOff`. Click it: the sidebar says what's wrong and offers the fix, with the command it runs. |
+| Pick **Presets → Launch day** on the traffic bar | Errors climb as the shop drowns. Click **Why?** to find the bottleneck, then let an HPA scale it back to 0% errors. |
+| Click a **Node** and press **Simulate failure** | It stops responding, its Pods are evicted and rescheduled onto the others. |
+| `kubectl delete pod` the database | Errors travel up the request chain in red, then the Deployment brings it back. |
+| Hover a Deployment and press **+** | It scales, and the terminal shows the `kubectl scale` it ran. |
+
+![A shop running on the simulated cluster: the database Pod is deleted, errors travel up the request chain in red, and it heals](docs/media/break-and-heal.webp)
 
 ## What's inside
 
 | | |
 |---|---|
-| **Lessons** (`/learn`) | Hands-on lessons in seven tracks, from your first Pod through health checks, Jobs, config, Ingress, NetworkPolicy, storage, StatefulSets, scheduling, autoscaling and RBAC. Each gives you a fresh cluster, a terminal and a YAML editor. Steps tick off by themselves once you've done them; most Checks look at the cluster's state, not at what you typed. |
-| **Incidents** (`/incidents`, `/daily`) | You're on call: a shop with live traffic is down, the pager shows the error rate, and the clock runs until you find the cause with kubectl and fix it. The Daily Incident is the same outage for everyone each day, with a streak and a result to share. |
-| **Challenges** (`/challenges`) | A broken cluster and a goal, with no instructions: find the cause with kubectl and fix it. Hints and the fix stay hidden until you ask. |
-| **Practice exams** (`/exams`) | Unofficial, timed task lists in the style of the CKAD™ and CKA™ exams, graded from the cluster's state, with solutions afterwards. |
-| **Explainers** (`/explainers`) | Narrated scenarios (self-healing, scaling, rolling updates, Services, Node failure, CrashLoopBackOff, probes, autoscaling, StatefulSets, Ingress, NetworkPolicy) that play step by step on the live cluster. |
-| **Concepts** (`/concepts`) | Step-through illustrations: how a cluster is built, what happens on `kubectl apply`, how a Service routes traffic, how probes, Ingress, NetworkPolicy, volumes, the HPA and RBAC work. They also appear inside the Lessons. |
-| **Sandbox** (`/sandbox`) | Free play: deploy, scale, roll out, power Nodes off and on, cordon and drain. **+ Add** drops in building blocks (a web app, an API, PostgreSQL, MySQL, Redis, a load generator, a whole full-stack app) as real manifests you can open and edit. Guided scenarios run with one click. **Share** copies a link that opens a copy of your cluster. |
-| **Progress** (`/progress`) | What you've finished, on this device only (there are no accounts). |
+| 📚 **[Lessons](https://kubesim.app/learn)** | 19 hands-on lessons in seven tracks, from your first Pod through health checks, Jobs, config, Ingress, NetworkPolicy, storage, StatefulSets, scheduling, autoscaling and RBAC. Each gives you a fresh cluster, a terminal and a YAML editor. Steps tick off by themselves once you've done them; most Checks look at the cluster's state, not at what you typed. |
+| 🚨 **[Incidents](https://kubesim.app/incidents)** | 16 outages. You're on call: a shop with live traffic is down, the pager shows the error rate, and the clock runs until you find the cause with kubectl and fix it. The **[Daily Incident](https://kubesim.app/daily)** is the same outage for everyone each day, with a streak and a result to share. |
+| 🧩 **[Challenges](https://kubesim.app/challenges)** | 30 broken clusters and a goal, with no instructions: find the cause with kubectl and fix it. Hints and the fix stay hidden until you ask. |
+| ⏱️ **[Practice exams](https://kubesim.app/exams)** | Unofficial, timed task lists in the style of the CKAD™ and CKA™ exams, graded from the cluster's state, with solutions afterwards. |
+| 🎬 **[Explainers](https://kubesim.app/explainers)** | 11 narrated scenarios (self-healing, scaling, rolling updates, Services, Node failure, CrashLoopBackOff, probes, autoscaling, StatefulSets, Ingress, NetworkPolicy) that play step by step on the live cluster. |
+| 🔍 **[Concepts](https://kubesim.app/concepts)** | Step-through illustrations: how a cluster is built, what happens on `kubectl apply`, how a Service routes traffic, how probes, Ingress, NetworkPolicy, volumes, the HPA and RBAC work. They also appear inside the Lessons. |
+| 🛠️ **[Sandbox](https://kubesim.app/sandbox)** | Free play. Deploy, scale, roll out, delete anything, power Nodes off and on, cordon and drain. Drop a Pod on a Node and it asks what to run: more of what's already running, a debug shell, a load sender, or something broken on purpose. Select anything and the sidebar says what's wrong with it and how to fix it. Send traffic at the shop and find the bottleneck. **+ Add** drops in building blocks (a web app, an API, PostgreSQL, MySQL, Redis, a load generator, a whole full-stack app) as real manifests you can open and edit. **Share** copies a link that opens a copy of your cluster. |
+| 📈 **[Progress](https://kubesim.app/progress)** | What you've finished, on this device only (there are no accounts). |
+
+It's a simulation built for learning, not a real cluster: there's no Helm, no CRDs and no interactive shell, and some corners are simpler than the real thing. What it does simulate is pinned by tests against real Kubernetes behaviour ([details below](#whats-simulated)).
 
 ## Run it
 
 Needs [Bun](https://bun.sh).
 
 ```bash
+git clone https://github.com/Sharathchenna/kubesim && cd kubesim
 bun install
 bun run dev        # http://localhost:3000
+```
+
+<details>
+<summary><b>All the scripts</b></summary>
+
+```bash
 bun run test       # engine, kubectl and "every Lesson, Challenge and exam is solvable" tests
 bun run build      # static site in out/, deployable to any static host
 bun start          # serves out/ on http://localhost:4173, like a static host would (run build first)
@@ -40,6 +75,8 @@ bun run demo       # the Simulated Cluster in your terminal, no browser
 bun scripts/icons.tsx      # regenerates app/favicon.ico, public/apple-touch-icon.png and public/og.png
 bun lib/lessons/gen-meta.ts  # regenerates the index pages' Lesson/Challenge/exam/Explainer metadata
 ```
+
+</details>
 
 ### Deploying
 
@@ -119,3 +156,11 @@ Lessons, Explainers, Concept Illustrations and engine fixes are all welcome. See
 ## Trademarks
 
 Kubernetes® is a registered trademark of The Linux Foundation. CKA™ and CKAD™ are trademarks of The Linux Foundation. kubesim is not affiliated with or endorsed by The Linux Foundation or the CNCF, and its practice exams are not the real exams.
+
+---
+
+<div align="center">
+
+**[kubesim.app](https://kubesim.app)** · If kubesim helped something click, a ⭐ helps other people find it.
+
+</div>
